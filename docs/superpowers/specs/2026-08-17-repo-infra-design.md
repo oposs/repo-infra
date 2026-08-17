@@ -277,7 +277,7 @@ This also survives dependabot, which edits contents while leaving the marker alo
 
 Ambiguous signals — a `package.json` that is tooling config rather than a published
 package, a repo with both `pyproject.toml` and `Cargo.toml` — produce state `ambiguous`
-and stop. `apply` asks, then records the answer in `.github/repo-infra.yml`.
+and stop. `apply` asks, then records the answer in `.github/repo-infra.json`.
 
 A wrong guess about which file holds the version produces a release that looks fine and
 is broken, discovered by a user. Asking once costs a question.
@@ -331,18 +331,32 @@ item can be dropped at review.
 
 ### Per-repo state
 
-```yaml
-# .github/repo-infra.yml
-languages: [rust]
-version_files: [Cargo.toml, Cargo.lock]
-moving_major_tag: false
-skip:
-  man-pages: "library crate, no CLI"
+```json
+// .github/repo-infra.json
+{
+  "ecosystems": ["rust"],
+  "moving_major_tag": false,
+  "version_files": [
+    { "path": "Cargo.toml",
+      "pattern": "^version = \"[^\"]*\"",
+      "replacement": "version = \"$VERSION\"",
+      "verify": "^version = \"$VERSION\"" }
+  ],
+  "skip": { "man-pages": "library crate, no CLI" }
+}
 ```
 
 Without `skip`, the checker nags about man pages on every library crate forever. This file
 is the only way to record a deliberate "no" so the tool stops asking. It also records
 answers to `ambiguous` questions (D12) so they are asked once.
+
+**JSON, not YAML.** `actions/github-script` bundles no YAML parser, so a YAML config would
+mean installing a dependency inside every workflow of every repo for one small file. JSON
+needs `JSON.parse` and nothing else. The cost is losing comments; the file is written by
+`apply` and only occasionally hand-edited, so that is acceptable.
+
+Each `version_files` entry carries its own locate/replace/verify patterns rather than just a
+path. This is what keeps D10 honest: adding an ecosystem is a data entry, not code.
 
 ### Detection
 
@@ -363,7 +377,7 @@ is `python` **and** `claude-plugin`, and both are bumped in the same release PR.
 
 **Rust workspaces.** If `[workspace.package] version` exists, that is the field to bump and
 members inherit it; otherwise the root `[package] version`. Detection records which it
-found in `.github/repo-infra.yml`.
+found in `.github/repo-infra.json`.
 
 **Reported but not acted on in spec 1:** *ships a CLI* (`[[bin]]`, `bin` in
 `package.json`, `console_scripts`, a `bin/` directory) → man-page candidate; publish
@@ -449,7 +463,7 @@ Steps:
 3. If the tag exists, no-op and exit.
 4. Annotated tag via `git.createTag` + `git.createRef` (D9).
 5. Moving major tag `vX` via `updateRef({force: true})`, only where
-   `.github/repo-infra.yml` asks for it. A library crate does not need one; a GitHub
+   `.github/repo-infra.json` asks for it. A library crate does not need one; a GitHub
    Action does.
 6. Extract notes from `CHANGES.md`.
 7. `repos.createRelease` — **as a draft** (see the seam below).
