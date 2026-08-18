@@ -6,18 +6,27 @@
 
 ## Purpose
 
-Bring every active repository in `github.com/oposs` and `github.com/oetiker` onto one
-shared infrastructure standard — release flow, branch protection, CI, packaging,
-documentation — and keep them there as the standard improves.
+Bring **one repository — the one you are standing in — onto a shared infrastructure
+standard**: release flow, branch protection, CI, packaging, documentation. Either from
+nothing, or from an older generation of the standard up to the current one.
 
 The second half is the harder half. A scaffolder that runs once is easy. This tool has to
-be re-runnable for years, report how far behind a repo has fallen, and upgrade it without
-discarding the local edits every repo legitimately has.
+be re-runnable for years, report how far behind this repo has fallen, and upgrade it
+without discarding the local edits every repo legitimately has.
+
+The unit of work is always a single repository, chosen deliberately. There is no fleet
+sweep, no inventory and no organisation-wide pass. Repositories are converted one at a
+time, by running the tool inside each.
+
+`github.com/oposs` and `github.com/oetiker` are not a target list. They are the evidence
+of what a single run has to survive: ten languages, two incompatible release shapes and
+three divergent sets of action versions — any of which the tool may meet in whichever
+repository it is pointed at next.
 
 ### The problem, measured
 
-Three repositories were surveyed. All three do the same jobs differently, and none is
-current.
+Three repositories were surveyed to size that variety. All three do the same jobs
+differently, and none is current.
 
 | Action | latest | mkp-builder | mdmost | byonk |
 |---|---|---|---|---|
@@ -69,9 +78,10 @@ Consequence: mdmost pushes to `main` three times during a release (version commi
 Homebrew formula, bottle block). Adopting protection there is a rework, not a toggle.
 The checker must report this as a `conflict`, never as a plain `missing`.
 
-### D2 — the ruleset carries no required status checks, deliberately
+### D2 — the ruleset requires exactly two status checks
 
-The working payload (verified on `oposs/mkp-builder`, ruleset 20940234):
+Tests must pass before anything merges, always. The payload (`pull_request` rule verified
+on `oposs/mkp-builder`, ruleset 20940234; the `required_status_checks` rule is new):
 
 ```json
 { "name": "main", "target": "branch", "enforcement": "active",
@@ -89,22 +99,61 @@ The working payload (verified on `oposs/mkp-builder`, ruleset 20940234):
         "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": false,
-        "required_reviewers": [] } } ] }
+        "required_reviewers": [] } },
+    { "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          { "context": "ci-ok" },
+          { "context": "changelog-gate" } ] } } ] }
 ```
 
-Two properties look like omissions and are load-bearing:
+**Two contexts, never the matrix legs.** `ci-ok` is an aggregator job that every generated
+CI workflow ends with (see *CI templates*); `changelog-gate` is the changelog check. Both
+names are stable across every ecosystem, so one ruleset payload fits every repository.
+Requiring matrix legs directly is brittle in both directions: adding a target silently
+changes which checks are required, and renaming one silently un-requires it.
 
-- **No `required_status_checks`.** A pull request opened by `GITHUB_TOKEN` does not
-  trigger `on: pull_request` workflows — GitHub blocks that to prevent workflow
-  recursion. A required check would therefore never report on the release PR, leaving it
-  permanently pending and unmergeable. Tests are verified **on the commit, before the PR
-  is opened**, instead.
-- **`required_approving_review_count: 0`.** Lets a solo maintainer merge their own
-  release PR.
+**`strict_required_status_checks_policy: false`** — deliberately not "require branches to
+be up to date". With `true`, every push to `main` makes an open release PR stale, and
+re-syncing it re-parks its checks behind another manual approval (below).
 
-`bypass_actors` is empty. `GITHUB_TOKEN` cannot be added to it — the bypass list accepts
-users, teams and GitHub Apps, and the Actions token is none of those. This is why the
-release lands through a PR rather than a push.
+**`required_approving_review_count: 0`** lets a solo maintainer merge their own release PR.
+
+**`bypass_actors` is empty.** `GITHUB_TOKEN` cannot be added — the bypass list accepts
+`User`, `Team`, `Integration`, `OrganizationAdmin`, `RepositoryRole` and `DeployKey`, and
+the Actions token is none of those. This is why the release lands through a PR rather than
+a push. Note also that rulesets grant admins **no** implicit bypass: the live ruleset above
+reports `current_user_can_bypass: "never"` for the repository owner. Nobody merges past a
+red check by accident.
+
+#### The release PR: parked, not blocked
+
+A pull request opened by `GITHUB_TOKEN` does **not** silently skip its checks. GitHub's
+current behaviour:
+
+> `pull_request` events with the `opened`, `synchronize`, or `reopened` activity types:
+> when a workflow using `GITHUB_TOKEN` creates or updates a pull request, the resulting
+> `pull_request` event creates workflow runs in an **approval-required** state. The pull
+> request displays a banner in the merge box, and a user with write access to the
+> repository can start the runs by selecting **Approve workflows to run**.
+
+So the release PR's checks are parked, not suppressed. The maintainer clicks *Approve
+workflows to run* once; `ci-ok` then runs against the real merge result and
+`changelog-gate` skips itself to green on `release/*` (D13). Then the PR merges like any
+other.
+
+One deliberate click on a pull request that is reviewed by hand anyway. The alternative —
+opening the release PR with a GitHub App or PAT so the runs start unattended — was
+rejected: it is the first credential this design would introduce, to be created, stored and
+rotated per organisation, and it buys only the click.
+
+**No workflow triggers on the release branch itself.** The same restriction covers pushes:
+*"if a workflow run pushes code using the repository's `GITHUB_TOKEN`, a new workflow will
+not run even when the repository contains a workflow configured to run when `push` events
+occur."* The release branch is created by the Actions token through the Git Data API (D9),
+so no `push`-triggered CI fires on it either. The approval click is the only route to a
+green required check on a release PR — do not try to engineer around it with `on: push`.
 
 ### D3 — Actions must be allowed to open pull requests
 
@@ -125,16 +174,20 @@ not verified during design.
 
 ### D4 — protection is applied per repository, not per organisation
 
-An organisation-wide ruleset on `oposs` would cover every repo in one action. During
-migration that is a trap: on the day it is created, every repo not yet converted loses
-the ability to push to `main`, including any release in flight. Per-repo means one repo
-migrates at a time and nothing else notices.
+This follows directly from the Purpose: the tool converts the repository it is run in, and
+nothing else. An organisation-wide ruleset would silently reach beyond that boundary.
+
+It would also be a trap. On the day such a ruleset is created, every repository not yet
+converted loses the ability to push to `main` — including any release in flight, and
+including every repository whose CI has no `ci-ok` job yet, which the ruleset would block
+entirely (D13). Per-repo means one repository changes at a time and nothing else notices.
 
 `oetiker` is a personal account and has no organisation rulesets, so per-repo is the only
 option there regardless.
 
-Consolidating `oposs` to a single organisation ruleset is a reasonable cleanup **after**
-every repository has been converted.
+Consolidating `oposs` to a single organisation ruleset is a reasonable cleanup **once**
+every repository has been converted — a separate, deliberate act, never something `apply`
+does.
 
 ### D5 — `CHANGES.md` is the single source of truth for the released version
 
@@ -282,6 +335,49 @@ and stop. `apply` asks, then records the answer in `.github/repo-infra.json`.
 A wrong guess about which file holds the version produces a release that looks fine and
 is broken, discovered by a user. Asking once costs a question.
 
+### D13 — a required workflow never carries a workflow-level filter
+
+`ci.yml` and `changelog-gate.yml` are required by D2. Neither may use `paths` or
+`paths-ignore` under `on: pull_request`. Ever.
+
+A `branches` filter is permitted **only** where it cannot exclude a pull request the
+ruleset gates. `branches: [main]` qualifies: it matches on the pull request's *base*, and
+the ruleset covers `~DEFAULT_BRANCH`, so every gated PR runs the workflow while stacked
+PRs onto other bases are spared. That equivalence is a coincidence of two settings
+agreeing, not a guarantee — if the ruleset is ever widened past the default branch, this
+filter must be widened in the same commit.
+
+The reason is a distinction that is easy to miss and impossible to debug from the symptom:
+
+| How the work is skipped | Reported as | Effect on a required check |
+|---|---|---|
+| **job** skipped by a job-level `if:` | **Success** | merges fine |
+| **workflow** skipped by `paths` / `branches` filtering | stays **Pending** | blocks the PR forever |
+
+GitHub states it plainly: *"You should not use path or branch filtering to skip workflow
+runs if the workflow is required."*
+
+So conditional execution is expressed **inside** a job, never in the trigger:
+
+```yaml
+on:
+  pull_request:
+    branches: [main]      # base-branch filter only; never paths / paths-ignore
+jobs:
+  changelog-gate:
+    if: >-                # job-level — skipping here reports Success
+      !startsWith(github.head_ref, 'release/') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+```
+
+This is what lets the changelog gate be *required* and still have an escape hatch: an
+exempt PR skips the job and the required check goes green on its own.
+
+The failure this prevents does not look like a configuration error. It looks like a stuck
+pull request with a check that never appears and no log to read — in a repository where
+someone reasonably added `paths: ['src/**']` to save CI minutes. The checker therefore
+treats a workflow-level filter on a required workflow as a `conflict`, not a `missing`.
+
 ## Spec 1 — the frame
 
 ### Repository layout
@@ -328,6 +424,20 @@ no repo audit involved.
 `/repo-infra:apply` works on a branch and opens a PR, because `main` is protected and the
 plugin gets no exemption from the standard it installs. One commit per item, so any single
 item can be dropped at review.
+
+**Ordering is not free: the ruleset goes last.** A required status check whose workflow
+does not exist never reports, and blocks every pull request in the repository — including
+the one that would have installed the workflow. So `apply` proceeds in this order, and
+never collapses it into one step:
+
+1. create the `no-changelog` label,
+2. land `ci.yml` (with its `ci-ok` job) and `changelog-gate.yml` on `main` through the
+   apply PR,
+3. **then** enable the ruleset with its two required contexts (D2).
+
+Step 3 runs only after step 2 has merged. On a repository that is being upgraded rather
+than onboarded, `check` reports which of the three are already done, so a re-run resumes
+rather than repeats.
 
 ### Per-repo state
 
@@ -382,8 +492,8 @@ found in `.github/repo-infra.json`.
 **Reported but not acted on in spec 1:** *ships a CLI* (`[[bin]]`, `bin` in
 `package.json`, `console_scripts`, a `bin/` directory) → man-page candidate; publish
 candidates → spec 2; an existing `book.toml` → spec 4. These appear in the report as
-candidates from day one, so `check` can be run across all forty repos before specs 2–4
-exist.
+candidates from day one, so a repository converted before specs 2–4 exist still shows what
+it will eventually be able to adopt.
 
 ### The version-file writer
 
@@ -425,6 +535,14 @@ commit — CI, the changelog gate, anything added later:
 This replaces mkp-builder's ~150-line `verify-tests` job, which polls
 `listWorkflowRuns` for a hardcoded `test.yml` and therefore sees one workflow and breaks
 when a repo names its CI something else.
+
+**The guard is not made redundant by D2's required checks — do not delete it.** Its job
+changed, not its value. It no longer *substitutes* for a required check; it now fails
+**fast**, on the commit, before any branch, commit, PR or approval click exists. Without
+it a release started from a red `main` still gets a rolled changelog, a bumped version, a
+pushed branch and an open PR — and only then parks on a check the maintainer has to
+approve in order to watch it go red. The guard turns that into an immediate refusal with
+nothing to clean up.
 
 **Prepare always checks out.** Checkout costs about five seconds; a Rust toolchain costs
 minutes. So checkout is unconditional and only tool steps are conditional:
@@ -485,13 +603,21 @@ add-ons, inverting the dependency.
 
 Every PR must add something under `[Unreleased]`.
 
-**Advisory, not required** — a required status check would deadlock the release PR for
-the reason in D2. Two layers instead:
+**Required, not advisory.** The job is named `changelog-gate` and is one of the two
+contexts the ruleset requires (D2). Two layers:
 
 | When | What | Strength |
 |---|---|---|
-| PR opened | "this PR adds nothing under `[Unreleased]`" | advisory, red X |
+| PR opened | "this PR adds nothing under `[Unreleased]`" | **blocks the merge** |
 | Release run | "`[Unreleased]` is empty, nothing to release" | hard failure |
+
+Being required is only safe because the escape hatch below is a **job-level** `if:`, which
+reports Success when it skips (D13). A `paths` filter here would deadlock every PR in the
+repository.
+
+An advisory version of this check was considered and rejected. An advisory check that is
+routinely ignored is worse than no check: it teaches that red is normal, and then a
+genuinely broken build looks exactly like a missing changelog line.
 
 The release-time check already exists in mkp-builder and only catches an entirely empty
 changelog. The PR check catches the real problem: entries written at release time, from
@@ -503,17 +629,27 @@ and at head with two `repos.getContent` calls and requires them to differ. No ch
 needed, which also avoids `fetch-depth: 0` and the merge-commit awkwardness of
 `git diff`.
 
-**The escape hatch is not optional:**
+**The escape hatch is not optional** — and now that the gate blocks, it is the only way a
+legitimate no-changelog PR ever merges:
 
 ```yaml
-if: >-
-  !startsWith(github.head_ref, 'release/') &&
-  !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+jobs:
+  changelog-gate:
+    if: >-
+      !startsWith(github.head_ref, 'release/') &&
+      !contains(github.event.pull_request.labels.*.name, 'no-changelog')
 ```
 
-An advisory check that is routinely ignored is worse than no check, because it teaches
-that red is normal — and then a genuinely broken build looks the same as a missing
-changelog line. The label lets a deliberate exemption be stated once.
+`release/*` exempts the release PR, whose whole diff *is* the changelog roll. The
+`no-changelog` label lets a deliberate exemption be stated once, per PR, in public.
+
+**The `no-changelog` label must exist in the repository.** This is a real trap, because
+nothing reports it. Dependabot's `dependabot.yml` requests the label (see *Action
+versions*), but **Dependabot cannot create labels, and a label that does not exist is
+silently ignored** — so every weekly dependabot PR would arrive unlabelled and hang on a
+required gate, with no error anywhere to explain why. Therefore `apply` creates the label
+(`POST /repos/{owner}/{repo}/labels`) **before** enabling the ruleset, and `check` reports
+its absence as a distinct item.
 
 ### Action versions: dependabot, not the checker
 
@@ -530,7 +666,15 @@ updates:
 ```
 
 The `no-changelog` label is why the gate needed an escape hatch: without it every weekly
-dependabot PR shows red.
+dependabot PR is **blocked**, not merely red, since the gate is required (D2).
+
+That makes the label load-bearing, and it fails silently. Dependabot cannot create labels;
+a label missing from the repository is ignored without comment. `apply` therefore creates
+`no-changelog` explicitly, and `check` verifies it — see *The changelog gate*.
+
+Labelling dependabot's PRs was chosen over exempting the `dependabot[bot]` actor inside the
+gate. The exemption then lives in a config file, shows up in a diff, and can be overridden
+on any single PR that does deserve a changelog entry.
 
 The split:
 
@@ -557,11 +701,30 @@ One per ecosystem, each marked (`# repo-infra: ci-rust v1`):
 | go | `go vet`, `go test` |
 | php | `composer install`, `phpunit` |
 
-Plus one job every repo gets: `node --test .github/workflows/lib/` — the release logic
-tests itself.
+Plus two jobs every repo gets. The first is `node --test .github/workflows/lib/` — the
+release logic tests itself. The second is the aggregator that D2 requires:
 
-The only hard requirement is that CI runs on `push` and `pull_request` so it produces
-check runs the release guard can read. Nothing is coupled to a filename.
+```yaml
+  ci-ok:
+    if: always()
+    needs: [fmt, clippy, test, workflow-lib]   # every job above, per ecosystem
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+```
+
+`ci-ok` exists so the ruleset can name **one** context that means "this repository's CI
+passed", whatever that repository's jobs happen to be. `if: always()` is required — without
+it the job is skipped when a dependency fails, and a skipped job reports Success (D13),
+which would turn the required check green on a red build. That inversion is the single
+most dangerous mistake in this file: it fails open, silently, and looks like it is working.
+
+Two hard requirements, and nothing else is coupled to a filename:
+
+- CI runs on `push` **and** `pull_request`, so it produces check runs the release guard can
+  read on a commit as well as on a PR.
+- Neither trigger carries a `paths`, `paths-ignore` or `branches` filter (D13).
 
 ### The report
 
@@ -574,12 +737,16 @@ detected   rust (Cargo.toml, Cargo.lock) · ships a CLI
   changelog-gate        missing
   changes-format        conflict   '## Unreleased' → '## [Unreleased]'
   branch-protection     missing    main is unprotected
+  required-checks       missing    ruleset requires neither ci-ok nor changelog-gate
+  no-changelog-label    missing    dependabot requests it; it does not exist
   actions-open-pr       missing    can_approve_pull_request_reviews = false
   dependabot            missing
   ci-rust               outdated   v1 installed, v2 available
 
   ! release.yml pushes to main 3× (version commit, formula, bottles).
     Protecting main breaks it. Migration required, not an upgrade.
+  ! ci.yml filters on: pull_request by paths. Required checks would leave
+    every unmatched PR pending forever. Move the condition into the job.
 
   candidates (later specs)
   publish-crate  homebrew  os-packages  containers  man-pages  docs-site
@@ -713,7 +880,9 @@ naming what to test.
 
 | Assumption | How to re-check | If it changes |
 |---|---|---|
-| `GITHUB_TOKEN`-created PRs do not trigger `pull_request` workflows | open a release PR; look for check runs on it | required status checks become possible; the changelog gate could become blocking |
+| `GITHUB_TOKEN`-created PRs park their `pull_request` runs in an approval-required state rather than skipping them (**re-verified 2026-08-18**; this reversed the original D2) | open a release PR; the merge box should show an *Approve workflows to run* banner | if runs stop being created at all, the two required checks can never report and D2 must revert to no required checks |
+| a job skipped by a job-level `if:` reports Success, while a workflow skipped by `paths`/`branches` stays Pending | open a PR that touches nothing the filter matches; watch the check | D13's whole escape-hatch mechanism fails; the changelog gate cannot be required |
+| Dependabot ignores a label that does not exist, silently | delete the `no-changelog` label; open a dependabot PR | the label-creation step in `apply` becomes unnecessary, not harmful |
 | `can_approve_pull_request_reviews` is the create-PR toggle | set it `false` on a test repo and run the release | D3 needs a different field |
 | an empty `bypass_actors` is required (the Actions token cannot be listed) | attempt to add it via the rulesets API | the two-step release could collapse to one step |
 | org policy does not override D3 on `oposs` | `gh auth refresh -h github.com -s admin:org`, then read `orgs/oposs/actions/permissions/workflow` | protection may need an org-level change first |
