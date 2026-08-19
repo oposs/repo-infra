@@ -1,9 +1,8 @@
-import json
 import pathlib
 
 import pytest
 
-from repo_infra.remote import GhError, Gh
+from repo_infra.remote import Gh, GhError
 
 FIX = pathlib.Path(__file__).resolve().parent / "fixtures/gh"
 
@@ -11,19 +10,23 @@ FIX = pathlib.Path(__file__).resolve().parent / "fixtures/gh"
 def fake_run(mapping):
     """A runner that answers from recorded responses and refuses anything else."""
     def run(args):
-        for fragment, filename in mapping.items():
-            if fragment in " ".join(args):
+        path = args[-1]  # Last argument is the API path
+        # Sort by path specificity: longer, more specific paths are checked first.
+        # This ensures "/rulesets/21037721" matches before "/rulesets".
+        # Match is by suffix to avoid matching repo name in other paths.
+        for fragment, filename in sorted(mapping.items(), key=lambda x: len(x[0]), reverse=True):
+            if path.endswith(fragment):
                 return (FIX / filename).read_text(encoding="utf-8")
         raise AssertionError("unexpected gh call: %s" % " ".join(args))
     return run
 
 
 RECORDED = {
-    "/rulesets/": "ruleset.json",
+    "rulesets/21037721": "ruleset.json",
     "/rulesets": "rulesets.json",
     "/labels": "labels.json",
-    "/actions/permissions/workflow": "workflow-permissions.json",
-    "repos/oposs/repo-infra": "repo.json",
+    "permissions/workflow": "workflow-permissions.json",
+    "oposs/repo-infra": "repo.json",
 }
 
 
