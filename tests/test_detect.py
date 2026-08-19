@@ -1,5 +1,7 @@
 import pathlib
 
+import pytest
+
 from repo_infra.detect import Detection
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -70,25 +72,28 @@ def test_the_real_file_detects_a_python_repository():
     assert result.ecosystems == ["python"]
 
 
-def test_the_real_file_reports_two_node_lockfiles_as_ambiguous():
-    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-ambiguous")
-    assert [a["id"] for a in result.ambiguities] == ["node-lockfiles"]
+@pytest.mark.parametrize(
+    "fixture_name,expected_blocks,expected_ambiguity_ids",
+    [
+        ("repo-node-pnpm", ["ci-lib", "ci-node-pnpm"], []),
+        ("repo-node-bun", ["ci-lib", "ci-node-bun"], []),
+        ("repo-node-npm", ["ci-lib"], []),
+        ("repo-node-pnpm-npm", ["ci-lib"], ["node-lockfiles"]),
+        ("repo-node-bun-npm", ["ci-lib"], ["node-bun-vs-npm"]),
+        ("repo-node-ambiguous", ["ci-lib"], ["node-bun-vs-npm", "node-lockfiles", "node-pnpm-vs-bun"]),
+    ],
+)
+def test_node_lockfile_combinations(fixture_name, expected_blocks, expected_ambiguity_ids):
+    """Test that node lockfile combinations produce correct blocks and ambiguities.
 
-
-def test_a_pnpm_lockfile_selects_the_pnpm_block():
-    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-pnpm")
-    assert result.blocks == ["ci-lib", "ci-node-pnpm"]
-
-
-def test_a_bun_lockfile_selects_the_bun_block():
-    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-bun")
-    assert result.blocks == ["ci-lib", "ci-node-bun"]
-
-
-def test_a_repository_with_both_node_lockfiles_gets_neither_block():
-    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-ambiguous")
-    assert result.blocks == ["ci-lib"]
-    assert [a["id"] for a in result.ambiguities] == ["node-lockfiles"]
+    Exactly one lockfile (pnpm, bun, npm) selects its block with no ambiguity.
+    Any two or three lockfiles select no block and report ambiguities for each
+    conflicting pair.
+    """
+    result = Detection.load(REAL).detect(HERE / f"fixtures/{fixture_name}")
+    assert result.blocks == expected_blocks
+    ambiguity_ids = sorted([a["id"] for a in result.ambiguities])
+    assert ambiguity_ids == sorted(expected_ambiguity_ids)
 
 
 def test_the_real_file_detects_both_claude_plugin_and_python():
