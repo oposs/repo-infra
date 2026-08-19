@@ -1,0 +1,30 @@
+{
+  "ecosystems": [
+    {
+      "id": "alpha",
+      "signals": {"all": ["alpha.toml"]},
+      "ci_block": "ci-alpha",
+      "version_files": [
+        {"path": "alpha.toml", "pattern": "^version = \"[^\"]*\"",
+         "replacement": "version = \"$VERSION\"", "verify": "^version = \"$VERSION\""}
+      ]
+    },
+    {
+      "id": "beta",
+      "signals": {"all": ["beta.json"], "none": ["not-beta"]},
+      "ci_block": "ci-beta",
+      "version_files": []
+    }
+  ],
+  "candidates": [
+    {"id": "man-pages", "signals": {"any": ["bin/"]}}
+  ],
+  "ambiguities": [
+    {
+      "id": "alpha-or-beta",
+      "signals": {"all": ["alpha.toml", "beta.json"]},
+      "question": "This repository has both alpha.toml and beta.json. Which is authoritative?",
+      "options": ["alpha", "beta"]
+    }
+  ]
+}

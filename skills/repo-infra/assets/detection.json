@@ -1,0 +1,42 @@
+{
+  "ecosystems": [
+    {
+      "id": "claude-plugin",
+      "signals": {"all": [".claude-plugin/plugin.json"]},
+      "ci_block": "ci-claude-plugin",
+      "version_files": [
+        {
+          "path": ".claude-plugin/plugin.json",
+          "pattern": "\"version\"\\s*:\\s*\"[^\"]*\"",
+          "replacement": "\"version\": \"$VERSION\"",
+          "verify": "\"version\"\\s*:\\s*\"$VERSION\""
+        }
+      ]
+    },
+    {
+      "id": "python",
+      "signals": {"all": ["pyproject.toml"]},
+      "ci_block": "ci-python",
+      "version_files": [
+        {
+          "path": "pyproject.toml",
+          "pattern": "^version\\s*=\\s*\"[^\"]*\"",
+          "replacement": "version = \"$VERSION\"",
+          "verify": "^version\\s*=\\s*\"$VERSION\""
+        }
+      ]
+    }
+  ],
+  "candidates": [
+    {"id": "docs-site", "signals": {"any": ["book.toml"]}},
+    {"id": "man-pages", "signals": {"any": ["docs/manual.md"]}}
+  ],
+  "ambiguities": [
+    {
+      "id": "node-lockfiles",
+      "signals": {"all": ["pnpm-lock.yaml", "package-lock.json"]},
+      "question": "This repository has both pnpm-lock.yaml and package-lock.json. Which package manager is authoritative? Installing CI for the wrong one resolves different dependency versions than the developer does.",
+      "options": ["pnpm", "npm"]
+    }
+  ]
+}
