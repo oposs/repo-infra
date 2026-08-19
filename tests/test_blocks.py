@@ -35,14 +35,37 @@ def test_a_block_declares_exactly_the_jobs_it_contains(block):
     assert block_job_ids(text) == MANIFEST["ci_blocks"][block]["jobs"]
 
 
+_PATH_FILTER_KEY = re.compile(r"paths(-ignore)?:")
+
+
+def _carries_a_path_filter(text):
+    """A `paths:`/`paths-ignore:` YAML key, not a comment that merely names one."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        if _PATH_FILTER_KEY.match(stripped):
+            return True
+    return False
+
+
 @pytest.mark.parametrize("path", list(required_workflow_files()), ids=lambda p: p.name)
 def test_no_required_workflow_carries_a_path_filter(path):
     # D13: a workflow skipped by paths/branches filtering stays Pending forever
     # and blocks the pull request. A job skipped by a job-level `if:` reports
     # Success. Only the second is safe for a required check.
     text = path.read_text(encoding="utf-8")
-    assert "paths:" not in text, "%s carries a paths filter" % path
-    assert "paths-ignore:" not in text, "%s carries a paths-ignore filter" % path
+    assert not _carries_a_path_filter(text), "%s carries a paths filter" % path
+
+
+def test_the_path_filter_check_catches_a_real_filter():
+    text = "on:\n  push:\n    paths: ['src/**']\n"
+    assert _carries_a_path_filter(text)
+
+
+def test_the_path_filter_check_ignores_a_comment_that_only_mentions_paths():
+    text = "# Never add paths: or paths-ignore: to this workflow (spec D13).\n"
+    assert not _carries_a_path_filter(text)
 
 
 def test_the_aggregator_fails_open_nowhere():
