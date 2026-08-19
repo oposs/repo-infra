@@ -45,13 +45,72 @@ def carries_a_path_filter(text):
     return False
 
 
+def _dir_asset_names(manifest):
+    """Assets installed as a directory of files sharing one marker and one version.
+
+    `classify_files` still classifies every file in the directory separately --
+    a per-file marker check is what catches one stray file out of ten -- but
+    those per-file results are collapsed to a single row per asset before
+    they reach the caller. See `_collapse_dir_asset`.
+    """
+    return {name for name, spec in manifest.get("assets", {}).items()
+            if spec.get("kind") == "dir"}
+
+
+def _normalize_detail(path, item):
+    """`detail` for a per-path conflict names the path; strip it so that ten
+    files hitting the *same* conflict compare equal instead of looking like
+    ten different conflicts."""
+    detail = item.detail
+    if detail.startswith(path):
+        detail = detail[len(path):].strip()
+    return detail
+
+
+def _collapse_dir_asset(name, entries):
+    """`entries` is every per-file `(path, Item)` for one directory asset.
+
+    The manifest versions a directory asset as a single unit -- one marker, one
+    version, copied into every file it ships -- so a directory where every file
+    agrees is one row, not one per file. A directory where files disagree (a
+    stray older version, one file missing while the rest are installed) is real
+    drift that an averaged single verdict would hide, so it is named by file
+    instead of picked for.
+    """
+    states = {item.state for _, item in entries}
+
+    if states == {"ok"}:
+        # A local edit at the current version is a healthy `ok` (module
+        # docstring); which particular file was touched doesn't change that.
+        edited = any(item.detail for _, item in entries)
+        return Item(name, "ok", "local edits" if edited else "")
+
+    if states == {"missing"}:
+        return Item(name, "missing", "not installed")
+
+    if len(states) == 1:
+        (state,) = states
+        details = {_normalize_detail(path, item) for path, item in entries}
+        if len(details) == 1:
+            return Item(name, state, details.pop())
+
+    groups = {}
+    for path, item in entries:
+        label = _normalize_detail(path, item) or item.state
+        groups.setdefault(label, []).append(pathlib.Path(path).name)
+    summary = "; ".join(f"{label} in {', '.join(sorted(files))}"
+                        for label, files in sorted(groups.items()))
+    return Item(name, "conflict", f"files disagree: {summary} -- re-apply this asset")
+
+
 def classify_files(repo_root, rendered, manifest):
-    items = []
+    dir_assets = _dir_asset_names(manifest)
+    per_path = []
     for path, expected_text in sorted(rendered.items()):
         installed = pathlib.Path(repo_root) / path
         expected = parse_markers(expected_text)
         if not installed.is_file():
-            items.extend(Item(m.asset, "missing", "not installed") for m in expected)
+            per_path.extend((path, Item(m.asset, "missing", "not installed")) for m in expected)
             continue
 
         text = installed.read_text(encoding="utf-8")
@@ -61,26 +120,42 @@ def classify_files(repo_root, rendered, manifest):
         for marker in expected:
             have = found.get(marker.asset)
             if filtered and marker is expected[0]:
-                items.append(Item(marker.asset, "conflict",
+                per_path.append((path, Item(marker.asset, "conflict",
                                   f"{path} filters on paths; required checks would leave "
                                   "every unmatched pull request pending forever. Move "
-                                  "the condition into the job."))
+                                  "the condition into the job.")))
             elif have is None:
-                items.append(Item(marker.asset, "conflict",
-                                  f"{path} exists but is not managed by repo-infra"))
+                per_path.append((path, Item(marker.asset, "conflict",
+                                  f"{path} exists but is not managed by repo-infra")))
             elif have < marker.version:
-                items.append(Item(marker.asset, "outdated",
-                                  f"v{have} installed, v{marker.version} available"))
+                per_path.append((path, Item(marker.asset, "outdated",
+                                  f"v{have} installed, v{marker.version} available")))
             elif have > marker.version:
-                items.append(Item(marker.asset, "conflict",
+                per_path.append((path, Item(marker.asset, "conflict",
                                   f"v{have} installed is newer than the plugin's "
-                                  f"v{marker.version}; update the plugin"))
+                                  f"v{marker.version}; update the plugin")))
             else:
                 # Attribute an edit to the file's frame marker only: with several
                 # blocks in one file there is no honest way to say which block
                 # was touched, and guessing would be worse than saying nothing.
                 detail = "local edits" if edited and marker is expected[0] else ""
-                items.append(Item(marker.asset, "ok", detail))
+                per_path.append((path, Item(marker.asset, "ok", detail)))
+
+    grouped = {}
+    for path, item in per_path:
+        if item.name in dir_assets:
+            grouped.setdefault(item.name, []).append((path, item))
+
+    items = []
+    collapsed = set()
+    for _path, item in per_path:
+        if item.name in dir_assets:
+            if item.name in collapsed:
+                continue
+            collapsed.add(item.name)
+            items.append(_collapse_dir_asset(item.name, grouped[item.name]))
+        else:
+            items.append(item)
     return items
 
 

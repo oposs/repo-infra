@@ -56,6 +56,71 @@ def test_an_installed_file_with_no_marker_is_a_conflict_not_an_overwrite(tmp_pat
     assert "not managed" in items["ci"].detail
 
 
+DIR_MANIFEST = {"assets": {"workflow-lib": {"kind": "dir",
+                                            "target": ".github/workflows/lib"}},
+                "ci_blocks": {}, "actions": {}}
+DIR_FILES = ["bump.js", "commit.js", "version.js"]
+
+
+def dir_rendered(files=DIR_FILES, version=1):
+    return {f".github/workflows/lib/{name}": f"// repo-infra: workflow-lib v{version}\n"
+            for name in files}
+
+
+def write_dir(tmp_path, contents):
+    """`contents` maps repo-relative path -> installed text."""
+    for path, text in contents.items():
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+
+
+def test_a_directory_asset_where_every_file_matches_is_a_single_ok_row(tmp_path):
+    rendered = dir_rendered()
+    write_dir(tmp_path, rendered)
+    items = classify_files(tmp_path, rendered, DIR_MANIFEST)
+    assert states(items) == {"workflow-lib": "ok"}
+
+
+def test_a_directory_asset_that_is_not_installed_at_all_is_a_single_missing_row(tmp_path):
+    rendered = dir_rendered()
+    items = classify_files(tmp_path, rendered, DIR_MANIFEST)
+    assert states(items) == {"workflow-lib": "missing"}
+
+
+def test_a_locally_edited_file_in_a_directory_asset_still_collapses_to_ok(tmp_path):
+    """A local edit at the current version is a healthy `ok` for a single-file
+    asset (see test_local_edits_at_the_current_version_stay_ok); a directory
+    asset must not be second-guessed into a false conflict for the same
+    thing."""
+    rendered = dir_rendered()
+    installed = dict(rendered)
+    installed[".github/workflows/lib/bump.js"] += "// extra\n"
+    write_dir(tmp_path, installed)
+    items = {item.name: item for item in classify_files(tmp_path, rendered, DIR_MANIFEST)}
+    assert items["workflow-lib"].state == "ok"
+    assert "local edits" in items["workflow-lib"].detail
+
+
+def test_a_directory_asset_where_files_disagree_is_one_conflict_row_naming_them(tmp_path):
+    """One file at the old version while its siblings are current is drift a
+    single averaged verdict would hide -- name the offending file."""
+    rendered = dir_rendered(version=2)
+    installed = dict(rendered)
+    installed[".github/workflows/lib/version.js"] = "// repo-infra: workflow-lib v1\n"
+    write_dir(tmp_path, installed)
+    items = {item.name: item for item in classify_files(tmp_path, rendered, DIR_MANIFEST)}
+    assert items["workflow-lib"].state == "conflict"
+    assert "version.js" in items["workflow-lib"].detail
+    assert "v1" in items["workflow-lib"].detail and "v2" in items["workflow-lib"].detail
+
+
+def test_single_file_assets_are_unaffected_by_directory_collapsing(tmp_path):
+    rendered = write(tmp_path, ASSET)
+    items = classify_files(tmp_path, rendered, DIR_MANIFEST)
+    assert states(items) == {"ci": "ok", "ci-rust": "ok"}
+
+
 def facts(**overrides):
     base = dict(default_branch="main", protected=True,
                 required_contexts={"ci-passed", "changelog-updated"},
