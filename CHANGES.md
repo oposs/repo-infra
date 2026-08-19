@@ -23,6 +23,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `checks.js`: reads every check run on a commit rather than polling one named
   workflow, so the release guard keeps working when a repository names its CI
   something else. Zero checks counts as a failure, not a pass.
+- `commit.js`: creates the release commit and branch through the Git Data API, so
+  no workflow needs a git identity or push access to a branch.
 
 ### Changed
 
