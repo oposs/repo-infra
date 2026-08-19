@@ -1,0 +1,68 @@
+import json
+import pathlib
+import re
+
+import pytest
+
+from repo_infra.assemble import block_job_ids
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+ASSETS = ROOT / "skills/repo-infra/assets"
+MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
+USES = re.compile(r"uses:\s*([\w.-]+/[\w.-]+)@(v\d+|\w+)")
+
+
+def every_asset_file():
+    for path in sorted(ASSETS.rglob("*")):
+        if path.is_file() and path.suffix in (".yml", ".yaml"):
+            yield path
+
+
+def required_workflow_files():
+    """Only the assets that end up behind a required check.
+
+    release-publish.yml legitimately carries `paths: ['CHANGES.md']`: it is a
+    push trigger and neither of its jobs is a required context. Applying D13's
+    rule to it would be wrong.
+    """
+    yield from sorted((ASSETS / "ci").glob("*.yml"))
+    yield ASSETS / "workflows/changelog.yml"
+
+
+@pytest.mark.parametrize("block", sorted(MANIFEST["ci_blocks"]))
+def test_a_block_declares_exactly_the_jobs_it_contains(block):
+    text = (ASSETS / "ci" / (block + ".yml")).read_text(encoding="utf-8")
+    assert block_job_ids(text) == MANIFEST["ci_blocks"][block]["jobs"]
+
+
+@pytest.mark.parametrize("path", list(required_workflow_files()), ids=lambda p: p.name)
+def test_no_required_workflow_carries_a_path_filter(path):
+    # D13: a workflow skipped by paths/branches filtering stays Pending forever
+    # and blocks the pull request. A job skipped by a job-level `if:` reports
+    # Success. Only the second is safe for a required check.
+    text = path.read_text(encoding="utf-8")
+    assert "paths:" not in text, "%s carries a paths filter" % path
+    assert "paths-ignore:" not in text, "%s carries a paths-ignore filter" % path
+
+
+def test_the_aggregator_fails_open_nowhere():
+    text = (ASSETS / "ci/ci-aggregator.yml").read_text(encoding="utf-8")
+    assert "if: always()" in text
+    assert "needs: []" in text
+
+
+def test_the_aggregator_has_no_name_so_its_context_is_its_job_id():
+    # D14: renaming a required job silently un-requires the check.
+    text = (ASSETS / "ci/ci-aggregator.yml").read_text(encoding="utf-8")
+    body = text.split("ci-passed:", 1)[1]
+    assert "\n    name:" not in body
+
+
+@pytest.mark.parametrize("path", list(every_asset_file()), ids=lambda p: p.name)
+def test_every_asset_uses_a_manifest_pinned_major(path):
+    for action, ref in USES.findall(path.read_text(encoding="utf-8")):
+        if not ref.startswith("v"):
+            continue  # dtolnay/rust-toolchain@stable is a branch, and correct
+        assert action in MANIFEST["actions"], "%s uses %s, not in the manifest" % (path.name, action)
+        assert MANIFEST["actions"][action] == ref, "%s uses %s@%s, manifest pins %s" % (
+            path.name, action, ref, MANIFEST["actions"][action])

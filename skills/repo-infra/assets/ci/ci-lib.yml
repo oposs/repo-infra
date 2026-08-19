@@ -1,0 +1,16 @@
+  lib:
+    name: Workflow library tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The release logic is a library, so it is tested like one. Before this,
+      # the changelog roller was a Perl program inside a YAML string whose only
+      # test was cutting a release.
+      - name: Run the workflow library tests
+        run: node --test .github/workflows/lib/*.test.js

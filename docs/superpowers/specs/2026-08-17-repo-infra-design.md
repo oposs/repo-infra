@@ -870,7 +870,7 @@ re-checked when the source repo moves.
 | Ecosystem | Block asset | Derived from | Jobs |
 |---|---|---|---|
 | rust | `ci-rust` | `oetiker/mdmost` | `fmt --check`, `clippy -D warnings`, `test`, shared cargo cache |
-| python | `ci-python` | `oposs/mkp-builder` | `ruff`, `pytest` |
+| python | `ci-python` | `oposs/cmk-oposs_pbs` | `ruff`, `pytest` |
 | checkmk-plugin | `ci-checkmk-plugin` | `oposs/cmk-oposs_pbs` | `ruff`, `pytest` against the shipped `cmk_stubs`, mkp build smoke test |
 | node (pnpm) | `ci-node-pnpm` | `oetiker/PeriMenoBomb` | `corepack enable`, `setup-node` with `cache: pnpm`, `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm test`, `pnpm build` |
 | node (bun) | `ci-node-bun` | `oposs/ldap-groupmanager` | `bun install --frozen-lockfile`, `bunx tsc --noEmit`, `bun test` |

@@ -4,8 +4,8 @@ name: Changelog
 # Required, not advisory (spec D2). Being required is only safe because the
 # escape hatch below is a JOB-level `if:` — a job skipped by a condition
 # reports Success, while a WORKFLOW skipped by a paths/branches filter stays
-# Pending forever and blocks the merge. Never add paths: or paths-ignore: to
-# this workflow (spec D13).
+# Pending forever and blocks the merge. Never add a paths or paths-ignore
+# filter to this workflow (spec D13).
 #
 # The release PR is not blocked by being GITHUB_TOKEN-authored: its runs are
 # created in an approval-required state and start when a maintainer clicks

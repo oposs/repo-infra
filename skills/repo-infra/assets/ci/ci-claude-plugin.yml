@@ -1,0 +1,21 @@
+  plugin-manifest:
+    name: Plugin manifest is valid
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # No dependency and no plugin CLI: a malformed plugin.json is a JSON
+      # parse away, and the marketplace resolves a plugin's version by reading
+      # exactly these fields over anonymous HTTPS.
+      - name: Check .claude-plugin/plugin.json
+        run: |
+          python3 - <<'PY'
+          import json, re, sys
+          data = json.load(open(".claude-plugin/plugin.json"))
+          for field in ("name", "description", "version"):
+              if not data.get(field):
+                  sys.exit("plugin.json: %s is missing or empty" % field)
+          if not re.fullmatch(r"\d+\.\d+\.\d+", data["version"]):
+              sys.exit("plugin.json: version %r is not X.Y.Z" % data["version"])
+          PY

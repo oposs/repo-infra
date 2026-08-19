@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from repo_infra.markers import parse_markers, ASSET_ID
+from repo_infra.markers import ASSET_ID, parse_markers
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"

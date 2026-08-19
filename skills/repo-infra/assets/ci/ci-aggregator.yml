@@ -1,0 +1,17 @@
+  # The single context the ruleset requires (spec D2). It exists so branch
+  # protection can name one check that means "this repository's CI passed",
+  # whatever this repository's jobs happen to be. The needs list is generated
+  # by the assembler from the blocks that went into this file.
+  #
+  # `if: always()` is load-bearing. Without it this job is *skipped* when a
+  # dependency fails, and a skipped job reports Success -- so the required
+  # check would go green on a red build. It fails open, silently, and looks
+  # like it is working.
+  ci-passed:
+    if: always()
+    needs: []
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

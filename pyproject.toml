@@ -1,0 +1,23 @@
+[project]
+name = "repo-infra"
+version = "0.1.0"
+description = "Bring a repository's release, protection, CI and documentation infrastructure up to the current standard."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+# ruff's isort otherwise treats `repo_infra` as third-party, since it lives
+# under skills/repo-infra/scripts and reaches sys.path only through pytest's
+# `pythonpath` setting rather than a src/ layout ruff can detect on its own.
+known-first-party = ["repo_infra"]
+
+[tool.ruff.lint.per-file-ignores]
+# Assertion messages read like prose and use %-style interpolation
+# throughout this test suite; neither is worth enforcing pyupgrade's
+# f-string preference or the 100-column limit against.
+"tests/*" = ["UP031", "E501"]

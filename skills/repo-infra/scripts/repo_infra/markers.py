@@ -37,4 +37,4 @@ def parse_markers(text):
 
 def marker_line(asset, version, indent="", comment="#"):
     """Render the marker for `asset` at `version`."""
-    return "%s%s repo-infra: %s v%d" % (indent, comment, asset, version)
+    return f"{indent}{comment} repo-infra: {asset} v{version}"
