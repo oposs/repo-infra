@@ -32,6 +32,10 @@ class Gh:
     def api(self, path):
         return json.loads(self.run(["gh", "api", path]))
 
+    def current_repo(self):
+        return self.run(["gh", "repo", "view", "--json", "nameWithOwner",
+                         "-q", ".nameWithOwner"]).strip()
+
     def _api_paginated_list(self, path):
         """Fetch a list endpoint with pagination, returning flattened results.
 
