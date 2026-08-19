@@ -47,3 +47,18 @@ def test_marker_line_round_trips():
 
 def test_marker_line_can_use_a_javascript_comment():
     assert marker_line("workflow-lib", 1, comment="//") == "// repo-infra: workflow-lib v1"
+
+
+def test_asset_id_rejects_uppercase_letters():
+    text = "# repo-infra: Workflow-Lib v1\n"
+    assert parse_markers(text) == []
+
+
+def test_asset_id_rejects_underscores():
+    text = "# repo-infra: workflow_lib v1\n"
+    assert parse_markers(text) == []
+
+
+def test_asset_id_accepts_hyphens_in_lowercase():
+    text = "# repo-infra: workflow-lib-v2 v1\n"
+    assert parse_markers(text) == [Marker(asset="workflow-lib-v2", version=1, line=1)]
