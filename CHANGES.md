@@ -45,6 +45,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The release guard waited for its own job. It polls every check run on the
+  commit, and its own job is one of them, so it timed out after 15 minutes
+  reporting `Still running: Prepare the release pull request`. `checkState` and
+  `waitForChecks` now take `ignoreCheckRunIds`, and the guard passes its own
+  run's job ids.
 - The release workflows named their file-access object `io`, which is also the
   name `actions/github-script` injects into every `script:` block. The step died
   at parse time with `SyntaxError: Identifier 'io' has already been declared`,

@@ -90,3 +90,47 @@ test('waitForChecks gives up after the timeout', async () => {
   assert.equal(state.timedOut, true);
   assert.equal(state.ok, false);
 });
+
+// --- self-exclusion -------------------------------------------------------
+// A job that waits for the checks on its own commit is itself one of those
+// checks. Without this, the release guard waits for the job doing the waiting.
+
+const withId = (id, name, status, conclusion) => ({
+  id, name, status, conclusion,
+});
+
+test('checkState ignores the check runs it is told to ignore', async () => {
+  const github = fakeGithub([[
+    withId(1, 'CI', 'completed', 'success'),
+    withId(2, 'Prepare the release pull request', 'in_progress', null),
+  ]]);
+  const state = await checks.checkState(github, PARAMS, { ignoreCheckRunIds: [2] });
+  assert.equal(state.total, 1);
+  assert.deepEqual(state.pending.map((c) => c.name), []);
+  assert.equal(state.ok, true);
+});
+
+test('waitForChecks does not wait for its own job', async () => {
+  // The deadlock this prevents: the guard polled until its 15 minute timeout
+  // and reported "Still running: Prepare the release pull request".
+  const github = fakeGithub([[
+    withId(1, 'CI', 'completed', 'success'),
+    withId(2, 'Prepare the release pull request', 'in_progress', null),
+  ]]);
+  const state = await checks.waitForChecks(github, PARAMS, {
+    ignoreCheckRunIds: [2],
+    sleep: async () => { throw new Error('should not have slept'); },
+  });
+  assert.equal(state.ok, true);
+  assert.equal(github.calls(), 1);
+});
+
+test('a commit whose only check is the ignored job counts as no checks', async () => {
+  // Refusing here is the point: nothing else tested this commit.
+  const github = fakeGithub([[
+    withId(2, 'Prepare the release pull request', 'in_progress', null),
+  ]]);
+  const state = await checks.checkState(github, PARAMS, { ignoreCheckRunIds: [2] });
+  assert.equal(state.total, 0);
+  assert.equal(state.ok, false);
+});
