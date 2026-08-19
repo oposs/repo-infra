@@ -9,6 +9,7 @@ is perl and node, `oposs/mkp-builder` is python and claude-plugin -- which is
 what forces one assembled ci.yml rather than one workflow per ecosystem (D2).
 """
 
+import copy
 import json
 import pathlib
 from dataclasses import dataclass, field
@@ -16,11 +17,11 @@ from dataclasses import dataclass, field
 
 @dataclass
 class DetectResult:
-    ecosystems: list = field(default_factory=list)
-    blocks: list = field(default_factory=list)
-    version_files: list = field(default_factory=list)
-    candidates: list = field(default_factory=list)
-    ambiguities: list = field(default_factory=list)
+    ecosystems: list[str] = field(default_factory=list)
+    blocks: list[str] = field(default_factory=list)
+    version_files: list[dict] = field(default_factory=list)
+    candidates: list[str] = field(default_factory=list)
+    ambiguities: list[dict] = field(default_factory=list)
 
 
 def _present(repo_root, signal):
@@ -54,13 +55,13 @@ class Detection:
             if not _matches(repo_root, entry["signals"]):
                 continue
             result.ecosystems.append(entry["id"])
-            result.version_files.extend(entry.get("version_files", []))
+            result.version_files.extend(copy.deepcopy(entry.get("version_files", [])))
         for entry in self.data.get("candidates", []):
             if _matches(repo_root, entry["signals"]):
                 result.candidates.append(entry["id"])
         for entry in self.data.get("ambiguities", []):
             if _matches(repo_root, entry["signals"]):
-                result.ambiguities.append(entry)
+                result.ambiguities.append(copy.deepcopy(entry))
 
         # Every converted repository gets the workflow library, so ci-lib is
         # unconditional. The rest are sorted so a re-run assembles a

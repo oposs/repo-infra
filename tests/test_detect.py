@@ -73,3 +73,32 @@ def test_the_real_file_detects_a_python_repository():
 def test_the_real_file_reports_two_node_lockfiles_as_ambiguous():
     result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-ambiguous")
     assert [a["id"] for a in result.ambiguities] == ["node-lockfiles"]
+
+
+def test_the_real_file_detects_both_claude_plugin_and_python():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-both")
+    assert result.ecosystems == ["claude-plugin", "python"]
+    assert result.blocks == ["ci-lib", "ci-claude-plugin", "ci-python"]
+
+
+def test_the_real_file_detects_empty_repository_as_no_ecosystems():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-empty")
+    assert result.ecosystems == []
+    assert result.blocks == ["ci-lib"]
+
+
+def test_detect_does_not_share_mutable_references():
+    """Mutations to one result must not affect subsequent detect() calls."""
+    detection = Detection.load(REAL)
+    result1 = detection.detect(HERE / "fixtures/repo-python")
+    result2 = detection.detect(HERE / "fixtures/repo-python")
+
+    # Mutate the first result's version_files and ambiguities
+    if result1.version_files:
+        result1.version_files[0]["mutated"] = True
+    if result1.ambiguities:
+        result1.ambiguities[0]["mutated"] = True
+
+    # Second result must be unaffected by the mutation
+    assert all("mutated" not in vf for vf in result2.version_files)
+    assert all("mutated" not in amb for amb in result2.ambiguities)
