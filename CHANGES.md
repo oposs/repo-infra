@@ -30,6 +30,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   required check, so `release/*` branches and the `no-changelog` label are the
   deliberate escape hatches — both job-level, so an exempt pull request skips the
   job and the required check goes green on its own.
+- **Create release PR**: computes the next version from the tags, rolls
+  `CHANGES.md`, sets every declared version file and opens a `release/vX.Y.Z` pull
+  request. It refuses to run when no check has reported on the commit, because a
+  release of untested code is exactly what the guard exists to prevent.
 
 ### Changed
 
