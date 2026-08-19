@@ -1737,10 +1737,25 @@ gh pr edit --add-label no-changelog
 (Create the label first if `gh` reports it does not exist: `gh label create no-changelog --description "Change needs no changelog entry"`.)
 
 Expected: the job reports **skipping** on the next run. Note both runs remain on
-the commit: the old `failure` and the new `skipped`. GitHub evaluates the latest,
-but do not close the probe until Step 8 has been applied and the pull request has
-been confirmed mergeable with the gate required — that is the only test of whether
-a later skip actually clears an earlier failure for a *required* context.
+the commit: the old `failure` and the new `skipped`.
+
+**Both halves of this were measured on probe #7 with the gate required**, and the
+answers are the ones the design assumes:
+
+| Latest run for `changelog-updated` | Pull request state |
+|---|---|
+| `skipped` (label applied) | `MERGEABLE` / `CLEAN` |
+| `failure` (label removed)  | `MERGEABLE` / `BLOCKED` |
+
+So GitHub evaluates only the **latest** run for a context: a later skip does clear
+an earlier failure, even for a required check, and an earlier success does not
+rescue a later failure. The second row is the control — without it, `CLEAN` would
+equally well have meant the ruleset was not gating the pull request at all. Run
+both, not just the first.
+
+A practical consequence: `gh pr create --label no-changelog` labels at creation,
+so the gate skips on the first run and no `failure` is recorded at all. Adding the
+label afterwards works, but leaves a red run on the commit forever.
 
 Finally close the probe:
 ```bash
@@ -1755,12 +1770,15 @@ Only now, with `changelog.yml` merged to `main`, is it safe to require the secon
 
 Read the current ruleset, add the context, and write it back.
 
-**The Claude Code auto-mode classifier blocks this.** Both the `PUT` and,
-once attempted, subsequent `gh api` *reads* of the same ruleset path come back
-`Blocked by classifier`. This is a harness boundary, not a wrong endpoint --
-do not hunt for a workaround; ask the user to run it, or have them add a
-`gh api:*` permission rule. `gh ruleset view <id> --repo <owner>/<repo>` is not
-blocked and is the way to read the state back afterwards.
+**The Claude Code auto-mode classifier may block this, non-deterministically.**
+On the first attempt both the `PUT` and subsequent `gh api` *reads* of the same
+ruleset path came back `Blocked by classifier`; the identical command, rerun
+later at the user's explicit instruction, succeeded. So a denial here is not a
+property of the endpoint and not a permanent state -- it is worth one retry with
+the user's say-so before treating it as blocked. Do not hunt for a workaround;
+ask the user to run it, or have them add a `gh api:*` permission rule.
+`gh ruleset view <id> --repo <owner>/<repo>` was never blocked and reads the
+state back either way.
 
 Back the ruleset up first, so a bad write is recoverable:
 
