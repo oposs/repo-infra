@@ -15,6 +15,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The release system is proven end to end: `v0.1.0` was cut by dispatching
+  **Create release PR**, merging the pull request it opened, and letting the
+  publish workflow tag and publish. The one manual step is the deliberate
+  **Approve workflows to run** click on the release pull request, which exists so
+  that no credential has to be stored; `RELEASING.md` explains why.
+
 ### Fixed
 
 ## 0.1.0 - 2026-08-19
