@@ -95,6 +95,10 @@ def _target_for(name, rendered):
     raise ApplyError(f"{name}: no rendered file carries that asset")
 
 
+def _scratch_dir(repo_root):
+    return pathlib.Path(repo_root) / MERGE_DIR
+
+
 def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     state = next((i.state for i in items if i.name == name), None)
     if state is None:
@@ -109,6 +113,23 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     wanted = next(m.version for m in parse_markers(expected) if m.asset == name)
 
     if merged is not None:
+        # The refusal that raised NeedsMerge recorded what was on disk at the
+        # time (`{name}.current`). Requiring that snapshot to still match
+        # before writing is what stops a merge prepared against one version
+        # of the file from being replayed over a different, newer edit --
+        # the two guard different mistakes, not the same one twice: this one
+        # catches staleness, the version check below catches a wrong merge.
+        snapshot_path = _scratch_dir(repo_root) / f"{name}.current"
+        if not snapshot_path.is_file():
+            raise ApplyError(f"{name}: no merge is in progress; run "
+                             f"`apply --item {name}` first to prepare one")
+        snapshot = snapshot_path.read_text(encoding="utf-8")
+        target = pathlib.Path(repo_root) / path
+        current = target.read_text(encoding="utf-8") if target.is_file() else None
+        if current != snapshot:
+            raise ApplyError(f"{path}: changed since the merge was prepared; "
+                             "redo the merge against the current file")
+
         text = pathlib.Path(merged).read_text(encoding="utf-8")
         got = next((m.version for m in parse_markers(text) if m.asset == name), None)
         if got != wanted:
@@ -126,12 +147,15 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     if base is not None and base == installed:
         return [write_asset(repo_root, path, expected)]
 
-    scratch = pathlib.Path(repo_root) / MERGE_DIR
+    scratch = _scratch_dir(repo_root)
     scratch.mkdir(parents=True, exist_ok=True)
     new_path = scratch / f"{name}.new"
     new_path.write_text(expected, encoding="utf-8")
     base_path = scratch / f"{name}.base"
     base_path.write_text(base if base is not None else "", encoding="utf-8")
+    # The snapshot of what is on disk right now, so a later --from can refuse
+    # to overwrite a different edit that lands while the merge is prepared.
+    (scratch / f"{name}.current").write_text(installed, encoding="utf-8")
     raise NeedsMerge(name, base_path, new_path, pathlib.Path(repo_root) / path)
 
 

@@ -51,7 +51,12 @@ def test_an_outdated_file_with_local_edits_refuses_and_hands_over_the_merge(tmp_
 
 
 def test_a_merged_file_handed_back_is_written_after_its_marker_is_checked(tmp_path, plugin_checkout):
-    installed(tmp_path, OLD)
+    # Local edits force the refusal, which is what records the snapshot that
+    # --from checks against.
+    installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
+    with pytest.raises(NeedsMerge):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+
     merged = tmp_path / "merged.yml"
     merged.write_text(ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30"), encoding="utf-8")
     written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
@@ -61,10 +66,42 @@ def test_a_merged_file_handed_back_is_written_after_its_marker_is_checked(tmp_pa
 
 
 def test_a_merged_file_at_the_wrong_version_is_refused(tmp_path, plugin_checkout):
-    installed(tmp_path, OLD)
+    installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
+    with pytest.raises(NeedsMerge):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+
     merged = tmp_path / "merged.yml"
     merged.write_text(OLD, encoding="utf-8")   # still says v1
     with pytest.raises(ApplyError, match="v3"):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
+                        plugin_checkout, merged=merged)
+
+
+def test_a_merge_prepared_against_a_now_stale_target_is_refused(tmp_path, plugin_checkout):
+    edited = OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15")
+    installed(tmp_path, edited)
+    with pytest.raises(NeedsMerge):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+
+    # An unrelated edit lands on the target after the merge was prepared.
+    changed = edited.replace("timeout-minutes: 15", "timeout-minutes: 20")
+    installed(tmp_path, changed)
+
+    merged = tmp_path / "merged.yml"
+    merged.write_text(ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30"), encoding="utf-8")
+    with pytest.raises(ApplyError, match="changed since the merge was prepared"):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
+                        plugin_checkout, merged=merged)
+
+    # Nothing was written: the target still has the unrelated edit, not the merge.
+    assert (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8") == changed
+
+
+def test_from_without_a_prior_refusal_is_refused(tmp_path, plugin_checkout):
+    installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
+    merged = tmp_path / "merged.yml"
+    merged.write_text(ASSET, encoding="utf-8")
+    with pytest.raises(ApplyError, match="apply --item ci"):
         apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
                         plugin_checkout, merged=merged)
 
