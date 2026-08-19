@@ -1,0 +1,88 @@
+# Conventions
+
+House rules that are not derivable from the repository you are standing in.
+Facts with values — action majors, the ruleset payload, the detection table —
+live in `assets/manifest.json`, `assets/gh/ruleset-main.json` and
+`assets/detection.json`. This file carries only the reasoning that made those
+values the way they are, and the traps a model reaches for by default instead.
+
+## `### New`, never `### Added`
+
+Keep a Changelog calls the section `### Added`. This project's roller matches
+literally on `### New`. A model told only "use Keep a Changelog" writes
+`### Added` with full confidence, and the roller finds nothing under
+`[Unreleased]` to move — not an error, just an empty release notes section, on
+a release that has content. Nothing fails; the section is just gone.
+
+## `actions/github-script` injects ten names into every `script:` block
+
+`context`, `core`, `github`, `octokit`, `getOctokit`, `exec`, `glob`, `io`,
+`require`, `__original_require__`. Declaring a variable with any of these names
+shadows the injected one at best, and at worst collides at parse time before a
+single line of your script runs.
+
+`io` is the one that actually happened here: the release workflows named their
+file-access object `io`, and the step died with
+`SyntaxError: Identifier 'io' has already been declared` before executing
+anything — an entire release attempt, gone with no useful log. It is `fileIO`
+now, in every workflow that touches files through github-script.
+
+## A required job carries no `name:`
+
+A workflow's `name:` is what a human reads in the Actions UI. A job's **check
+context** — what the ruleset actually matches against — is its job id, unless
+the job also sets `name:`, in which case the context becomes that name instead.
+`changelog-updated` and `ci-passed` are job ids with no `name:` for exactly this
+reason: give either one a friendly `name:` later and the check context changes
+with it, silently un-requiring the check the ruleset was written against. Every
+*other* job in a generated workflow is free to carry a `name:`; only the two the
+ruleset names by id are not.
+
+## Never add `paths` or `paths-ignore` to a required workflow
+
+Two different things can skip work, and GitHub reports them differently:
+
+| What is skipped | Reported as | Effect on a required check |
+|---|---|---|
+| a **job**, by a job-level `if:` | Success | merges fine |
+| a **workflow**, by `paths`/`paths-ignore`/`branches` filtering | stays Pending | blocks the pull request forever |
+
+`ci.yml` and `changelog.yml` are required by the ruleset, so neither carries a
+workflow-level `paths` or `paths-ignore` filter, ever — conditional work moves
+inside a job instead. A `branches: [main]` filter is fine on `pull_request`
+because it matches the PR's base, which is what the ruleset gates; it is not a
+license to add a `paths` filter alongside it.
+
+## `dtolnay/rust-toolchain@stable` is meant to stay a branch reference
+
+It looks like a version that dependabot forgot to bump. It is not a version at
+all — `@stable` tracks the toolchain channel, not a tagged release of the
+action, and dependabot correctly leaves branch references alone. Do not "fix"
+it to a SHA or a version tag; that pins the Rust toolchain to whatever was
+current on the day of the pin, which is the opposite of what this line is for.
+
+## The workflow library is CommonJS, not ESM
+
+`.github/workflows/lib/*.js` uses `require()` and `module.exports`, because
+that is what `actions/github-script` provides to a `script:` block — there is
+no way to `import` an ES module into one. An editor with type-aware completion
+will suggest `import`/`export` the moment it sees a `.js` file; the suggestion
+is wrong for this directory specifically, not a style preference to override.
+
+## Markers record a generation, never a content hash
+
+Every installed asset carries `# repo-infra: <asset> vN` (or `// repo-infra:
+<asset> vN` in the JS library). `check` compares that number against
+`assets/manifest.json`; it never hashes the file. A hash would report drift on
+every repository, forever — a project name in `ci.yml`, an extra matrix target,
+a publish job bolted onto `release-publish.yml`, are all local edits a
+repository is entitled to make, and a hash cannot tell "edited" from
+"upgraded". The marker answers a narrower question — *which generation of the
+asset is this* — and a local edit that keeps the marker at the current version
+reads as a healthy `ok`, not drift.
+
+A file assembled from several blocks carries one marker per block: `ci.yml`'s
+frame marker sits on line 2, and each ecosystem's block carries its own marker
+directly above its jobs. `check` reads every marker in the file, so a
+Python-and-Claude-plugin repository can be outdated on `ci-python` while
+`ci-claude-plugin` is current, and upgrading one never touches the other.

@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - /repo-infra:check reports drift as text or JSON.
 - /repo-infra:apply installs missing assets on a branch, one commit per item.
 - /repo-infra:apply creates the no-changelog label, sets workflow permissions and enables the ruleset, in that order.
+- The plugin ships the repo-infra skill and the /repo-infra:check and /repo-infra:apply commands.
 
 ### Changed
 

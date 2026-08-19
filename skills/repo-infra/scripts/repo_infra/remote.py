@@ -49,6 +49,25 @@ class Gh:
     def api(self, path):
         return json.loads(self.run(["gh", "api", path]))
 
+    def path_exists_on_branch(self, repo, ref, path):
+        """True/False if confirmed by asking GitHub; None if the check
+        itself could not be confirmed -- a network error, a permissions
+        problem, anything other than a clean 404.
+
+        Exists so a precondition can ask about the branch GitHub will
+        actually gate pull requests against, never about the caller's local
+        checkout: a workflow committed to an unpushed branch reads as
+        present on disk, but is not present here until it is confirmed on
+        `ref`. Callers must refuse on both False and None -- an unverifiable
+        result is neither "assume present" nor "assume absent", it is
+        "cannot say, so don't proceed."
+        """
+        try:
+            self.run(["gh", "api", f"repos/{repo}/contents/{path}?ref={ref}"])
+            return True
+        except GhError as error:
+            return False if "404" in str(error) else None
+
     def current_repo(self):
         return self.run(["gh", "repo", "view", "--json", "nameWithOwner",
                          "-q", ".nameWithOwner"]).strip()
