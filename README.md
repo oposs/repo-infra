@@ -10,3 +10,4 @@ Design: [`docs/superpowers/specs/2026-08-17-repo-infra-design.md`](docs/superpow
 
 Under construction. The release core is being built and proven here first; the
 plugin that installs it elsewhere comes next.
+
