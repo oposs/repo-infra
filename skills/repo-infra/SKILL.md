@@ -48,12 +48,14 @@ step, and `/repo-infra:apply` walks through it.
    changed since the refusal, the re-run refuses again rather than clobbering
    the newer edit.
 
-3. **The ruleset precondition checks your checkout, not GitHub.** `apply`
-   refuses to enable the ruleset while `ci.yml`/`changelog.yml` are absent from
-   `--root` — but a file item that is merely *committed* to the unpushed
-   `repo-infra/apply` branch already satisfies that check. Push and merge the
-   file items into `main` before running the administration items, never in the
-   same sitting. `commands/apply.md` sequences this.
+3. **The ruleset precondition asks GitHub, not your checkout.** `apply` won't
+   enable the ruleset until `ci.yml`/`changelog.yml` are confirmed on the
+   default branch itself — committing them locally isn't enough, and neither is
+   pushing a branch that hasn't merged yet; either state refuses with "not on
+   main yet." If the confirmation call itself fails (network, permissions), it
+   refuses too, with a different message, rather than guessing which way to
+   fail. So land the file items' pull request first; the administration items
+   simply won't succeed until you do. `commands/apply.md` sequences this.
 
 4. **Order is not negotiable.** Rename the default branch, land `ci.yml` and
    `changelog.yml` on `main`, *then* enable the ruleset. A required check whose

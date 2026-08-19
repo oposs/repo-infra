@@ -238,8 +238,29 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "branch to 'main' by hand first (see the default-branch "
                 "item), re-run `check` to confirm, then apply this item "
                 "again.")
-        missing = [w for w in REQUIRED_WORKFLOWS
-                  if not (pathlib.Path(repo_root) / w).is_file()]
+        # Asked of GitHub, on the default branch itself -- never the local
+        # checkout. A file item lands in `repo_root` the moment it is
+        # committed, whether or not that commit has been pushed or merged;
+        # checking the working tree here would let this precondition pass
+        # while `main` still has neither workflow, which is exactly the
+        # "required check that can never report" failure this item exists
+        # to prevent.
+        missing, unverified = [], []
+        for workflow in REQUIRED_WORKFLOWS:
+            exists = gh.path_exists_on_branch(repo, facts.default_branch, workflow)
+            if exists is False:
+                missing.append(workflow)
+            elif exists is None:
+                unverified.append(workflow)
+        if unverified:
+            raise ApplyError(
+                f"{name}: could not confirm whether {', '.join(unverified)} "
+                f"{'is' if len(unverified) == 1 else 'are'} on "
+                f"'{facts.default_branch}' -- the existence check itself "
+                "failed (network error, permissions, or something else on "
+                "the repos/{repo}/contents endpoint), not a clean 404. "
+                "Refusing rather than guessing either way; check by hand "
+                "and retry.")
         if missing:
             raise ApplyError(
                 f"{name}: {', '.join(missing)} not on main yet. A required "

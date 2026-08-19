@@ -18,18 +18,17 @@ else — `apply` refuses to guess and will raise on it anyway.
   enabling a ruleset and granting Actions permission to open pull requests are
   all outward-facing.
 
-## Do not run bare `apply` when both kinds are pending
+## Land the file items before the administration items, even though `apply` no longer lets you get this wrong silently
 
 A first-time onboarding always has both kinds pending at once. Running
 `apply` with no `--item` processes the full list in one call — files, then
-administration, in that order — and its precondition check for the ruleset
-only looks at whether `ci.yml`/`changelog.yml` exist in your local checkout.
-They do, the moment the file items are committed, whether or not that branch
-has been pushed anywhere. So a single unattended `apply` on a brand-new
-repository will happily enable the ruleset against workflows that exist only
-on your machine, on an unmerged branch — the exact failure the ordering rule
-exists to prevent, just arriving from the one direction the refusal doesn't
-check. Split it instead:
+administration, in that order. The ruleset item's precondition asks GitHub
+whether `ci.yml`/`changelog.yml` are confirmed on the default branch itself,
+so committing them locally in the same call, without pushing or merging,
+correctly refuses with "not on main yet" rather than enabling required checks
+nobody can satisfy yet. That refusal is a safety net, not a plan — re-running
+`apply` after every refusal is slower and noisier than doing it in order once.
+Split it instead:
 
 1. **File items first**, one call per pending name (or a single bare `apply`
    if `check` shows no administration item pending):
@@ -76,3 +75,9 @@ Read the refusal; each one names the concrete next action, not just what went
 wrong. `default-branch` never applies automatically — renaming breaks links,
 forks and clones that pin the old name, so it always tells the user to rename
 by hand in Settings → General, then re-run `check`.
+
+`required-checks`/`branch-protection` can refuse two different ways, and they
+mean different things. "not on `main` yet" is a confirmed absence — merge the
+file items' pull request and retry. "could not confirm" means the check
+against GitHub itself failed (network, permissions) — it is not evidence
+either way, so retry it rather than assuming the workflow is or isn't there.
