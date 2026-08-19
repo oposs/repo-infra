@@ -93,3 +93,29 @@ def test_pagination_labels_includes_items_from_all_pages():
     assert "first-page-label" in result.labels
     assert "no-changelog" in result.labels
     assert "second-page-label" in result.labels
+
+
+def test_ruleset_with_all_scope_protects_default_branch():
+    """Test that rulesets with ~ALL scope are recognized as protecting the default branch."""
+    mapping = {
+        "rulesets/21037721": "ruleset-all-scope.json",
+        "/rulesets": "rulesets.json",
+        "/labels": "labels.json",
+        "permissions/workflow": "workflow-permissions.json",
+        "oposs/repo-infra": "repo.json",
+    }
+    result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
+    assert result.protected is True
+
+
+def test_ruleset_with_explicit_branch_protects_default_branch():
+    """Test that rulesets with refs/heads/<branch> are recognized as protecting the default."""
+    mapping = {
+        "rulesets/21037721": "ruleset-explicit-branch.json",
+        "/rulesets": "rulesets.json",
+        "/labels": "labels.json",
+        "permissions/workflow": "workflow-permissions.json",
+        "oposs/repo-infra": "repo.json",
+    }
+    result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
+    assert result.protected is True
