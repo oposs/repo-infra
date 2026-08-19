@@ -1,0 +1,12 @@
+{
+  "ecosystems": ["claude-plugin"],
+  "moving_major_tag": false,
+  "version_files": [
+    {
+      "path": ".claude-plugin/plugin.json",
+      "pattern": "\"version\"\\s*:\\s*\"[^\"]*\"",
+      "replacement": "\"version\": \"$VERSION\"",
+      "verify": "\"version\"\\s*:\\s*\"$VERSION\""
+    }
+  ]
+}
