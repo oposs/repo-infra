@@ -38,5 +38,8 @@
     "actions/setup-node": "v7",
     "actions/github-script": "v9",
     "actions/setup-python": "v7"
+  },
+  "gh": {
+    "ruleset-main": {"version": 1, "source": "gh/ruleset-main.json"}
   }
 }

@@ -5,13 +5,26 @@ import json
 import pathlib
 
 from . import report
-from .apply import apply_file_item, commit_item, ensure_branch
+from .apply import apply_admin_item, apply_file_item, commit_item, ensure_branch
 from .assemble import render_all
 from .detect import Detection
 from .remote import Facts, Gh
 from .state import NEEDS_ATTENTION_STATES, classify, classify_ambiguities
 
 ASSETS = pathlib.Path(__file__).resolve().parents[2] / "assets"
+
+# Administration items write repository settings through `remote.Gh` rather
+# than files, so they route to apply_admin_item instead of apply_file_item.
+ADMIN = {"default-branch", "branch-protection", "required-checks",
+         "no-changelog-label", "actions-open-pr"}
+
+# branch-protection and required-checks are two facts read off the *same*
+# ruleset (remote.py derives both from whichever ruleset protects the default
+# branch), so on a totally unconfigured repository both come back "missing"
+# together. Installing the ruleset once satisfies both -- collapsing them here
+# is what stops the default (--item-less) run from POSTing it twice.
+_RULESET_ALIASES = {"branch-protection", "required-checks"}
+_ADMIN_ORDER = {"no-changelog-label": 0, "actions-open-pr": 1}
 
 # Used by the tests to run `check` without a network. Never used at runtime.
 CONFORMING_FACTS = Facts(default_branch="main", protected=True,
@@ -40,16 +53,45 @@ def check(args):
     return 1 if any(i.state in NEEDS_ATTENTION_STATES for i in items) else 0
 
 
+def _ordered_names(items):
+    """Files first, then the label, then the permissions, then the ruleset.
+
+    A required status check whose workflow does not exist blocks every pull
+    request in the repository, including the one that would install the
+    workflow -- so administration runs last, after the file items that put
+    ci.yml and changelog.yml on the default branch. apply_admin_item refuses
+    the ruleset anyway if they are not there yet, but this ordering makes
+    that refusal rare rather than routine.
+
+    default-branch never appears here: classify_remote reports it as `ok` or
+    `conflict`, never `missing`/`outdated`, and apply_admin_item refuses it
+    unconditionally besides (renaming is outward-facing, so it is never
+    automatic) -- excluded here too, so that stays true even if that contract
+    ever drifts.
+    """
+    names = [i.name for i in items if i.state in ("missing", "outdated")]
+    files = [n for n in names if n not in ADMIN]
+    admin = [n for n in names
+            if n in ADMIN and n not in _RULESET_ALIASES and n != "default-branch"]
+    admin.sort(key=lambda n: _ADMIN_ORDER.get(n, 2))
+    if any(n in _RULESET_ALIASES for n in names):
+        admin.append("required-checks")
+    return files + admin
+
+
 def apply_command(args):
     manifest, result, rendered = _load(args.root)
     repo = args.repo or Gh().current_repo()
-    items = classify(args.root, rendered, manifest, read_facts(repo))
+    facts = read_facts(repo)
+    items = classify(args.root, rendered, manifest, facts)
     plugin_root = ASSETS.parent
 
-    names = [args.item] if args.item else [
-        i.name for i in items if i.state in ("missing", "outdated")]
+    names = [args.item] if args.item else _ordered_names(items)
     ensure_branch(args.root)
     for name in names:
+        if name in ADMIN:
+            print(apply_admin_item(Gh(), repo, name, facts, ASSETS, args.root))
+            continue
         written = apply_file_item(args.root, name, rendered, items, plugin_root,
                                   merged=args.from_file)
         commit_item(args.root, name, written)
