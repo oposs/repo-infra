@@ -262,7 +262,7 @@ test('next rejects an unknown release type', () => {
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
 Expected: FAIL — `Cannot find module './version.js'`
 
@@ -316,9 +316,9 @@ module.exports = { parse, compare, latest, next };
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
-Expected: PASS — 8 tests, 0 failures
+Expected: PASS — 9 tests, 0 failures
 
 - [ ] **Step 5: Commit**
 
@@ -377,7 +377,7 @@ jobs:
       # the changelog roller was a Perl program inside a YAML string whose only
       # test was cutting a release.
       - name: Run the workflow library tests
-        run: node --test .github/workflows/lib/
+        run: node --test .github/workflows/lib/*.test.js
 
   # The single context the ruleset requires (spec D2). It exists so branch
   # protection can name one check that means "this repository's CI passed",
@@ -716,7 +716,7 @@ test('notesFor fails loudly for a version that is not there', () => {
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
 Expected: FAIL — `Cannot find module './changes.js'`
 
@@ -832,9 +832,9 @@ module.exports = { unreleasedBlock, isEmpty, roll, latestRelease, notesFor };
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
-Expected: PASS — 21 tests total (8 from Task 2, 13 here), 0 failures
+Expected: PASS — 22 tests total (9 from Task 2, 13 here), 0 failures
 
 - [ ] **Step 6: Add a changelog entry**
 
@@ -992,7 +992,7 @@ test('verifyFile is not fooled by a version that is a prefix of another', () => 
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
 Expected: FAIL — `Cannot find module './bump.js'`
 
@@ -1058,9 +1058,9 @@ module.exports = { bumpFile, bumpAll, verifyFile };
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
-Expected: PASS — 29 tests total, 0 failures
+Expected: PASS — 30 tests total, 0 failures
 
 - [ ] **Step 6: Add a changelog entry**
 
@@ -1214,7 +1214,7 @@ test('waitForChecks gives up after the timeout', async () => {
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
 Expected: FAIL — `Cannot find module './checks.js'`
 
@@ -1273,9 +1273,9 @@ module.exports = { checkState, waitForChecks };
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
-Expected: PASS — 37 tests total, 0 failures
+Expected: PASS — 38 tests total, 0 failures
 
 - [ ] **Step 6: Add a changelog entry**
 
@@ -1435,7 +1435,7 @@ test('an empty file list is refused', async () => {
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
 Expected: FAIL — `Cannot find module './commit.js'`
 
@@ -1494,9 +1494,9 @@ module.exports = { commitFiles };
 
 Run:
 ```bash
-cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/
+cd /home/oetiker/checkouts/repo-infra && node --test .github/workflows/lib/*.test.js
 ```
-Expected: PASS — 43 tests total, 0 failures
+Expected: PASS — 44 tests total, 0 failures
 
 - [ ] **Step 6: Add a changelog entry**
 

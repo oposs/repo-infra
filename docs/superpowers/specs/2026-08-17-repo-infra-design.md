@@ -257,7 +257,7 @@ cargo update --workspace     # not --offline: the resolve needs the registry
 
 Workflows `require()` these after checkout. Three consequences:
 
-1. **Testable.** `node --test .github/workflows/lib/` runs in CI. The changelog roller is
+1. **Testable.** `node --test .github/workflows/lib/*.test.js` runs in CI. The changelog roller is
    currently a Perl program inside a YAML string, tested only by cutting a release.
 2. **Shareable.** The roller is identical in every repo, so fixing it is one asset
    version bump rather than forty hand-edits.
@@ -766,7 +766,7 @@ aggregator.
 | go | `ci-go` | `go vet`, `go test` |
 | php | `ci-php` | `composer install`, `phpunit` |
 
-Plus two jobs every repo gets. The first is `node --test .github/workflows/lib/` — the
+Plus two jobs every repo gets. The first is `node --test .github/workflows/lib/*.test.js` — the
 release logic tests itself. The second is the aggregator that D2 requires:
 
 ```yaml
