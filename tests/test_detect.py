@@ -102,3 +102,17 @@ def test_detect_does_not_share_mutable_references():
     # Second result must be unaffected by the mutation
     assert all("mutated" not in vf for vf in result2.version_files)
     assert all("mutated" not in amb for amb in result2.ambiguities)
+
+
+def test_detect_does_not_share_mutable_ambiguity_references():
+    """The repo-python fixture above has no ambiguities, so it never exercises
+    the deepcopy on `ambiguities` -- only the one on `version_files`. This
+    fixture matches node-lockfiles, so the ambiguity mutation is live here."""
+    detection = Detection.load(REAL)
+    result1 = detection.detect(HERE / "fixtures/repo-node-ambiguous")
+    result2 = detection.detect(HERE / "fixtures/repo-node-ambiguous")
+
+    assert result1.ambiguities  # the fixture must actually trigger one
+    result1.ambiguities[0]["mutated"] = True
+
+    assert all("mutated" not in amb for amb in result2.ambiguities)

@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The plugin detects a repository's ecosystems from file signals.
 - The plugin assembles a repository's ci.yml from a frame plus one block per ecosystem.
 - This repository's own .github/ is generated from the plugin's assets, and CI fails if the two differ.
+- The plugin reports how far a repository has drifted, per asset and per CI block, and honours deliberate skips.
 
 ### Changed
 
