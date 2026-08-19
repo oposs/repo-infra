@@ -44,3 +44,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+
+- The release workflows named their file-access object `io`, which is also the
+  name `actions/github-script` injects into every `script:` block. The step died
+  at parse time with `SyntaxError: Identifier 'io' has already been declared`,
+  before running a line. It is now `fileIO`.

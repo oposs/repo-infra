@@ -120,7 +120,7 @@ jobs:
               return;
             }
 
-            const io = {
+            const fileIO = {
               read: (p) => fs.readFileSync(path.join(ws, p), 'utf8'),
               write: (p, c) => fs.writeFileSync(path.join(ws, p), c, 'utf8'),
             };
@@ -128,8 +128,8 @@ jobs:
             const date = new Date().toISOString().slice(0, 10);
             // roll throws when [Unreleased] is empty, which is the hard backstop
             // behind the required changelog gate.
-            io.write('CHANGES.md', changesLib.roll(io.read('CHANGES.md'), version, date));
-            bumpLib.bumpAll(config.version_files, version, io);
+            fileIO.write('CHANGES.md', changesLib.roll(fileIO.read('CHANGES.md'), version, date));
+            bumpLib.bumpAll(config.version_files, version, fileIO);
 
             core.setOutput('version', version);
             core.setOutput('date', date);

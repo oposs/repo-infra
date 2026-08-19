@@ -43,7 +43,7 @@ Defined once here so tasks stay consistent. Each is implemented by the task name
 |---|---|---|
 | `version.js` | `parse(tag)`, `compare(a, b)`, `latest(tags)`, `next(latestTag, releaseType)` | 2 |
 | `changes.js` | `unreleasedBlock(text)`, `isEmpty(block)`, `roll(text, version, date)`, `latestRelease(text)`, `notesFor(text, version)` | 4 |
-| `bump.js` | `bumpFile(spec, version, io)`, `bumpAll(specs, version, io)`, `verifyFile(spec, version, io)` | 5 |
+| `bump.js` | `bumpFile(spec, version, io)`, `bumpAll(specs, version, io)`, `verifyFile(spec, version, fileIO)` | 5 |
 | `checks.js` | `checkState(github, params)`, `waitForChecks(github, params, opts)` | 6 |
 | `commit.js` | `commitFiles(github, params)` | 7 |
 
@@ -894,7 +894,7 @@ git checkout main && git pull
 - Produces:
   - `bumpFile(spec, version, io) -> string` — locates, rewrites, then **reads back and asserts**. `spec` is `{path, pattern, replacement, verify}` exactly as stored in `.github/repo-infra.json`. `io` is `{read(path) -> string, write(path, content) -> void}`. Returns the new content. Throws if the pattern does not match or the read-back fails.
   - `bumpAll(specs, version, io) -> void`
-  - `verifyFile(spec, version, io) -> boolean` — does the file already carry this version? Used by the publisher's cross-check.
+  - `verifyFile(spec, version, fileIO) -> boolean` — does the file already carry this version? Used by the publisher's cross-check.
 
 - [ ] **Step 1: Create the branch**
 
@@ -1031,12 +1031,12 @@ function verifyPattern(spec, version) {
   return new RegExp(spec.verify.replace(/\$VERSION/g, escapeRegExp(version)) + '(?![0-9])', 'm');
 }
 
-function verifyFile(spec, version, io) {
-  return verifyPattern(spec, version).test(io.read(spec.path));
+function verifyFile(spec, version, fileIO) {
+  return verifyPattern(spec, version).test(fileIO.read(spec.path));
 }
 
 function bumpFile(spec, version, io) {
-  const before = io.read(spec.path);
+  const before = fileIO.read(spec.path);
   const locate = new RegExp(spec.pattern, 'm');
 
   if (!locate.test(before)) {
@@ -1047,12 +1047,12 @@ function bumpFile(spec, version, io) {
   }
 
   const after = before.replace(locate, spec.replacement.replace(/\$VERSION/g, version));
-  io.write(spec.path, after);
+  fileIO.write(spec.path, after);
 
   // Read back rather than trust the write. Without this a failed or swallowed
   // write produces a release that is internally inconsistent and looks fine
   // until something downstream refuses it.
-  if (!verifyFile(spec, version, io)) {
+  if (!verifyFile(spec, version, fileIO)) {
     throw new Error(
       `${spec.path}: version ${version} did not take - the file does not match `
       + `/${spec.verify}/ after writing`,
@@ -1820,6 +1820,31 @@ If either context is missing, stop. Do not proceed to Task 9 with a ruleset that
 
 ### Task 9: `release-pr.yml` — half one of the release
 
+**Never name a variable after something `actions/github-script` injects.** The
+action evaluates each `script:` block as an async function whose *parameters* are
+`context`, `core`, `github`, `octokit`, `getOctokit`, `exec`, `glob`, `io`,
+`require` and `__original_require__` (from its `src/async-function.ts`). A
+`const io = {...}` inside the block is therefore a redeclaration of a parameter,
+and the whole step dies at parse time with
+`SyntaxError: Identifier 'io' has already been declared` — before a single line
+runs. This bit for real: the file-access object in Tasks 9 and 10 was called
+`io`, and the publisher failed on its first live trigger. It is now `fileIO`.
+
+The failure is invisible to inspection and to any test that does not use the real
+parameter list, so check `script:` blocks like this:
+
+```js
+const INJECTED = ['context', 'core', 'github', 'octokit', 'getOctokit',
+                  'exec', 'glob', 'io', 'require', '__original_require__'];
+const AsyncFunction = Object.getPrototypeOf(async () => null).constructor;
+new AsyncFunction(...INJECTED, scriptSource);   // throws on collision
+```
+
+Substitute `${{ ... }}` expressions with a placeholder first — Actions replaces
+them textually before Node sees the source, so leaving them in reports a false
+failure.
+
+
 **Files:**
 - Create: `.github/workflows/release-pr.yml`
 
@@ -1960,7 +1985,7 @@ jobs:
               return;
             }
 
-            const io = {
+            const fileIO = {
               read: (p) => fs.readFileSync(path.join(ws, p), 'utf8'),
               write: (p, c) => fs.writeFileSync(path.join(ws, p), c, 'utf8'),
             };
@@ -1968,8 +1993,8 @@ jobs:
             const date = new Date().toISOString().slice(0, 10);
             // roll throws when [Unreleased] is empty, which is the hard backstop
             // behind the required changelog gate.
-            io.write('CHANGES.md', changesLib.roll(io.read('CHANGES.md'), version, date));
-            bumpLib.bumpAll(config.version_files, version, io);
+            fileIO.write('CHANGES.md', changesLib.roll(fileIO.read('CHANGES.md'), version, date));
+            bumpLib.bumpAll(config.version_files, version, fileIO);
 
             core.setOutput('version', version);
             core.setOutput('date', date);
@@ -2161,16 +2186,16 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            const io = {
+            const fileIO = {
               read: (p) => fs.readFileSync(path.join(ws, p), 'utf8'),
               write: () => { throw new Error('the publisher never writes'); },
             };
 
-            const config = JSON.parse(io.read('.github/repo-infra.json'));
+            const config = JSON.parse(fileIO.read('.github/repo-infra.json'));
 
             // CHANGES.md is the source of truth. It is the only file every
             // repository has, and it changes on exactly one occasion.
-            const release = changesLib.latestRelease(io.read('CHANGES.md'));
+            const release = changesLib.latestRelease(fileIO.read('CHANGES.md'));
             if (!release) {
               core.notice('CHANGES.md has no released version yet - nothing to do.');
               return;
@@ -2182,7 +2207,7 @@ jobs:
             // pull request half-applied, and tagging now would repeat the failure
             // that shipped an inconsistent v0.1.1 elsewhere.
             const stale = config.version_files.filter(
-              (spec) => !bumpLib.verifyFile(spec, version, io)
+              (spec) => !bumpLib.verifyFile(spec, version, fileIO)
             );
             if (stale.length > 0) {
               core.setFailed(
@@ -2241,7 +2266,7 @@ jobs:
               owner, repo,
               tag_name: tag,
               name: tag,
-              body: changesLib.notesFor(io.read('CHANGES.md'), version),
+              body: changesLib.notesFor(fileIO.read('CHANGES.md'), version),
               draft: true,
               prerelease: false,
               make_latest: 'true',
