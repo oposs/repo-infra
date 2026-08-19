@@ -32,18 +32,43 @@ class Gh:
     def api(self, path):
         return json.loads(self.run(["gh", "api", path]))
 
+    def _api_paginated_list(self, path):
+        """Fetch a list endpoint with pagination, returning flattened results.
+
+        Uses --paginate --slurp to get [[page1], [page2], ...] which is then
+        flattened to a single list. This ensures repositories with more than
+        30 items don't silently truncate results.
+        """
+        output = self.run(["gh", "api", path, "--paginate", "--slurp"])
+        pages = json.loads(output)
+        # Flatten array of arrays into a single list
+        result = []
+        for page in pages:
+            result.extend(page)
+        return result
+
     def facts(self, repo):
         repository = self.api(f"repos/{repo}")
         default_branch = repository["default_branch"]
 
         protected = False
         contexts = set()
-        for summary in self.api(f"repos/{repo}/rulesets"):
+        for summary in self._api_paginated_list(f"repos/{repo}/rulesets"):
             ruleset = self.api(f"repos/{repo}/rulesets/{summary['id']}")
             if ruleset.get("enforcement") != "active":
                 continue
             includes = ruleset.get("conditions", {}).get("ref_name", {}).get("include", [])
-            if "~DEFAULT_BRANCH" not in includes and f"refs/heads/{default_branch}" not in includes:
+            # A ruleset protects the default branch if it includes:
+            # - ~ALL (protects all refs, so includes default branch)
+            # - ~DEFAULT_BRANCH (explicit default branch ref)
+            # - refs/heads/<default_branch> (explicit branch name)
+            branch_ref = f"refs/heads/{default_branch}"
+            protects_default = (
+                "~ALL" in includes or
+                "~DEFAULT_BRANCH" in includes or
+                branch_ref in includes
+            )
+            if not protects_default:
                 continue
             protected = True
             for rule in ruleset.get("rules", []):
@@ -51,7 +76,7 @@ class Gh:
                     for check in rule["parameters"]["required_status_checks"]:
                         contexts.add(check["context"])
 
-        labels = {label["name"] for label in self.api(f"repos/{repo}/labels")}
+        labels = {label["name"] for label in self._api_paginated_list(f"repos/{repo}/labels")}
         permissions = self.api(f"repos/{repo}/actions/permissions/workflow")
 
         return Facts(
