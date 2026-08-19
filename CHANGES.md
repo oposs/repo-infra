@@ -20,6 +20,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `bump.js`: the generic version-file writer. Every write is located, rewritten and
   then read back and asserted, so a bump that does not take fails the release
   rather than tagging a repository whose files disagree with each other.
+- `checks.js`: reads every check run on a commit rather than polling one named
+  workflow, so the release guard keeps working when a repository names its CI
+  something else. Zero checks counts as a failure, not a pass.
 
 ### Changed
 
