@@ -1682,11 +1682,29 @@ gh pr create --fill --base main
 
 Run:
 ```bash
-gh pr checks --watch
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 ```
-Expected: `Unreleased entry` — **pass** (this PR does add an `### New` entry)
+Expected: `changelog-updated` — **pass** (this PR does add an `### New` entry)
 
-- [ ] **Step 6: Prove the gate fails when it should**
+The context is `changelog-updated`, the job id. There is no `name:` on the job,
+so that is also the check's display name; an earlier draft of this plan expected
+`Unreleased entry`, which never existed. Verified on pull request #6.
+
+- [ ] **Step 6: Merge the gate pull request**
+
+```bash
+gh pr merge --squash --delete-branch
+git checkout main && git pull
+```
+
+The merge comes **before** the probe below, and the order is not cosmetic. The
+probe branches off `main`, so until `changelog.yml` is on `main` the probe's head
+does not contain the workflow and the gate simply never runs — the probe then
+reports two green checks and proves nothing at all. Observed on pull request #7,
+which showed only `ci-passed` and `Workflow library tests` until the gate landed.
+
+- [ ] **Step 7: Prove the gate fails when it should**
 
 Open a throwaway pull request that changes nothing in `CHANGES.md`:
 
@@ -1699,9 +1717,18 @@ git commit -am "probe: no changelog entry
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin probe/no-changelog
 gh pr create --fill --base main
-gh pr checks --watch
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 ```
-Expected: `Unreleased entry` — **fail**, with the message about adding an entry
+Expected: `changelog-updated` — **fail**. Confirm the *reason*, not just the red:
+
+```bash
+gh api repos/oposs/repo-infra/check-runs/<check-run-id>/annotations \
+  --jq '.[] | {annotation_level, message}'
+```
+Expected: a `failure` annotation saying the pull request adds nothing under
+`## [Unreleased]`. A gate that goes red for an unrelated reason — a syntax error,
+a missing module — looks identical in the checks list and proves nothing.
 
 Then confirm the escape hatch works:
 ```bash
@@ -1709,7 +1736,11 @@ gh pr edit --add-label no-changelog
 ```
 (Create the label first if `gh` reports it does not exist: `gh label create no-changelog --description "Change needs no changelog entry"`.)
 
-Expected: the job is skipped on the next run.
+Expected: the job reports **skipping** on the next run. Note both runs remain on
+the commit: the old `failure` and the new `skipped`. GitHub evaluates the latest,
+but do not close the probe until Step 8 has been applied and the pull request has
+been confirmed mergeable with the gate required — that is the only test of whether
+a later skip actually clears an earlier failure for a *required* context.
 
 Finally close the probe:
 ```bash
@@ -1718,19 +1749,24 @@ gh pr close --delete-branch
 
 A gate that has never been seen to fail is not known to work. This step is the test.
 
-- [ ] **Step 7: Merge the gate pull request**
-
-```bash
-gh pr checkout workflow/changelog
-gh pr merge --squash --delete-branch
-git checkout main && git pull
-```
-
 - [ ] **Step 8: Now require the gate (spec D2)**
 
 Only now, with `changelog.yml` merged to `main`, is it safe to require the second context. Requiring it earlier would have blocked every pull request in this plan, including the one that just merged.
 
-Read the current ruleset, add the context, and write it back:
+Read the current ruleset, add the context, and write it back.
+
+**The Claude Code auto-mode classifier blocks this.** Both the `PUT` and,
+once attempted, subsequent `gh api` *reads* of the same ruleset path come back
+`Blocked by classifier`. This is a harness boundary, not a wrong endpoint --
+do not hunt for a workaround; ask the user to run it, or have them add a
+`gh api:*` permission rule. `gh ruleset view <id> --repo <owner>/<repo>` is not
+blocked and is the way to read the state back afterwards.
+
+Back the ruleset up first, so a bad write is recoverable:
+
+```bash
+gh api repos/oposs/repo-infra/rulesets/21037721 > ruleset-main-backup.json
+```
 
 ```bash
 RULESET_ID=$(gh api repos/oposs/repo-infra/rulesets --jq '.[] | select(.name=="main") | .id')
