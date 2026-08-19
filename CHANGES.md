@@ -20,6 +20,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - This repository's own .github/ is generated from the plugin's assets, and CI fails if the two differ.
 - The plugin reports how far a repository has drifted, per asset and per CI block, and honours deliberate skips.
 - /repo-infra:check reports drift as text or JSON.
+- /repo-infra:apply installs missing assets on a branch, one commit per item.
 
 ### Changed
 
