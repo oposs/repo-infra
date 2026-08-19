@@ -1,3 +1,5 @@
+import pytest
+
 from repo_infra.markers import Marker, marker_line, parse_markers
 
 
@@ -47,6 +49,14 @@ def test_marker_line_round_trips():
 
 def test_marker_line_can_use_a_javascript_comment():
     assert marker_line("workflow-lib", 1, comment="//") == "// repo-infra: workflow-lib v1"
+
+
+def test_marker_line_rejects_a_non_integer_version():
+    # A manifest entry written as 1.0 instead of 1 must fail loudly here rather
+    # than render "v1.0" -- a marker parse_markers's `v(\d+)` pattern can never
+    # match, which would make the marker silently unreadable.
+    with pytest.raises(ValueError):
+        marker_line("ci", 1.5)
 
 
 def test_asset_id_rejects_uppercase_letters():

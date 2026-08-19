@@ -28,10 +28,15 @@
       "comment": "//"
     }
   },
-  "ci_blocks": {},
+  "ci_blocks": {
+    "ci-lib": {"version": 1, "jobs": ["lib"]},
+    "ci-claude-plugin": {"version": 1, "jobs": ["plugin-manifest"]},
+    "ci-python": {"version": 1, "jobs": ["ruff", "pytest"]}
+  },
   "actions": {
     "actions/checkout": "v7",
     "actions/setup-node": "v7",
-    "actions/github-script": "v9"
+    "actions/github-script": "v9",
+    "actions/setup-python": "v7"
   }
 }

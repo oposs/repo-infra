@@ -1,0 +1,31 @@
+  ruff:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install ruff
+
+      - run: ruff check .
+
+  pytest:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest
+
+      # Import paths come from the pytest `pythonpath` setting, so this command
+      # is the same in every python repository the standard installs into.
+      - run: python3 -m pytest -q

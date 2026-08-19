@@ -21,7 +21,7 @@ class AssemblyError(Exception):
 
 def _read(path):
     if not path.is_file():
-        raise AssemblyError("missing asset file: %s" % path)
+        raise AssemblyError(f"missing asset file: {path}")
     return path.read_text(encoding="utf-8")
 
 
@@ -39,7 +39,7 @@ def assemble_ci(assets_root, blocks, manifest):
     for block in blocks:
         meta = manifest["ci_blocks"].get(block)
         if meta is None:
-            raise AssemblyError("block %s is not declared in the manifest" % block)
+            raise AssemblyError(f"block {block} is not declared in the manifest")
         body = _read(ci / (block + ".yml"))
         parts.append("")
         parts.append(markers.marker_line(block, meta["version"], indent="  "))
@@ -49,8 +49,8 @@ def assemble_ci(assets_root, blocks, manifest):
     aggregator = _read(ci / "ci-aggregator.yml").rstrip("\n")
     if aggregator.count(NEEDS_PLACEHOLDER) != 1:
         raise AssemblyError(
-            "ci-aggregator.yml must contain exactly one %r line to fill in" % NEEDS_PLACEHOLDER)
-    aggregator = aggregator.replace(NEEDS_PLACEHOLDER, "    needs: [%s]" % ", ".join(needs))
+            f"ci-aggregator.yml must contain exactly one {NEEDS_PLACEHOLDER!r} line to fill in")
+    aggregator = aggregator.replace(NEEDS_PLACEHOLDER, "    needs: [{}]".format(", ".join(needs)))
 
     parts.append("")
     parts.append(aggregator)
@@ -65,10 +65,10 @@ def render_all(assets_root, result, manifest):
         source = assets_root / spec["source"]
         if spec.get("kind") == "dir":
             if not source.is_dir():
-                raise AssemblyError("asset %s: %s is not a directory" % (name, source))
+                raise AssemblyError(f"asset {name}: {source} is not a directory")
             for child in sorted(source.iterdir()):
                 if child.is_file():
-                    files["%s/%s" % (spec["target"], child.name)] = _read(child)
+                    files[f"{spec['target']}/{child.name}"] = _read(child)
         else:
             files[spec["target"]] = _read(source)
     files[".github/workflows/ci.yml"] = assemble_ci(assets_root, result.blocks, manifest)
