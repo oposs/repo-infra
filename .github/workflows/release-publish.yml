@@ -55,16 +55,16 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            const io = {
+            const fileIO = {
               read: (p) => fs.readFileSync(path.join(ws, p), 'utf8'),
               write: () => { throw new Error('the publisher never writes'); },
             };
 
-            const config = JSON.parse(io.read('.github/repo-infra.json'));
+            const config = JSON.parse(fileIO.read('.github/repo-infra.json'));
 
             // CHANGES.md is the source of truth. It is the only file every
             // repository has, and it changes on exactly one occasion.
-            const release = changesLib.latestRelease(io.read('CHANGES.md'));
+            const release = changesLib.latestRelease(fileIO.read('CHANGES.md'));
             if (!release) {
               core.notice('CHANGES.md has no released version yet - nothing to do.');
               return;
@@ -76,7 +76,7 @@ jobs:
             // pull request half-applied, and tagging now would repeat the failure
             // that shipped an inconsistent v0.1.1 elsewhere.
             const stale = config.version_files.filter(
-              (spec) => !bumpLib.verifyFile(spec, version, io)
+              (spec) => !bumpLib.verifyFile(spec, version, fileIO)
             );
             if (stale.length > 0) {
               core.setFailed(
@@ -135,7 +135,7 @@ jobs:
               owner, repo,
               tag_name: tag,
               name: tag,
-              body: changesLib.notesFor(io.read('CHANGES.md'), version),
+              body: changesLib.notesFor(fileIO.read('CHANGES.md'), version),
               draft: true,
               prerelease: false,
               make_latest: 'true',
