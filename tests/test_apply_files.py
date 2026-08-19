@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from repo_infra.apply import ApplyError, NeedsMerge, apply_file_item, write_asset
+from repo_infra.apply import MERGE_DIR, ApplyError, NeedsMerge, apply_file_item, write_asset
 from repo_infra.state import Item
 
 ASSET = "name: CI\n# repo-infra: ci v3\njobs:\n  fmt:\n"
@@ -63,6 +63,28 @@ def test_a_merged_file_handed_back_is_written_after_its_marker_is_checked(tmp_pa
                               plugin_checkout, merged=merged)
     assert written == [".github/workflows/ci.yml"]
     assert "timeout-minutes: 30" in (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+
+def test_a_successful_from_write_removes_its_own_scratch_files_but_not_anothers(
+        tmp_path, plugin_checkout):
+    installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
+    with pytest.raises(NeedsMerge):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+
+    scratch = tmp_path / MERGE_DIR
+    # A different item's merge is in progress at the same time; only "ci"'s
+    # files must be removed, not the whole directory.
+    for suffix in ("base", "new", "current"):
+        (scratch / f"other.{suffix}").write_text("unrelated", encoding="utf-8")
+
+    merged = tmp_path / "merged.yml"
+    merged.write_text(ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30"), encoding="utf-8")
+    apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
+                    plugin_checkout, merged=merged)
+
+    for suffix in ("base", "new", "current"):
+        assert not (scratch / f"ci.{suffix}").exists()
+        assert (scratch / f"other.{suffix}").read_text(encoding="utf-8") == "unrelated"
 
 
 def test_a_merged_file_at_the_wrong_version_is_refused(tmp_path, plugin_checkout):

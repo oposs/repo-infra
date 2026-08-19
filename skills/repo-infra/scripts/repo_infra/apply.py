@@ -15,8 +15,18 @@ import pathlib
 import subprocess
 
 from .markers import parse_markers
+from .remote import protects_default_branch
 
 MERGE_DIR = pathlib.Path(".git/repo-infra/merge")
+
+# Reported as `conflict` by state.py when absent; required here so the ruleset
+# is never enabled before the checks it requires can actually report.
+REQUIRED_WORKFLOWS = (".github/workflows/ci.yml", ".github/workflows/changelog.yml")
+
+# What the ruleset POST must read back as required -- state.py's
+# classify_remote wants the same two contexts, kept here rather than shared
+# because that module has no reason to import apply.py's write path.
+REQUIRED_CONTEXTS = {"ci-passed", "changelog-updated"}
 
 
 class ApplyError(Exception):
@@ -134,7 +144,15 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         got = next((m.version for m in parse_markers(text) if m.asset == name), None)
         if got != wanted:
             raise ApplyError(f"{name}: the merged file says v{got}, the asset is v{wanted}")
-        return [write_asset(repo_root, path, text)]
+        written = [write_asset(repo_root, path, text)]
+        # The staleness guard above fails closed even on a stale snapshot, so
+        # leaving these behind is untidy rather than unsafe -- but a finished
+        # merge has nothing left to guard, so clear this item's own scratch
+        # files. Other items may still have a merge in progress, so only
+        # `name`'s three files go, never the whole directory.
+        for suffix in ("base", "new", "current"):
+            (_scratch_dir(repo_root) / f"{name}.{suffix}").unlink(missing_ok=True)
+        return written
 
     if state == "missing":
         return [write_asset(repo_root, path, expected)]
@@ -157,6 +175,130 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     # to overwrite a different edit that lands while the merge is prepared.
     (scratch / f"{name}.current").write_text(installed, encoding="utf-8")
     raise NeedsMerge(name, base_path, new_path, pathlib.Path(repo_root) / path)
+
+
+def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
+    """Write one repository-administration setting and read it back.
+
+    Unlike a file item, there is no local copy to compare against -- the only
+    evidence a write took is asking GitHub again, which is why every branch
+    here ends with a read and an assertion (module docstring).
+    """
+    if name == "default-branch":
+        raise ApplyError(
+            f"default-branch: rename '{facts.default_branch}' to 'main' by hand "
+            "(repository Settings -> General -> Default branch), then re-run "
+            "`check` so it picks up the new default branch. Renaming is "
+            "outward-facing -- it breaks links, forks and clones that pin the "
+            "old name -- so it is never automatic.")
+
+    if name == "no-changelog-label":
+        gh.run(["gh", "api", "--method", "POST", f"repos/{repo}/labels",
+                "-f", "name=no-changelog",
+                "-f", "description=This pull request deliberately adds no changelog entry",
+                "-f", "color=ededed"])
+        # `gh label create` prints nothing on success, which looks exactly like
+        # a silent failure, and Dependabot ignores a label that does not exist
+        # without saying so. Read it back.
+        labels = {entry["name"]
+                 for entry in json.loads(gh.run(["gh", "api", f"repos/{repo}/labels"]))}
+        if "no-changelog" not in labels:
+            raise ApplyError(
+                f"no-changelog-label: created it but could not read back the "
+                f"label list from repos/{repo}/labels; check the label by hand "
+                "before retrying.")
+        return "created the no-changelog label"
+
+    if name == "actions-open-pr":
+        gh.run(["gh", "api", "--method", "PUT",
+                f"repos/{repo}/actions/permissions/workflow",
+                "-f", "default_workflow_permissions=write",
+                "-F", "can_approve_pull_request_reviews=true"])
+        after = json.loads(
+            gh.run(["gh", "api", f"repos/{repo}/actions/permissions/workflow"]))
+        if not (after["can_approve_pull_request_reviews"]
+                and after["default_workflow_permissions"] == "write"):
+            raise ApplyError(
+                f"actions-open-pr: wrote the setting and read back {after!r}. "
+                "An organisation policy may be overriding it -- check "
+                "Settings -> Actions -> General at the organisation level, "
+                "then retry.")
+        return "allowed Actions to create and approve pull requests"
+
+    if name in ("required-checks", "branch-protection"):
+        # Both names describe facts about the same ruleset -- an unprotected
+        # default branch always reads as both missing at once -- so they share
+        # one refusal and one write.
+        if facts.default_branch != "main":
+            raise ApplyError(
+                f"{name}: the default branch is '{facts.default_branch}'. The "
+                "ruleset targets the default branch while the shipped "
+                "workflows filter on 'main', so enabling it now would leave "
+                "every required check pending forever. Rename the default "
+                "branch to 'main' by hand first (see the default-branch "
+                "item), re-run `check` to confirm, then apply this item "
+                "again.")
+        missing = [w for w in REQUIRED_WORKFLOWS
+                  if not (pathlib.Path(repo_root) / w).is_file()]
+        if missing:
+            raise ApplyError(
+                f"{name}: {', '.join(missing)} not on main yet. A required "
+                "status check whose workflow does not exist blocks every "
+                "pull request in the repository -- including the one that "
+                "would install the workflow. Run `apply` with no --item to "
+                "install the missing file items first, merge that to main, "
+                "then apply this item again.")
+        payload = (pathlib.Path(assets_root) / "gh/ruleset-main.json").read_text(
+            encoding="utf-8")
+        output = gh.run(["gh", "api", "--method", "POST", f"repos/{repo}/rulesets",
+                         "--input", _stage_ruleset_payload(repo_root, payload)])
+        # A ruleset POST replaces the whole object -- the server can reject,
+        # rewrite or partially apply it, so "the call did not error" is not
+        # evidence the branch is actually guarded. Read back what was created
+        # and check it says what we asked for, not just that something exists.
+        created = json.loads(output)
+        if created.get("enforcement") != "active":
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back enforcement="
+                f"{created.get('enforcement')!r}, not 'active'. Check it in "
+                f"Settings -> Rules -> Rulesets on repos/{repo} by hand.")
+        if not protects_default_branch(created, facts.default_branch):
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back not covering "
+                f"the default branch '{facts.default_branch}' -- conditions "
+                f"were {created.get('conditions')!r}. Check it in Settings -> "
+                f"Rules -> Rulesets on repos/{repo} by hand.")
+        contexts = {check["context"] for rule in created.get("rules", [])
+                   if rule.get("type") == "required_status_checks"
+                   for check in rule["parameters"]["required_status_checks"]}
+        absent = REQUIRED_CONTEXTS - contexts
+        if absent:
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back without "
+                f"{', '.join(sorted(absent))} in required_status_checks. The "
+                f"server may have rejected or altered part of the payload -- "
+                f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
+                "by hand.")
+        if created.get("bypass_actors"):
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back with "
+                f"bypass_actors={created['bypass_actors']!r}, not empty. A "
+                "ruleset that grants a bypass is not the one we shipped -- "
+                f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
+                "by hand.")
+        return "enabled the branch ruleset with both required checks"
+
+    raise ApplyError(f"{name}: not an administration item")
+
+
+def _stage_ruleset_payload(repo_root, payload):
+    """`gh api --input` takes a path, not a string, so the payload is staged
+    under .git/, like every other scratch file."""
+    scratch = _scratch_dir(repo_root)
+    scratch.mkdir(parents=True, exist_ok=True)
+    target = scratch / "ruleset.json"
+    target.write_text(payload, encoding="utf-8")
+    return str(target)
 
 
 BRANCH = "repo-infra/apply"

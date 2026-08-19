@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The plugin reports how far a repository has drifted, per asset and per CI block, and honours deliberate skips.
 - /repo-infra:check reports drift as text or JSON.
 - /repo-infra:apply installs missing assets on a branch, one commit per item.
+- /repo-infra:apply creates the no-changelog label, sets workflow permissions and enables the ruleset, in that order.
 
 ### Changed
 
