@@ -25,6 +25,25 @@
           "verify": "^version\\s*=\\s*\"$VERSION\""
         }
       ]
+    },
+    {
+      "id": "rust",
+      "signals": {"all": ["Cargo.toml"]},
+      "ci_block": "ci-rust",
+      "version_files": [
+        {
+          "path": "Cargo.toml",
+          "pattern": "^version\\s*=\\s*\"[^\"]*\"",
+          "replacement": "version = \"$VERSION\"",
+          "verify": "^version\\s*=\\s*\"$VERSION\""
+        }
+      ]
+    },
+    {
+      "id": "go",
+      "signals": {"all": ["go.mod"]},
+      "ci_block": "ci-go",
+      "version_files": []
     }
   ],
   "candidates": [

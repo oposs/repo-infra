@@ -87,6 +87,18 @@ def test_the_real_file_detects_empty_repository_as_no_ecosystems():
     assert result.blocks == ["ci-lib"]
 
 
+def test_the_real_file_detects_a_rust_repository():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-rust")
+    assert result.ecosystems == ["rust"]
+    assert result.blocks == ["ci-lib", "ci-rust"]
+
+
+def test_the_real_file_detects_a_go_repository_with_no_version_file():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-go")
+    assert result.ecosystems == ["go"]
+    assert result.version_files == []
+
+
 def test_detect_does_not_share_mutable_references():
     """Mutations to one result must not affect subsequent detect() calls."""
     detection = Detection.load(REAL)
