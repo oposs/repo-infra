@@ -1121,7 +1121,7 @@ git checkout main && git pull
 **Interfaces:**
 - Consumes: nothing
 - Produces:
-  - `checkState(github, {owner, repo, ref}) -> Promise<{total, failed, pending, ok}>` where `failed` and `pending` are arrays of check-run objects and `ok` is true only when `total > 0` and both arrays are empty.
+  - `checkState(github, {owner, repo, ref}, opts) -> Promise<{total, failed, pending, ok}>` — `opts.ignoreCheckRunIds` drops check runs by id, which is how a caller excludes its own job where `failed` and `pending` are arrays of check-run objects and `ok` is true only when `total > 0` and both arrays are empty.
   - `waitForChecks(github, params, opts) -> Promise<state>` — polls until nothing is pending, something failed, or the timeout passes (in which case the result carries `timedOut: true`). `opts` accepts `{intervalMs, timeoutMs, sleep, now}` so it is testable without real time.
 
 - [ ] **Step 1: Create the branch**
@@ -1249,10 +1249,17 @@ Create `.github/workflows/lib/checks.js`:
 // saw one workflow and broke whenever a repo named its CI something else.
 const PASSING = new Set(['success', 'neutral', 'skipped']);
 
-async function checkState(github, { owner, repo, ref }) {
-  const runs = await github.paginate(github.rest.checks.listForRef, {
+async function checkState(github, { owner, repo, ref }, opts = {}) {
+  const all = await github.paginate(github.rest.checks.listForRef, {
     owner, repo, ref, per_page: 100,
   });
+
+  // A job that waits for the checks on its own commit is itself one of those
+  // checks, so without this the caller waits for the job doing the waiting.
+  // Ids are the Actions job ids: a check run's id and its job id are the same
+  // number, so listJobsForWorkflowRun(context.runId) yields exactly this set.
+  const ignore = new Set(opts.ignoreCheckRunIds || []);
+  const runs = all.filter((r) => !ignore.has(r.id));
 
   const pending = runs.filter((r) => r.status !== 'completed');
   const failed = runs.filter(
@@ -1277,7 +1284,7 @@ async function waitForChecks(github, params, opts = {}) {
 
   const started = now();
   for (;;) {
-    const state = await checkState(github, params);
+    const state = await checkState(github, params, opts);
     if (state.failed.length > 0) return state;
     if (state.pending.length === 0) return state;
     if (now() - started >= timeoutMs) return { ...state, timedOut: true };
@@ -1892,6 +1899,8 @@ permissions:
   contents: write
   pull-requests: write
   checks: read
+  # To read this run's own job ids, so the guard can exclude itself.
+  actions: read
 
 jobs:
   release-pr:
@@ -1923,11 +1932,23 @@ jobs:
             // Required status checks cannot be used on the ruleset (they would
             // deadlock the release PR), so the tests are verified here, on the
             // commit, before any PR exists.
+            // This job is itself a check run on this commit, so the guard has
+            // to exclude its own jobs or it waits for the job doing the
+            // waiting -- 15 minutes, then "Still running: Prepare the release
+            // pull request". A check run's id is its Actions job id, so this
+            // run's job list is exactly the set to ignore.
+            const { data: own } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+
             const state = await checks.waitForChecks(github, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: context.sha,
-            });
+            }, { ignoreCheckRunIds: own.jobs.map((j) => j.id) });
 
             if (state.timedOut) {
               core.setFailed(
@@ -2424,6 +2445,17 @@ git checkout main && git pull
 ### Task 11: Release `v0.1.0` — the proof
 
 Nothing before this proves the system works end to end. This task is the test.
+
+**It already earned its keep.** The first attempt deadlocked. The guard waits for
+every check run on the commit — and the guard's own job *is* a check run on that
+commit, so it waited for itself for the full 15 minute timeout and failed with
+`Still running: Prepare the release pull request`. Nothing was created: no branch,
+no pull request. Tasks 6 and 9 now exclude the run's own job ids.
+
+The general shape is worth remembering: **any job that inspects the checks on its
+own commit must exclude itself**, and the symptom is a timeout naming the job
+that is doing the waiting. Neither unit tests nor a YAML review can find it —
+only a live run can, which is what this task is for.
 
 **Files:**
 - Modify: `CHANGES.md`, `.claude-plugin/plugin.json` (both written by the workflow, not by hand)
