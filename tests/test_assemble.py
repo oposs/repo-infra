@@ -63,3 +63,48 @@ def test_an_aggregator_without_the_needs_placeholder_is_an_error(tmp_path):
 def test_block_job_ids_reads_only_top_level_job_keys():
     text = (MINI / "ci/ci-beta.yml").read_text(encoding="utf-8")
     assert block_job_ids(text) == ["b-one", "b-two"]
+
+
+def test_the_complete_assembled_output_is_as_specified():
+    """Golden test: verify the exact layout of the assembled ci.yml.
+
+    Task 5 commits this output as the real .github/workflows/ci.yml and then
+    compares the assembler against that file. Any mismatched blank lines,
+    indentation, or marker placement will be baked in permanently.
+    """
+    text = assemble_ci(MINI, ["ci-alpha", "ci-beta"], manifest())
+    expected = (
+        "name: CI\n"
+        "# repo-infra: ci v1\n"
+        "\n"
+        "on:\n"
+        "  push:\n"
+        "    branches: [main]\n"
+        "\n"
+        "jobs:\n"
+        "\n"
+        "  # repo-infra: ci-alpha v1\n"
+        "  a-one:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: echo alpha\n"
+        "\n"
+        "  # repo-infra: ci-beta v2\n"
+        "  b-one:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: echo beta one\n"
+        "  b-two:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: echo beta two\n"
+        "\n"
+        "  ci-passed:\n"
+        "    if: always()\n"
+        "    needs: [a-one, b-one, b-two]\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')\n"
+        "        run: exit 1\n"
+    )
+    assert text == expected
