@@ -68,6 +68,22 @@ def test_the_aggregator_has_no_name_so_its_context_is_its_job_id():
     assert "\n    name:" not in body
 
 
+def test_every_ci_block_named_by_detection_exists():
+    detection = json.loads((ASSETS / "detection.json").read_text(encoding="utf-8"))
+    for entry in detection["ecosystems"]:
+        block = entry["ci_block"]
+        assert block in MANIFEST["ci_blocks"], "%s: %s is not in the manifest" % (entry["id"], block)
+        assert (ASSETS / "ci" / (block + ".yml")).is_file(), "%s: no such block file" % block
+
+
+def test_no_two_blocks_declare_the_same_job_id():
+    seen = {}
+    for block, meta in MANIFEST["ci_blocks"].items():
+        for job in meta["jobs"]:
+            assert job not in seen, "%s and %s both declare job %r" % (seen[job], block, job)
+            seen[job] = block
+
+
 @pytest.mark.parametrize("path", list(every_asset_file()), ids=lambda p: p.name)
 def test_every_asset_uses_a_manifest_pinned_major(path):
     for action, ref in USES.findall(path.read_text(encoding="utf-8")):
