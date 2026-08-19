@@ -1,0 +1,8 @@
+{
+  "assets": {},
+  "ci_blocks": {
+    "ci-alpha": {"version": 1, "jobs": ["a-one"]},
+    "ci-beta": {"version": 2, "jobs": ["b-one", "b-two"]}
+  },
+  "actions": {}
+}

@@ -1,0 +1,8 @@
+name: CI
+# repo-infra: ci v1
+
+on:
+  push:
+    branches: [main]
+
+jobs:

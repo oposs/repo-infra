@@ -15,6 +15,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The plugin ships the release workflows as versioned, installable assets.
 - The plugin can read and write asset version markers.
 - The plugin detects a repository's ecosystems from file signals.
+- The plugin assembles a repository's ci.yml from a frame plus one block per ecosystem.
 
 ### Changed
 
