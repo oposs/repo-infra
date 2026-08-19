@@ -25,6 +25,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   something else. Zero checks counts as a failure, not a pass.
 - `commit.js`: creates the release commit and branch through the Git Data API, so
   no workflow needs a git identity or push access to a branch.
+- A changelog gate on every pull request. It compares the `[Unreleased]` block at
+  base and head, so editing an old released section does not satisfy it. It is a
+  required check, so `release/*` branches and the `no-changelog` label are the
+  deliberate escape hatches — both job-level, so an exempt pull request skips the
+  job and the required check goes green on its own.
 
 ### Changed
 
