@@ -24,6 +24,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - /repo-infra:apply creates the no-changelog label, sets workflow permissions and enables the ruleset, in that order.
 - The plugin ships the repo-infra skill and the /repo-infra:check and /repo-infra:apply commands.
 - CI blocks for rust and go.
+- CI blocks for node, one for pnpm and one for bun.
 
 ### Changed
 

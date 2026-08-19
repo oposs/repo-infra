@@ -33,7 +33,9 @@
     "ci-claude-plugin": {"version": 1, "jobs": ["plugin-manifest"]},
     "ci-python": {"version": 1, "jobs": ["ruff", "pytest"]},
     "ci-rust": {"version": 1, "jobs": ["rust-check", "rust-test"]},
-    "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]}
+    "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
+    "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
+    "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]}
   },
   "actions": {
     "actions/checkout": "v7",
@@ -42,7 +44,8 @@
     "actions/setup-python": "v7",
     "actions/cache": "v6",
     "actions/setup-go": "v7",
-    "golangci/golangci-lint-action": "v9"
+    "golangci/golangci-lint-action": "v9",
+    "oven-sh/setup-bun": "v2"
   },
   "gh": {
     "ruleset-main": {"version": 1, "source": "gh/ruleset-main.json"}

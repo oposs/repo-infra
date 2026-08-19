@@ -75,6 +75,22 @@ def test_the_real_file_reports_two_node_lockfiles_as_ambiguous():
     assert [a["id"] for a in result.ambiguities] == ["node-lockfiles"]
 
 
+def test_a_pnpm_lockfile_selects_the_pnpm_block():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-pnpm")
+    assert result.blocks == ["ci-lib", "ci-node-pnpm"]
+
+
+def test_a_bun_lockfile_selects_the_bun_block():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-bun")
+    assert result.blocks == ["ci-lib", "ci-node-bun"]
+
+
+def test_a_repository_with_both_node_lockfiles_gets_neither_block():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-ambiguous")
+    assert result.blocks == ["ci-lib"]
+    assert [a["id"] for a in result.ambiguities] == ["node-lockfiles"]
+
+
 def test_the_real_file_detects_both_claude_plugin_and_python():
     result = Detection.load(REAL).detect(HERE / "fixtures/repo-both")
     assert result.ecosystems == ["claude-plugin", "python"]
