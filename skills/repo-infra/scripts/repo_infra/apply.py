@@ -258,7 +258,7 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 f"{'is' if len(unverified) == 1 else 'are'} on "
                 f"'{facts.default_branch}' -- the existence check itself "
                 "failed (network error, permissions, or something else on "
-                "the repos/{repo}/contents endpoint), not a clean 404. "
+                f"the repos/{repo}/contents endpoint), not a clean 404. "
                 "Refusing rather than guessing either way; check by hand "
                 "and retry.")
         if missing:

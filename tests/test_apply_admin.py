@@ -119,9 +119,14 @@ def test_workflow_permissions_that_do_not_stick_are_an_error(tmp_path):
 
 
 def test_the_ruleset_is_refused_while_the_workflows_are_not_on_the_default_branch(tmp_path):
+    """Asserts the interpolated `missing` list actually appears, not just the
+    static prose around it -- the class of bug an f-string typo produces is
+    invisible to a match on words that never needed interpolating."""
     recorder = Recorder(not_found(".github/workflows/ci.yml", ".github/workflows/changelog.yml"))
-    with pytest.raises(ApplyError, match="not on main yet"):
+    with pytest.raises(ApplyError, match="not on main yet") as raised:
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
+    assert ".github/workflows/ci.yml" in str(raised.value)
+    assert ".github/workflows/changelog.yml" in str(raised.value)
 
 
 def test_the_ruleset_refuses_when_a_workflow_is_present_locally_but_not_on_the_branch(tmp_path):
@@ -140,25 +145,36 @@ def test_the_ruleset_refuses_with_a_distinct_message_when_the_check_itself_fails
     """A non-404 failure is not evidence of anything -- it must refuse, but
     say so differently than a confirmed absence, so an operator does not
     read "not on main yet" and start hunting for a workflow that may well be
-    there."""
+    there.
+
+    Asserts the actual repository name is interpolated into the endpoint it
+    names, not the literal text "{repo}" -- a missing `f` prefix on that line
+    is valid Python (a plain string containing braces), so it produces this
+    exact wrong message and nothing else catches it: not ruff, not a test
+    that only matches the static prose around the bug.
+    """
     recorder = Recorder(unverifiable(".github/workflows/ci.yml"))
     with pytest.raises(ApplyError, match="could not confirm") as raised:
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
     assert "not on main yet" not in str(raised.value)
+    assert "repos/o/r/contents" in str(raised.value)
+    assert "repos/{repo}/contents" not in str(raised.value)
 
 
 def test_the_ruleset_is_refused_on_a_master_branch_repository(tmp_path):
-    with pytest.raises(ApplyError, match="default branch"):
+    with pytest.raises(ApplyError, match="default branch") as raised:
         apply_admin_item(Gh(run=Recorder({})), "o/r", "required-checks",
                          facts(default_branch="master"), ASSETS, tmp_path)
+    assert "'master'" in str(raised.value)
 
 
 def test_the_ruleset_is_refused_on_a_master_branch_repository_even_with_workflows_present(tmp_path):
     """A non-main default branch is refused before the workflow files are even
     checked -- renaming first is the point, not a side effect of missing files."""
-    with pytest.raises(ApplyError, match="default branch"):
+    with pytest.raises(ApplyError, match="default branch") as raised:
         apply_admin_item(Gh(run=Recorder({})), "o/r", "required-checks",
                          facts(default_branch="master"), ASSETS, tmp_path)
+    assert "'master'" in str(raised.value)
 
 
 def test_renaming_the_default_branch_is_never_automatic(tmp_path):
