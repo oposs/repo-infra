@@ -569,6 +569,21 @@ This step is the one that proves the rest of the plan is being executed under th
 
 From here on, work on a branch and open a pull request.
 
+Every such step ends `gh pr create`, a wait, then `gh pr merge`. The wait is
+not optional: the ruleset requires `ci-passed`, so a merge issued in the same
+breath as the create is refused for a check that has not reported yet.
+
+The wait is two commands, not one. GitHub registers the workflow run a few
+seconds *after* the pull request exists, and in that window `gh pr checks`
+prints `no checks reported` and returns at once -- so `--watch` on its own
+falls straight through and merges into the gap. Observed on pull request #2. The loop waits for the run to appear;
+`--watch` then waits for it to finish. Do not collapse the two into
+`until gh pr checks --watch`, which cannot tell 'not registered yet' from
+'failed' and so loops forever on a red build.
+
+`gh pr merge --auto` is the alternative, but it returns before the merge
+happens, so the following `git pull` would race it.
+
 **Files:**
 - Create: `.github/workflows/lib/changes.js`
 - Test: `.github/workflows/lib/changes.test.js`
@@ -860,6 +875,8 @@ unexpected, which reads exactly like 'no changes to release'.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin lib/changes
 gh pr create --fill --base main
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
@@ -1087,6 +1104,8 @@ Adding an ecosystem is a JSON entry in .github/repo-infra.json, not code.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin lib/bump
 gh pr create --fill --base main
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
@@ -1302,6 +1321,8 @@ The wait takes injectable sleep and now, so the timeout path has a test.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin lib/checks
 gh pr create --fill --base main
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
@@ -1522,6 +1543,8 @@ No git config, no push, and the commit lands atomically.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin lib/commit
 gh pr create --fill --base main
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
@@ -1999,6 +2022,8 @@ addition to the required checks on the ruleset, not a substitute for them.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin workflow/release-pr
 gh pr create --fill --base main
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
@@ -2309,6 +2334,8 @@ to attach artifacts before anyone sees it.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin workflow/release-publish
 gh pr create --fill --base main
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
@@ -2439,6 +2466,8 @@ git commit -am "probe: confirm the publisher no-ops on an Unreleased edit
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 git push -u origin probe/idempotence
 gh pr create --fill --base main
+while gh pr checks 2>&1 | grep -q 'no checks reported'; do sleep 5; done
+gh pr checks --watch --interval 5
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 gh run watch --repo oposs/repo-infra \
