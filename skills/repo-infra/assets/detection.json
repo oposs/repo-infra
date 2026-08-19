@@ -44,6 +44,32 @@
       "signals": {"all": ["go.mod"]},
       "ci_block": "ci-go",
       "version_files": []
+    },
+    {
+      "id": "node-pnpm",
+      "signals": {"all": ["package.json", "pnpm-lock.yaml"], "none": ["bun.lock", "package-lock.json"]},
+      "ci_block": "ci-node-pnpm",
+      "version_files": [
+        {
+          "path": "package.json",
+          "pattern": "\"version\"\\s*:\\s*\"[^\"]*\"",
+          "replacement": "\"version\": \"$VERSION\"",
+          "verify": "\"version\"\\s*:\\s*\"$VERSION\""
+        }
+      ]
+    },
+    {
+      "id": "node-bun",
+      "signals": {"all": ["package.json", "bun.lock"], "none": ["pnpm-lock.yaml", "package-lock.json"]},
+      "ci_block": "ci-node-bun",
+      "version_files": [
+        {
+          "path": "package.json",
+          "pattern": "\"version\"\\s*:\\s*\"[^\"]*\"",
+          "replacement": "\"version\": \"$VERSION\"",
+          "verify": "\"version\"\\s*:\\s*\"$VERSION\""
+        }
+      ]
     }
   ],
   "candidates": [
@@ -56,6 +82,18 @@
       "signals": {"all": ["pnpm-lock.yaml", "package-lock.json"]},
       "question": "This repository has both pnpm-lock.yaml and package-lock.json. Which package manager is authoritative? Installing CI for the wrong one resolves different dependency versions than the developer does.",
       "options": ["pnpm", "npm"]
+    },
+    {
+      "id": "node-pnpm-vs-bun",
+      "signals": {"all": ["pnpm-lock.yaml", "bun.lock"]},
+      "question": "This repository has both pnpm-lock.yaml and bun.lock. Which package manager is authoritative? Installing CI for the wrong one resolves different dependency versions than the developer does.",
+      "options": ["pnpm", "bun"]
+    },
+    {
+      "id": "node-bun-vs-npm",
+      "signals": {"all": ["bun.lock", "package-lock.json"]},
+      "question": "This repository has both bun.lock and package-lock.json. Which package manager is authoritative? Installing CI for the wrong one resolves different dependency versions than the developer does.",
+      "options": ["bun", "npm"]
     }
   ]
 }

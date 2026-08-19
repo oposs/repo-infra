@@ -1,4 +1,7 @@
+import itertools
 import pathlib
+
+import pytest
 
 from repo_infra.detect import Detection
 
@@ -70,9 +73,84 @@ def test_the_real_file_detects_a_python_repository():
     assert result.ecosystems == ["python"]
 
 
-def test_the_real_file_reports_two_node_lockfiles_as_ambiguous():
-    result = Detection.load(REAL).detect(HERE / "fixtures/repo-node-ambiguous")
-    assert [a["id"] for a in result.ambiguities] == ["node-lockfiles"]
+def _node_lockfile_combinations():
+    """Generate test cases for all 7 lockfile combinations.
+
+    Lockfiles: pnpm, bun, npm. Single lockfile selects its block; any two or
+    three select no block and report ambiguity(ies) for each conflicting pair.
+    """
+    lockfiles = {
+        "pnpm": ("pnpm-lock.yaml", "ci-node-pnpm"),
+        "bun": ("bun.lock", "ci-node-bun"),
+        "npm": ("package-lock.json", None),
+    }
+
+    # Fixture name mapping for multi-lockfile combinations (keys sorted for determinism)
+    fixture_names = {
+        ("bun",): "repo-node-bun",
+        ("npm",): "repo-node-npm",
+        ("pnpm",): "repo-node-pnpm",
+        ("bun", "npm"): "repo-node-bun-npm",
+        ("bun", "pnpm"): "repo-node-pnpm-bun",
+        ("npm", "pnpm"): "repo-node-pnpm-npm",
+        ("bun", "npm", "pnpm"): "repo-node-ambiguous",
+    }
+
+    # Ambiguity mapping: which managers conflict (keys sorted for determinism)
+    ambiguity_map = {
+        ("bun", "npm"): "node-bun-vs-npm",
+        ("bun", "pnpm"): "node-pnpm-vs-bun",
+        ("npm", "pnpm"): "node-lockfiles",
+    }
+
+    cases = []
+
+    # Derive manager names from lockfiles dict (sorted for determinism).
+    # Adding a fourth manager extends coverage automatically.
+    manager_names = sorted(lockfiles.keys())
+
+    # Generate all non-empty combinations of lockfiles (2^n - 1 cases where n = len(lockfiles))
+    for r in range(1, len(lockfiles) + 1):
+        for combo in itertools.combinations(manager_names, r):
+            # Normalize combo by sorting it for consistent dict lookup
+            sorted_combo = tuple(sorted(combo))
+            fixture = fixture_names[sorted_combo]
+
+            # Single lockfile: select its block, no ambiguities
+            if len(combo) == 1:
+                manager = combo[0]
+                expected_blocks = ["ci-lib"]
+                if lockfiles[manager][1]:
+                    expected_blocks.append(lockfiles[manager][1])
+                expected_ambiguities = []
+            else:
+                # Multiple lockfiles: no block, ambiguities for each pair
+                expected_blocks = ["ci-lib"]
+                expected_ambiguities = []
+                for pair in itertools.combinations(combo, 2):
+                    sorted_pair = tuple(sorted(pair))
+                    expected_ambiguities.append(ambiguity_map[sorted_pair])
+
+            cases.append((fixture, expected_blocks, expected_ambiguities))
+
+    return cases
+
+
+@pytest.mark.parametrize(
+    "fixture_name,expected_blocks,expected_ambiguity_ids",
+    _node_lockfile_combinations(),
+)
+def test_node_lockfile_combinations(fixture_name, expected_blocks, expected_ambiguity_ids):
+    """Test that node lockfile combinations produce correct blocks and ambiguities.
+
+    Covers all 7 combinations: 3 single lockfiles (pnpm, bun, npm), 3 pairs, 1 trio.
+    Exactly one lockfile selects its block with no ambiguity. Any two or three
+    lockfiles select no block and report ambiguities for each conflicting pair.
+    """
+    result = Detection.load(REAL).detect(HERE / f"fixtures/{fixture_name}")
+    assert result.blocks == expected_blocks
+    ambiguity_ids = sorted([a["id"] for a in result.ambiguities])
+    assert ambiguity_ids == sorted(expected_ambiguity_ids)
 
 
 def test_the_real_file_detects_both_claude_plugin_and_python():
