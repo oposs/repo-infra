@@ -1,6 +1,9 @@
 # repo-infra — design
 
 **Date:** 2026-08-17
+**Amended:** 2026-08-19 — D15 added; the CI block set, the detection table and the
+report rewritten against a survey of the live repositories. What changed and why is
+in D15 and in *CI templates*.
 **Repo:** `oposs/repo-infra` (Claude Code plugin, listed in the `oposs/claude-plugins` marketplace)
 **Status:** design approved; specs 2–4 to be designed separately
 
@@ -47,8 +50,27 @@ changelog roller implemented twice in embedded Perl.
 
 ### Languages in scope
 
-Rust, Python (including ~15 near-identical `cmk-oposs_*` Checkmk plugins), Perl,
-TypeScript/JavaScript/Svelte, Go, PHP, Shell, Raku, C.
+Counted 2026-08-19 across `github.com/oposs` and `github.com/oetiker`, over repos
+that are not archived, not forks, and were pushed during 2026:
+
+| Ecosystem | Active repos | Examples |
+|---|---|---|
+| python / checkmk-plugin | ~14 | `mkp-builder`, 12× `cmk-oposs_*`, `skill-optimizer` |
+| rust | 12 | `mdmost`, `byonk`, `edaptor`, `marionette`, `ceph-doctor` |
+| node (js / ts / svelte) | 12 | `callbackery`, `votly`, `ldap-groupmanager`, `meretquiz` |
+| perl | 8 | `SmokePing`, `znapzend`, `mrtg`, `wg-wrangler` |
+| go | 2 | `go-acme-dns-manager`, `zevalizer` |
+| php | 2 | `camino`, `itis-website` |
+| c | 1 | `rrdtool-1.x` |
+| claude-plugin | 2 | `repo-infra`, `claude-plugins` |
+
+**GitHub's own language field is not usable for detection.** `callbackery` reports
+JavaScript and is a Perl application; `skill-optimizer` reports Python and is a
+Claude plugin. Detection is by file signal, always.
+
+A repository routinely matches more than one ecosystem: `wg-wrangler` is perl **and**
+node, `mkp-builder` is python **and** claude-plugin. This is the case that forces one
+assembled `ci.yml` (D2).
 
 ## Scope and decomposition
 
@@ -435,6 +457,51 @@ choosable.
 Prose does not use the display names. `Publish release (automatic)` appears in the Actions
 sidebar; documentation says "the publish workflow" or `release-publish.yml`.
 
+### D15 — infrastructure is unified; build toolchains belong to the project
+
+The tool exists to remove divergence, so it must never grow a variant to accommodate
+one. But not every difference between two repositories is divergence. The test:
+
+> Does this variation express **what kind of project** this is, or only **how this
+> repo happened to do the same job**?
+
+The first earns its own asset. The second earns a `conflict` item with a stated
+migration, and the repository does the work.
+
+| Variation | Verdict | Consequence |
+|---|---|---|
+| release flow, changelog format, required checks, protection | unified | one shape, always |
+| default branch `master` / `develop` | unified | the standard is `main` |
+| Perl autotools vs `Makefile.PL` | two assets | different project kinds |
+| node pnpm vs bun | two assets | different project kinds |
+
+**The standard's default branch is `main`.** Four active repos are on `master`
+(`SmokePing`, `callbackery`, `znapzend`, `mrtg`) and one on `develop`
+(`wg-wrangler`). The alternative — substituting the branch name into every asset —
+was rejected: it buys nothing but the permanent tolerance of three names, and it
+turns every asset into a template.
+
+So `check` reports `default-branch` as a `conflict`, and the rename is onboarding
+work. `apply` never renames unprompted: renaming is outward-facing and breaks
+external links, forks and anything pinned to the old name.
+
+**The rename must precede the ruleset, and the reason is not obvious.** The ruleset
+targets `~DEFAULT_BRANCH` while the workflows filter on `branches: [main]`. On a
+repo still called `master` those two disagree: the ruleset gates every pull request,
+the workflows run on none of them, and both required checks stay pending forever.
+That is D13's deadlock arriving from a direction nobody looks at.
+
+**Consequence for the assets: there are no substitution tokens.** An asset is the
+literal file it installs. The only generated content anywhere is the aggregator's
+`needs:` list in an assembled `ci.yml`, which is computed from the blocks that went
+into it. This is what makes the equality check below possible at all.
+
+**repo-infra's own `.github/` is the assembler's output, and CI proves it.** A job
+re-assembles what `apply` would install for this repository and fails on any
+difference. So the shipped asset and the file demonstrably releasing this repo
+cannot drift apart, and the installer is exercised on every pull request rather
+than once at the first conversion.
+
 ## Spec 1 — the frame
 
 ### Repository layout
@@ -457,9 +524,15 @@ oposs/repo-infra
         detection.json          signals -> ecosystems -> version files
         gh/ruleset-main.json    the exact payload from D2
         workflows/              release-pr.yml, release-publish.yml,
-                                changelog.yml, ci-frame.yml, lib/*.js
-        ci/                     ci-rust.yml, ci-python.yml, ci-node.yml, …
+                                changelog.yml, lib/*.js
+        ci/                     ci-frame.yml, ci-lib.yml, ci-claude-plugin.yml,
+                                ci-python.yml, ci-checkmk-plugin.yml, ci-rust.yml,
+                                ci-node-pnpm.yml, ci-node-bun.yml,
+                                ci-perl-autotools.yml, ci-perl-mkpl.yml, ci-go.yml
                                 job blocks assembled into ci.yml, not whole workflows
+        checkmk/                cmk_stubs/, conftest.py, test_smoke.py — the test
+                                harness a Checkmk plugin needs before its CI means
+                                anything (see *CI templates*)
         dependabot.yml
       scripts/repo_infra_check.py
       evals/evals.json
@@ -483,17 +556,43 @@ no repo audit involved.
 plugin gets no exemption from the standard it installs. One commit per item, so any single
 item can be dropped at review.
 
+**What `apply` scripts and what it hands to the model.** Everything mechanical is
+scripted: rendering a file, creating the label, writing the ruleset and the workflow
+permissions, committing, opening the pull request. Every write is read back and
+asserted, the same shape as `bump.js` (D5).
+
+There is exactly one thing it refuses to do. When an installed file is both
+**outdated** and **locally edited**, merging the new asset generation into those
+edits is judgement, not mechanism:
+
+```
+$ apply --item ci
+  ci.yml: local edits present; marker says ci v1, asset is v3
+  wrote  .repo-infra/merge/ci.base.yml   (v1, as shipped)
+  wrote  .repo-infra/merge/ci.new.yml    (v3, as shipped)
+  current is .github/workflows/ci.yml
+  refusing — merge these and re-run:  apply --item ci --from <file>
+```
+
+The model merges and hands the result back through `--from`; the script verifies the
+marker, writes and commits. So the judgement is always the model's and the
+irreversible act is always the script's. A three-way `git merge-file` was considered
+and rejected: it leaves conflict markers in a workflow file, which is a broken
+workflow rather than a merge in progress.
+
 **Ordering is not free: the ruleset goes last.** A required status check whose workflow
 does not exist never reports, and blocks every pull request in the repository — including
 the one that would have installed the workflow. So `apply` proceeds in this order, and
 never collapses it into one step:
 
+0. rename the default branch to `main` if it is not already (D15) — confirmed
+   explicitly, never automatic,
 1. create the `no-changelog` label,
 2. land `ci.yml` (with its `ci-passed` job) and `changelog.yml` on `main` through the
    apply PR,
 3. **then** enable the ruleset with its two required contexts (D2).
 
-Step 3 runs only after step 2 has merged. On a repository that is being upgraded rather
+Step 3 runs only after step 2 has merged, and refuses while step 0 is outstanding. On a repository that is being upgraded rather
 than onboarded, `check` reports which of the three are already done, so a re-run resumes
 rather than repeats.
 
@@ -537,11 +636,19 @@ is `python` **and** `claude-plugin`, and both are bumped in the same release PR.
 | `.claude-plugin/plugin.json` | claude-plugin | that file |
 | `pyproject.toml` | python | `pyproject.toml` |
 | `.mkp-builder.ini`, `local/lib/python3/cmk_addons/` | checkmk-plugin | *none* — the action takes the tag |
-| `package.json` | node | `package.json` (+ `package-lock.json` if present) |
+| `package.json` + `pnpm-lock.yaml` | node-pnpm | `package.json` |
+| `package.json` + `bun.lock` | node-bun | `package.json` |
 | `configure.ac` | autotools | `AC_INIT` in `configure.ac` |
-| `dist.ini`, `Makefile.PL`, `cpanfile` | perl | `our $VERSION` in the main `.pm` |
+| `configure.ac` + `cpanfile` | perl-autotools | `VERSION` file or `AC_INIT` |
+| `Makefile.PL` | perl-mkpl | `our $VERSION` in the main `.pm` |
 | `go.mod` | go | *none* — tags only |
 | `composer.json` | php | *none* — tags only |
+
+**Two lockfiles is `ambiguous`, not a preference.** `oposs/votly` and `oposs/3vTool`
+carry `package-lock.json` **and** `pnpm-lock.yaml`. Nothing in the repository says
+which one is authoritative, and picking wrong installs a CI job that resolves
+different dependency versions than the developer does. `check` reports `ambiguous`,
+`apply` asks once, and the answer is recorded in `.github/repo-infra.json` (D12).
 
 **Rust workspaces.** If `[workspace.package] version` exists, that is the field to bump and
 members inherit it; otherwise the root `[package] version`. Detection records which it
@@ -756,15 +863,42 @@ the required check would be ambiguous or absent.
 So `ci.yml` is **assembled**: a frame, plus one job block per detected ecosystem, plus the
 aggregator.
 
-| Ecosystem | Block asset | Jobs |
-|---|---|---|
-| rust | `ci-rust` | `fmt --check`, `clippy -D warnings`, `test`, cache |
-| python | `ci-python` | `ruff`, `pytest` |
-| checkmk-plugin | `ci-checkmk-plugin` | mkp-builder's existing `validate.yml`, adopted as-is |
-| node | `ci-node` | `pnpm install --frozen-lockfile`, lint, test |
-| perl | `ci-perl` | `prove -l t/` |
-| go | `ci-go` | `go vet`, `go test` |
-| php | `ci-php` | `composer install`, `phpunit` |
+**Every block is derived from a repository that already runs that CI.** None is
+written from language convention. The source is named so the derivation can be
+re-checked when the source repo moves.
+
+| Ecosystem | Block asset | Derived from | Jobs |
+|---|---|---|---|
+| rust | `ci-rust` | `oetiker/mdmost` | `fmt --check`, `clippy -D warnings`, `test`, shared cargo cache |
+| python | `ci-python` | `oposs/mkp-builder` | `ruff`, `pytest` |
+| checkmk-plugin | `ci-checkmk-plugin` | `oposs/cmk-oposs_pbs` | `ruff`, `pytest` against the shipped `cmk_stubs`, mkp build smoke test |
+| node (pnpm) | `ci-node-pnpm` | `oetiker/PeriMenoBomb` | `corepack enable`, `setup-node` with `cache: pnpm`, `pnpm install --frozen-lockfile`, `pnpm check`, `pnpm test`, `pnpm build` |
+| node (bun) | `ci-node-bun` | `oposs/ldap-groupmanager` | `bun install --frozen-lockfile`, `bunx tsc --noEmit`, `bun test` |
+| perl (autotools) | `ci-perl-autotools` | `oetiker/znapzend` | perl-version matrix, `thirdparty/` CPAN cache, `./bootstrap`, `./configure`, `make`, `make test` |
+| perl (Makefile.PL) | `ci-perl-mkpl` | `oetiker/callbackery` | perl-version matrix, `thirdparty/` CPAN cache, `perl Makefile.PL`, `make thirdparty`, `cover -test` |
+| go | `ci-go` | `oetiker/go-acme-dns-manager` | `go vet`, `golangci-lint`, `go test ./...` |
+| claude-plugin | `ci-claude-plugin` | `oposs/repo-infra` | `plugin.json` validates |
+
+Two corrections the survey forced. **Perl is not `prove -l t/`** — no active house
+Perl repo does that; all four vendor CPAN into `thirdparty/`, cache it, and drive the
+build through `make`. **Checkmk plugins are not Python packages** — they have no
+`pyproject.toml`, no version file and no installed `cmk` module, so their tests only
+run against the stub tree shipped as `assets/checkmk/` (below).
+
+Each block keeps its source's build and drops its source's triggers: a block is
+jobs only, and the frame owns `on:`, `permissions:` and `concurrency:`. This matters
+for `ci-node-pnpm`, whose source runs `on: pull_request` alone — the standard also
+needs `push`, so the release guard can read check runs on a commit rather than only
+on a pull request.
+
+`ci-go` deliberately drops what its source repo does around the tests: 200 lines of
+hand-rolled result counting, `$GITHUB_STEP_SUMMARY` tables and a PR comment, with
+`|| true` on every count and a coverage threshold that reads 50% in the gate and 60%
+in the comment it posts. The block keeps the three commands that test anything.
+
+**php and c ship no block in this generation.** `oposs/camino` and `oposs/itis-website`
+are php, `oetiker/rrdtool-1.x` is autotools C; each gets a block on the day it is
+converted.
 
 Plus two jobs every repo gets. The first is `node --test .github/workflows/lib/*.test.js` — the
 release logic tests itself. The second is the aggregator that D2 requires:
@@ -791,6 +925,32 @@ Two hard requirements, and nothing else is coupled to a filename:
   read on a commit as well as on a PR.
 - Neither trigger carries a `paths`, `paths-ignore` or `branches` filter (D13).
 
+### The Checkmk test harness
+
+Twelve of the thirteen `cmk-oposs_*` repositories have no tests and no CI at all —
+only a `release.yml` that pushes to `main` with an embedded Perl changelog roller.
+Installing `ci-passed` there would produce a required check that passes because it
+runs nothing, which is worse than no check: it certifies an untested repository.
+
+The thirteenth, `oposs/cmk-oposs_pbs`, already solved the reason the others have no
+tests. A Checkmk plugin imports `cmk.agent_based`, `cmk.graphing`, `cmk.rulesets`
+and `cmk.server_side_calls`, none of which exist outside a Checkmk installation, so
+there is nothing to run `pytest` against. `cmk-oposs_pbs` ships stubs for exactly
+those four modules under `tests/cmk_stubs/` and its checks become testable.
+
+That harness is therefore an asset, not a per-repo invention:
+
+```
+assets/checkmk/
+  cmk_stubs/        cmk.agent_based, cmk.graphing, cmk.rulesets, cmk.server_side_calls
+  conftest.py       puts the stubs on sys.path
+  test_smoke.py     imports every check under local/ and asserts it registers
+```
+
+`check` reports `tests missing` where a Checkmk plugin has no suite, and `apply`
+installs the harness plus the smoke test. Writing real checks stays the
+repository's work; what the standard removes is the reason not to start.
+
 ### The report
 
 ```
@@ -805,6 +965,7 @@ detected   rust (Cargo.toml, Cargo.lock) · ships a CLI
   branch-protection     missing    main is unprotected
   required-checks       missing    ruleset requires neither ci-passed nor
                                    changelog-updated
+  default-branch        ok         main
   no-changelog-label    missing    dependabot requests it; it does not exist
   actions-open-pr       missing    can_approve_pull_request_reviews = false
   dependabot            missing
@@ -820,6 +981,27 @@ detected   rust (Cargo.toml, Cargo.lock) · ships a CLI
   publish-crate  homebrew  os-packages  containers  man-pages  docs-site
 
 7 items need attention.  /repo-infra:apply
+```
+
+A repository that has not been renamed yet reports the blocking item first, because
+nothing else can be applied until it is resolved:
+
+```
+repo-infra check — oetiker/SmokePing
+
+detected   perl-autotools (configure.ac, cpanfile) · ships a CLI
+
+  default-branch        conflict   'master' — the standard is 'main'.
+                                   Rename before anything else is applied: the
+                                   ruleset targets the default branch while the
+                                   workflows run on main, so on 'master' every
+                                   required check stays pending forever.
+                                   Renaming breaks links, forks and clones that
+                                   pin master.
+  ci-perl-autotools     conflict   build-test.yaml is a whole workflow, not a
+                                   block; its jobs move into ci.yml
+  tests                 ok         make test
+  ...
 ```
 
 States: `ok`, `missing`, `outdated`, `conflict`, `ambiguous`, `skipped`. `--json` emits
@@ -955,6 +1137,8 @@ naming what to test.
 | an empty `bypass_actors` is required (the Actions token cannot be listed) | attempt to add it via the rulesets API | the two-step release could collapse to one step |
 | org policy does not override D3 on `oposs` | `gh auth refresh -h github.com -s admin:org`, then read `orgs/oposs/actions/permissions/workflow` | protection may need an org-level change first |
 | `pnpm-lock.yaml` does not record the root version | first node release; the read-back assert fires | add the lockfile to that ecosystem's version files |
+| every converted repository's default branch is `main` (D15) | `gh api repos/<o>/<r> -q .default_branch` | the ruleset and the workflow filters disagree and every required check hangs |
+| the block sources still build the way they did on 2026-08-19 | re-read the named workflow in the *CI templates* table | the derived block is teaching a build that no longer exists |
 
 ## Sources
 
