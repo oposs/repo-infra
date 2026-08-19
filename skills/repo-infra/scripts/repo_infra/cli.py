@@ -5,6 +5,7 @@ import json
 import pathlib
 
 from . import report
+from .apply import apply_file_item, commit_item, ensure_branch
 from .assemble import render_all
 from .detect import Detection
 from .remote import Facts, Gh
@@ -39,6 +40,23 @@ def check(args):
     return 1 if any(i.state in NEEDS_ATTENTION_STATES for i in items) else 0
 
 
+def apply_command(args):
+    manifest, result, rendered = _load(args.root)
+    repo = args.repo or Gh().current_repo()
+    items = classify(args.root, rendered, manifest, read_facts(repo))
+    plugin_root = ASSETS.parent
+
+    names = [args.item] if args.item else [
+        i.name for i in items if i.state in ("missing", "outdated")]
+    ensure_branch(args.root)
+    for name in names:
+        written = apply_file_item(args.root, name, rendered, items, plugin_root,
+                                  merged=args.from_file)
+        commit_item(args.root, name, written)
+        print(f"applied {name}")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="repo-infra")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -48,6 +66,13 @@ def main(argv=None):
     checker.add_argument("--root", default=".", help="repository root")
     checker.add_argument("--json", action="store_true")
     checker.set_defaults(run=check)
+
+    applier = sub.add_parser("apply", help="install the standard; writes on a branch")
+    applier.add_argument("--repo")
+    applier.add_argument("--root", default=".")
+    applier.add_argument("--item", help="apply one item; default is every actionable file item")
+    applier.add_argument("--from", dest="from_file", help="take the merged file from here")
+    applier.set_defaults(run=apply_command)
 
     args = parser.parse_args(argv)
     return args.run(args)
