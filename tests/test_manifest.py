@@ -1,6 +1,7 @@
 # tests/test_manifest.py
 import json
 import pathlib
+import re
 
 import pytest
 
@@ -35,7 +36,7 @@ def test_every_declared_asset_exists():
 def test_every_asset_id_matches_the_pattern():
     for name in manifest()["assets"]:
         assert ASSET_ID, "ASSET_ID is not exported from markers"
-        assert __import__("re").match("^" + ASSET_ID + "$", name), "%s does not match ASSET_ID pattern" % name
+        assert re.match("^" + ASSET_ID + "$", name), "%s does not match ASSET_ID pattern" % name
 
 
 @pytest.mark.parametrize("name", sorted(manifest()["assets"]))
