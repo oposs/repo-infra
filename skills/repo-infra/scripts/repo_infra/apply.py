@@ -15,12 +15,18 @@ import pathlib
 import subprocess
 
 from .markers import parse_markers
+from .remote import protects_default_branch
 
 MERGE_DIR = pathlib.Path(".git/repo-infra/merge")
 
 # Reported as `conflict` by state.py when absent; required here so the ruleset
 # is never enabled before the checks it requires can actually report.
 REQUIRED_WORKFLOWS = (".github/workflows/ci.yml", ".github/workflows/changelog.yml")
+
+# What the ruleset POST must read back as required -- state.py's
+# classify_remote wants the same two contexts, kept here rather than shared
+# because that module has no reason to import apply.py's write path.
+REQUIRED_CONTEXTS = {"ci-passed", "changelog-updated"}
 
 
 class ApplyError(Exception):
@@ -244,8 +250,42 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "then apply this item again.")
         payload = (pathlib.Path(assets_root) / "gh/ruleset-main.json").read_text(
             encoding="utf-8")
-        gh.run(["gh", "api", "--method", "POST", f"repos/{repo}/rulesets",
-                "--input", _stage_ruleset_payload(repo_root, payload)])
+        output = gh.run(["gh", "api", "--method", "POST", f"repos/{repo}/rulesets",
+                         "--input", _stage_ruleset_payload(repo_root, payload)])
+        # A ruleset POST replaces the whole object -- the server can reject,
+        # rewrite or partially apply it, so "the call did not error" is not
+        # evidence the branch is actually guarded. Read back what was created
+        # and check it says what we asked for, not just that something exists.
+        created = json.loads(output)
+        if created.get("enforcement") != "active":
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back enforcement="
+                f"{created.get('enforcement')!r}, not 'active'. Check it in "
+                f"Settings -> Rules -> Rulesets on repos/{repo} by hand.")
+        if not protects_default_branch(created, facts.default_branch):
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back not covering "
+                f"the default branch '{facts.default_branch}' -- conditions "
+                f"were {created.get('conditions')!r}. Check it in Settings -> "
+                f"Rules -> Rulesets on repos/{repo} by hand.")
+        contexts = {check["context"] for rule in created.get("rules", [])
+                   if rule.get("type") == "required_status_checks"
+                   for check in rule["parameters"]["required_status_checks"]}
+        absent = REQUIRED_CONTEXTS - contexts
+        if absent:
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back without "
+                f"{', '.join(sorted(absent))} in required_status_checks. The "
+                f"server may have rejected or altered part of the payload -- "
+                f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
+                "by hand.")
+        if created.get("bypass_actors"):
+            raise ApplyError(
+                f"{name}: created the ruleset but it read back with "
+                f"bypass_actors={created['bypass_actors']!r}, not empty. A "
+                "ruleset that grants a bypass is not the one we shipped -- "
+                f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
+                "by hand.")
         return "enabled the branch ruleset with both required checks"
 
     raise ApplyError(f"{name}: not an administration item")

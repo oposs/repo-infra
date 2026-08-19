@@ -18,6 +18,23 @@ class GhError(Exception):
     """A `gh` invocation failed. Never swallowed, never defaulted."""
 
 
+def protects_default_branch(ruleset, default_branch):
+    """True if `ruleset`'s ref_name conditions cover `default_branch`.
+
+    A ruleset protects the default branch if it includes:
+    - ~ALL (protects all refs, so includes default branch)
+    - ~DEFAULT_BRANCH (explicit default branch ref)
+    - refs/heads/<default_branch> (explicit branch name)
+
+    Shared with apply.py, which checks a just-created ruleset against this
+    same rule -- one place to know the three spellings GitHub accepts, so a
+    fourth one discovered later only needs fixing here.
+    """
+    includes = ruleset.get("conditions", {}).get("ref_name", {}).get("include", [])
+    branch_ref = f"refs/heads/{default_branch}"
+    return "~ALL" in includes or "~DEFAULT_BRANCH" in includes or branch_ref in includes
+
+
 def _subprocess_run(args):
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
@@ -61,18 +78,7 @@ class Gh:
             ruleset = self.api(f"repos/{repo}/rulesets/{summary['id']}")
             if ruleset.get("enforcement") != "active":
                 continue
-            includes = ruleset.get("conditions", {}).get("ref_name", {}).get("include", [])
-            # A ruleset protects the default branch if it includes:
-            # - ~ALL (protects all refs, so includes default branch)
-            # - ~DEFAULT_BRANCH (explicit default branch ref)
-            # - refs/heads/<default_branch> (explicit branch name)
-            branch_ref = f"refs/heads/{default_branch}"
-            protects_default = (
-                "~ALL" in includes or
-                "~DEFAULT_BRANCH" in includes or
-                branch_ref in includes
-            )
-            if not protects_default:
+            if not protects_default_branch(ruleset, default_branch):
                 continue
             protected = True
             for rule in ruleset.get("rules", []):
