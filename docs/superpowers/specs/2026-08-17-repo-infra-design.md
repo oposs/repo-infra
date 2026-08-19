@@ -104,12 +104,12 @@ on `oposs/mkp-builder`, ruleset 20940234; the `required_status_checks` rule is n
       "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "ci-ok" },
-          { "context": "changelog-gate" } ] } } ] }
+          { "context": "ci-passed" },
+          { "context": "changelog-updated" } ] } } ] }
 ```
 
-**Two contexts, never the matrix legs.** `ci-ok` is an aggregator job that every generated
-CI workflow ends with (see *CI templates*); `changelog-gate` is the changelog check. Both
+**Two contexts, never the matrix legs.** `ci-passed` is an aggregator job that every generated
+CI workflow ends with (see *CI templates*); `changelog-updated` is the changelog check. Both
 names are stable across every ecosystem, so one ruleset payload fits every repository.
 Requiring matrix legs directly is brittle in both directions: adding a target silently
 changes which checks are required, and renaming one silently un-requires it.
@@ -139,8 +139,8 @@ current behaviour:
 > repository can start the runs by selecting **Approve workflows to run**.
 
 So the release PR's checks are parked, not suppressed. The maintainer clicks *Approve
-workflows to run* once; `ci-ok` then runs against the real merge result and
-`changelog-gate` skips itself to green on `release/*` (D13). Then the PR merges like any
+workflows to run* once; `ci-passed` then runs against the real merge result and
+`changelog-updated` skips itself to green on `release/*` (D13). Then the PR merges like any
 other.
 
 One deliberate click on a pull request that is reviewed by hand anyway. The alternative —
@@ -179,7 +179,7 @@ nothing else. An organisation-wide ruleset would silently reach beyond that boun
 
 It would also be a trap. On the day such a ruleset is created, every repository not yet
 converted loses the ability to push to `main` — including any release in flight, and
-including every repository whose CI has no `ci-ok` job yet, which the ruleset would block
+including every repository whose CI has no `ci-passed` job yet, which the ruleset would block
 entirely (D13). Per-repo means one repository changes at a time and nothing else notices.
 
 `oetiker` is a personal account and has no organisation rulesets, so per-repo is the only
@@ -315,10 +315,31 @@ Applied:
 Every installed asset carries a header line:
 
 ```yaml
-# repo-infra: release-core v3 — do not delete this line
+# repo-infra: release-pr v3 — do not delete this line
 ```
 
-The checker compares that marker against `assets/manifest.json`. A content hash is wrong
+**A file assembled from several assets carries several markers.** `ci.yml` is built from a
+frame plus one job block per ecosystem (see *CI templates*), so the frame's marker sits on
+line 2 and each block carries its own marker directly above it:
+
+```yaml
+name: CI
+# repo-infra: ci v1
+...
+jobs:
+  # repo-infra: ci-rust v2
+  fmt: ...
+  clippy: ...
+  # repo-infra: ci-claude-plugin v1
+  validate: ...
+```
+
+The checker reads every marker in a file, not only line 2, and reports drift per block. A
+rust repo can therefore upgrade its rust jobs without touching its plugin jobs. Without
+this, one CI file would mean one version number for all ecosystems, and adding an
+ecosystem would force every other block to be re-applied.
+
+The checker compares each marker against `assets/manifest.json`. A content hash is wrong
 here: every repo legitimately edits its workflows — project name, matrix targets, publish
 jobs — so a hash would report drift on every repo forever. The marker records only
 *which generation of the asset this is*. Upgrading re-applies the new asset and re-merges
@@ -337,7 +358,7 @@ is broken, discovered by a user. Asking once costs a question.
 
 ### D13 — a required workflow never carries a workflow-level filter
 
-`ci.yml` and `changelog-gate.yml` are required by D2. Neither may use `paths` or
+`ci.yml` and `changelog.yml` are required by D2. Neither may use `paths` or
 `paths-ignore` under `on: pull_request`. Ever.
 
 A `branches` filter is permitted **only** where it cannot exclude a pull request the
@@ -364,7 +385,7 @@ on:
   pull_request:
     branches: [main]      # base-branch filter only; never paths / paths-ignore
 jobs:
-  changelog-gate:
+  changelog-updated:
     if: >-                # job-level — skipping here reports Success
       !startsWith(github.head_ref, 'release/') &&
       !contains(github.event.pull_request.labels.*.name, 'no-changelog')
@@ -377,6 +398,42 @@ The failure this prevents does not look like a configuration error. It looks lik
 pull request with a check that never appears and no log to read — in a repository where
 someone reasonably added `paths: ['src/**']` to save CI minutes. The checker therefore
 treats a workflow-level filter on a required workflow as a `conflict`, not a `missing`.
+
+### D14 — names answer the question asked where they are read
+
+A name appears in two places that ask different questions, and the same string cannot serve
+both. So each is named for its reader.
+
+| | file + marker | workflow `name:` | required job id |
+|---|---|---|---|
+| | the **asset id** | what it is, and whether you run it | the **state** you must reach |
+| | `ci` | `CI` | `ci-passed` |
+| | `changelog` | `Changelog` | `changelog-updated` |
+| | `release-pr` | `Create release PR` | — |
+| | `release-publish` | `Publish release (automatic)` | — |
+| | `dependabot` | — | — |
+
+**Asset id** governs the file name and the marker, so `changelog.yml` carries
+`# repo-infra: changelog v1` and nothing has to be looked up. Blocks assembled into a file
+extend it with a suffix: `ci-rust`, `ci-python` (D11).
+
+**A required job carries no `name:`.** Its check context is then its job id, which cannot
+drift apart from the ruleset. Every other job may have a friendly `name:`. Renaming a
+required job silently un-requires the check, so the two must be impossible to separate.
+
+**Required job ids name the state, not the mechanism.** The merge box is read by someone
+who is blocked and wants to know what to do. `changelog-updated` says it; `changelog-gate`
+only reports that a gate exists. This is why the job id is not simply the asset id.
+
+**Exactly one workflow reads as a button.** `Create release PR` is the only thing anyone
+dispatches, and it is named for what pressing it actually does — it opens a pull request,
+it does not publish. Its counterpart says `(automatic)` in the name, which answers "why is
+there no *Run workflow* button?" before the question is asked. Naming the two halves as a
+symmetric pair was rejected: it presents a choice between two things when only one is
+choosable.
+
+Prose does not use the display names. `Publish release (automatic)` appears in the Actions
+sidebar; documentation says "the publish workflow" or `release-publish.yml`.
 
 ## Spec 1 — the frame
 
@@ -399,9 +456,10 @@ oposs/repo-infra
         manifest.json           asset -> version; action -> current major
         detection.json          signals -> ecosystems -> version files
         gh/ruleset-main.json    the exact payload from D2
-        workflows/              create-release-pr.yml, release-publisher.yml,
-                                changelog-gate.yml, lib/*.js
+        workflows/              release-pr.yml, release-publish.yml,
+                                changelog.yml, ci-frame.yml, lib/*.js
         ci/                     ci-rust.yml, ci-python.yml, ci-node.yml, …
+                                job blocks assembled into ci.yml, not whole workflows
         dependabot.yml
       scripts/repo_infra_check.py
       evals/evals.json
@@ -431,7 +489,7 @@ the one that would have installed the workflow. So `apply` proceeds in this orde
 never collapses it into one step:
 
 1. create the `no-changelog` label,
-2. land `ci.yml` (with its `ci-ok` job) and `changelog-gate.yml` on `main` through the
+2. land `ci.yml` (with its `ci-passed` job) and `changelog.yml` on `main` through the
    apply PR,
 3. **then** enable the ruleset with its two required contexts (D2).
 
@@ -513,7 +571,7 @@ The read-back also covers a residual uncertainty: `package-lock.json` records th
 version and must move with it; `pnpm-lock.yaml` is believed not to. If that is backwards,
 the assert fails on the first release rather than shipping a broken tag.
 
-### `create-release-pr.yml`
+### `release-pr.yml`
 
 ```yaml
 on: workflow_dispatch            # bugfix | feature | major
@@ -557,14 +615,14 @@ minutes. So checkout is unconditional and only tool steps are conditional:
 Everything else is JavaScript over `fs`. The commit and PR go through the Git Data API
 (D9). The job refuses to proceed if the computed tag already exists.
 
-### `release-publisher.yml`
+### `release-publish.yml`
 
 ```yaml
 on:
   push:
     branches: [main]
     paths: ['CHANGES.md']
-concurrency: { group: release-publisher, cancel-in-progress: false }
+concurrency: { group: release-publish, cancel-in-progress: false }
 permissions: { contents: write }
 ```
 
@@ -599,11 +657,11 @@ visible in the repository. Without the draft, binaries trickle into a published 
 over several minutes; without the generated `needs:` list, the core would depend on the
 add-ons, inverting the dependency.
 
-### The changelog gate
+### The changelog check
 
 Every PR must add something under `[Unreleased]`.
 
-**Required, not advisory.** The job is named `changelog-gate` and is one of the two
+**Required, not advisory.** The job is named `changelog-updated` and is one of the two
 contexts the ruleset requires (D2). Two layers:
 
 | When | What | Strength |
@@ -634,7 +692,7 @@ legitimate no-changelog PR ever merges:
 
 ```yaml
 jobs:
-  changelog-gate:
+  changelog-updated:
     if: >-
       !startsWith(github.head_ref, 'release/') &&
       !contains(github.event.pull_request.labels.*.name, 'no-changelog')
@@ -689,23 +747,30 @@ alone, and that is correct. Noted in `conventions.md` so nobody "fixes" it.
 
 ### CI templates
 
-One per ecosystem, each marked (`# repo-infra: ci-rust v1`):
+**One `ci.yml` per repository — never one file per ecosystem.** This is forced by D2. The
+required context `ci-passed` is a single aggregator job, and `needs:` cannot reach across
+workflow files. A repository matching two ecosystems — `mkp-builder` is `python` **and**
+`claude-plugin` — would otherwise produce either two jobs called `ci-passed` or none, and
+the required check would be ambiguous or absent.
 
-| Ecosystem | Jobs |
-|---|---|
-| rust | `fmt --check`, `clippy -D warnings`, `test`, cache |
-| python | `ruff`, `pytest` |
-| checkmk-plugin | mkp-builder's existing `validate.yml`, adopted as-is |
-| node | `pnpm install --frozen-lockfile`, lint, test |
-| perl | `prove -l t/` |
-| go | `go vet`, `go test` |
-| php | `composer install`, `phpunit` |
+So `ci.yml` is **assembled**: a frame, plus one job block per detected ecosystem, plus the
+aggregator.
+
+| Ecosystem | Block asset | Jobs |
+|---|---|---|
+| rust | `ci-rust` | `fmt --check`, `clippy -D warnings`, `test`, cache |
+| python | `ci-python` | `ruff`, `pytest` |
+| checkmk-plugin | `ci-checkmk-plugin` | mkp-builder's existing `validate.yml`, adopted as-is |
+| node | `ci-node` | `pnpm install --frozen-lockfile`, lint, test |
+| perl | `ci-perl` | `prove -l t/` |
+| go | `ci-go` | `go vet`, `go test` |
+| php | `ci-php` | `composer install`, `phpunit` |
 
 Plus two jobs every repo gets. The first is `node --test .github/workflows/lib/` — the
 release logic tests itself. The second is the aggregator that D2 requires:
 
 ```yaml
-  ci-ok:
+  ci-passed:
     if: always()
     needs: [fmt, clippy, test, workflow-lib]   # every job above, per ecosystem
     runs-on: ubuntu-latest
@@ -714,7 +779,7 @@ release logic tests itself. The second is the aggregator that D2 requires:
         run: exit 1
 ```
 
-`ci-ok` exists so the ruleset can name **one** context that means "this repository's CI
+`ci-passed` exists so the ruleset can name **one** context that means "this repository's CI
 passed", whatever that repository's jobs happen to be. `if: always()` is required — without
 it the job is skipped when a dependency fails, and a skipped job reports Success (D13),
 which would turn the required check green on a red build. That inversion is the single
@@ -733,15 +798,18 @@ repo-infra check — oetiker/mdmost
 
 detected   rust (Cargo.toml, Cargo.lock) · ships a CLI
 
-  release-core          outdated   v1 installed, v3 available
-  changelog-gate        missing
+  release-pr            outdated   v1 installed, v3 available
+  release-publish       ok
+  changelog             missing
   changes-format        conflict   '## Unreleased' → '## [Unreleased]'
   branch-protection     missing    main is unprotected
-  required-checks       missing    ruleset requires neither ci-ok nor changelog-gate
+  required-checks       missing    ruleset requires neither ci-passed nor
+                                   changelog-updated
   no-changelog-label    missing    dependabot requests it; it does not exist
   actions-open-pr       missing    can_approve_pull_request_reviews = false
   dependabot            missing
-  ci-rust               outdated   v1 installed, v2 available
+  ci                    ok         frame v1
+  ci-rust               outdated   block v1 installed, v2 available
 
   ! release.yml pushes to main 3× (version commit, formula, bottles).
     Protecting main breaks it. Migration required, not an upgrade.

@@ -16,7 +16,7 @@ This plan covers **part of spec 1** — the release core, developed and proven i
 
 A second plan covers the rest of spec 1: the plugin shell, `detection.json`, `manifest.json`, the Python checker, `SKILL.md` and the `check`/`apply` commands. That plan turns the artefacts this one produces into installable assets. It comes second because the assets must exist and be proven before there is any point shipping a tool that installs them.
 
-Success for this plan: `oposs/repo-infra` cuts release `v0.1.0` by dispatching **Create release PR**, a human merging that PR, and **Release publisher** tagging and publishing without manual intervention.
+Success for this plan: `oposs/repo-infra` cuts release `v0.1.0` by dispatching **Create release PR**, a human merging that PR, and the publish workflow tagging and publishing with no further action.
 
 ## Global Constraints
 
@@ -56,9 +56,9 @@ Defined once here so tasks stay consistent. Each is implemented by the task name
   dependabot.yml
   workflows/
     ci.yml                        runs the library tests
-    changelog-gate.yml            required: does this PR touch [Unreleased]?
-    create-release-pr.yml         half one of the release
-    release-publisher.yml         half two of the release
+    changelog.yml            required: does this PR touch [Unreleased]?
+    release-pr.yml         half one of the release
+    release-publish.yml         half two of the release
     lib/
       version.js  version.test.js
       changes.js  changes.test.js
@@ -350,7 +350,7 @@ This is the task that makes everything after it land through a pull request.
 
 ```yaml
 name: CI
-# repo-infra: ci-workflow-lib v1
+# repo-infra: ci v1
 
 on:
   push:
@@ -382,7 +382,7 @@ jobs:
   # The single context the ruleset requires (spec D2). It exists so branch
   # protection can name one check that means "this repository's CI passed",
   # whatever this repository's jobs happen to be. Add every job above to needs.
-  ci-ok:
+  ci-passed:
     if: always()
     needs: [lib]
     runs-on: ubuntu-latest
@@ -392,9 +392,9 @@ jobs:
         run: exit 1
 ```
 
-`if: always()` is not optional and not cosmetic. Without it, `ci-ok` is *skipped* when a dependency fails — and GitHub reports a skipped job as **Success** to branch protection. The required check would go green on a red build. This fails open, silently, and looks like it is working; it is the most dangerous single line in this plan to get wrong.
+`if: always()` is not optional and not cosmetic. Without it, `ci-passed` is *skipped* when a dependency fails — and GitHub reports a skipped job as **Success** to branch protection. The required check would go green on a red build. This fails open, silently, and looks like it is working; it is the most dangerous single line in this plan to get wrong.
 
-The job has no `name:`, so its check context is the job id, `ci-ok` — which is what the ruleset in Step 8 names.
+The job has no `name:`, so its check context is the job id, `ci-passed` — which is what the ruleset in Step 8 names.
 
 - [ ] **Step 2: Create `.github/dependabot.yml`**
 
@@ -516,7 +516,7 @@ Write `ruleset-main.json` to a scratch path (do **not** commit it; the plugin wi
       "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "ci-ok" }
+          { "context": "ci-passed" }
         ]
       }
     }
@@ -530,7 +530,7 @@ gh api -X POST repos/oposs/repo-infra/rulesets \
   --input /scratch/oetiker/claude-tmp/ruleset-main.json
 ```
 
-**Only `ci-ok` is required at this point, not `changelog-gate`.** The gate does not exist until Task 8. A required status check whose workflow is absent never reports and blocks *every* pull request in the repository — including the ones that build the rest of this plan. Task 8 adds the second context after the gate is merged.
+**Only `ci-passed` is required at this point, not `changelog-updated`.** The gate does not exist until Task 8. A required status check whose workflow is absent never reports and blocks *every* pull request in the repository — including the ones that build the rest of this plan. Task 8 adds the second context after the gate is merged.
 
 This is the same ordering rule `apply` follows on any repository (spec, *The run model*): create the label, land the workflows, **then** require the checks. `repo-infra` gets no exemption from it.
 
@@ -1528,28 +1528,28 @@ git checkout main && git pull
 
 ---
 
-### Task 8: The changelog gate
+### Task 8: `changelog.yml` — the changelog check
 
 **Files:**
-- Create: `.github/workflows/changelog-gate.yml`
+- Create: `.github/workflows/changelog.yml`
 
 **Interfaces:**
 - Consumes: `changes.js` `unreleasedBlock` (Task 4)
-- Produces: a check run named `changelog-gate` on every pull request — the second context the ruleset requires (spec D2)
+- Produces: a check run named `changelog-updated` on every pull request — the second context the ruleset requires (spec D2)
 
 - [ ] **Step 1: Create the branch**
 
 ```bash
-cd /home/oetiker/checkouts/repo-infra && git checkout -b workflow/changelog-gate
+cd /home/oetiker/checkouts/repo-infra && git checkout -b workflow/changelog
 ```
 
 - [ ] **Step 2: Write the workflow**
 
-Create `.github/workflows/changelog-gate.yml`:
+Create `.github/workflows/changelog.yml`:
 
 ```yaml
 name: Changelog
-# repo-infra: changelog-gate v1
+# repo-infra: changelog v1
 #
 # Required, not advisory (spec D2). Being required is only safe because the
 # escape hatch below is a JOB-level `if:` — a job skipped by a condition
@@ -1571,9 +1571,9 @@ permissions:
   pull-requests: read
 
 jobs:
-  # No `name:` — the check context is the job id, `changelog-gate`, which is
+  # No `name:` — the check context is the job id, `changelog-updated`, which is
   # what the ruleset requires. Renaming this job silently un-requires the check.
-  changelog-gate:
+  changelog-updated:
     # release/* is exempt because the release workflow writes CHANGES.md itself.
     # The no-changelog label is the deliberate escape hatch for typo and CI-only
     # changes — without it every weekly dependabot PR is blocked, since this
@@ -1640,7 +1640,7 @@ Under `### New`:
 - [ ] **Step 4: Commit, push, and open the pull request**
 
 ```bash
-git add .github/workflows/changelog-gate.yml CHANGES.md
+git add .github/workflows/changelog.yml CHANGES.md
 git commit -m "Add the changelog gate
 
 Compares the [Unreleased] block at base and head, so touching an old
@@ -1651,7 +1651,7 @@ pull request skips the job and reports Success; a paths filter here would
 leave every PR pending forever instead.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
-git push -u origin workflow/changelog-gate
+git push -u origin workflow/changelog
 gh pr create --fill --base main
 ```
 
@@ -1698,14 +1698,14 @@ A gate that has never been seen to fail is not known to work. This step is the t
 - [ ] **Step 7: Merge the gate pull request**
 
 ```bash
-gh pr checkout workflow/changelog-gate
+gh pr checkout workflow/changelog
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 ```
 
 - [ ] **Step 8: Now require the gate (spec D2)**
 
-Only now, with `changelog-gate.yml` merged to `main`, is it safe to require the second context. Requiring it earlier would have blocked every pull request in this plan, including the one that just merged.
+Only now, with `changelog.yml` merged to `main`, is it safe to require the second context. Requiring it earlier would have blocked every pull request in this plan, including the one that just merged.
 
 Read the current ruleset, add the context, and write it back:
 
@@ -1719,8 +1719,8 @@ rs = json.load(sys.stdin)
 for rule in rs["rules"]:
     if rule["type"] == "required_status_checks":
         checks = rule["parameters"]["required_status_checks"]
-        if not any(c["context"] == "changelog-gate" for c in checks):
-            checks.append({"context": "changelog-gate"})
+        if not any(c["context"] == "changelog-updated" for c in checks):
+            checks.append({"context": "changelog-updated"})
 json.dump(rs, sys.stdout, indent=2)
 ' > /scratch/oetiker/claude-tmp/ruleset-main-v2.json
 
@@ -1735,16 +1735,16 @@ gh api repos/oposs/repo-infra/rulesets/$RULESET_ID \
   --jq '[.rules[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort | join(",")'
 ```
 
-Expected exactly: `changelog-gate,ci-ok`
+Expected exactly: `changelog-updated,ci-passed`
 
 If either context is missing, stop. Do not proceed to Task 9 with a ruleset that does not match the spec.
 
 ---
 
-### Task 9: `create-release-pr.yml` — half one of the release
+### Task 9: `release-pr.yml` — half one of the release
 
 **Files:**
-- Create: `.github/workflows/create-release-pr.yml`
+- Create: `.github/workflows/release-pr.yml`
 
 **Interfaces:**
 - Consumes: `version.js` (Task 2), `changes.js` (Task 4), `bump.js` (Task 5), `checks.js` (Task 6), `commit.js` (Task 7), `.github/repo-infra.json` (Task 1)
@@ -1753,21 +1753,21 @@ If either context is missing, stop. Do not proceed to Task 9 with a ruleset that
 - [ ] **Step 1: Create the branch**
 
 ```bash
-cd /home/oetiker/checkouts/repo-infra && git checkout -b workflow/create-release-pr
+cd /home/oetiker/checkouts/repo-infra && git checkout -b workflow/release-pr
 ```
 
 - [ ] **Step 2: Write the workflow**
 
-Create `.github/workflows/create-release-pr.yml`:
+Create `.github/workflows/release-pr.yml`:
 
 ```yaml
 name: Create release PR
-# repo-infra: release-core v1
+# repo-infra: release-pr v1
 #
 # Half one of a two-step release. main is protected and GITHUB_TOKEN cannot be
 # given a ruleset bypass — the bypass list takes users, teams and GitHub Apps,
 # and the Actions token is none of those. So the release lands through a pull
-# request like any other change. Merging it triggers Release publisher.
+# request like any other change. Merging it triggers release-publish.yml.
 
 on:
   workflow_dispatch:
@@ -1985,7 +1985,7 @@ Under `### New`:
 - [ ] **Step 4: Commit, push, merge**
 
 ```bash
-git add .github/workflows/create-release-pr.yml CHANGES.md
+git add .github/workflows/release-pr.yml CHANGES.md
 git commit -m "Add Create release PR: half one of the release
 
 Computes the version from the tags, rolls CHANGES.md, bumps the declared
@@ -1997,7 +1997,7 @@ after producing a branch, a commit and an open pull request. This is in
 addition to the required checks on the ruleset, not a substitute for them.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
-git push -u origin workflow/create-release-pr
+git push -u origin workflow/release-pr
 gh pr create --fill --base main
 gh pr merge --squash --delete-branch
 git checkout main && git pull
@@ -2005,10 +2005,10 @@ git checkout main && git pull
 
 ---
 
-### Task 10: `release-publisher.yml` — half two of the release
+### Task 10: `release-publish.yml` — half two of the release
 
 **Files:**
-- Create: `.github/workflows/release-publisher.yml`
+- Create: `.github/workflows/release-publish.yml`
 
 **Interfaces:**
 - Consumes: `changes.js` (Task 4), `bump.js` `verifyFile` (Task 5), `.github/repo-infra.json` (Task 1)
@@ -2017,16 +2017,16 @@ git checkout main && git pull
 - [ ] **Step 1: Create the branch**
 
 ```bash
-cd /home/oetiker/checkouts/repo-infra && git checkout -b workflow/release-publisher
+cd /home/oetiker/checkouts/repo-infra && git checkout -b workflow/release-publish
 ```
 
 - [ ] **Step 2: Write the workflow**
 
-Create `.github/workflows/release-publisher.yml`:
+Create `.github/workflows/release-publish.yml`:
 
 ```yaml
-name: Release publisher
-# repo-infra: release-publisher v1
+name: Publish release (automatic)
+# repo-infra: release-publish v1
 #
 # Half two. Merging the release pull request lands the rolled CHANGES.md on main,
 # and that merge triggers this.
@@ -2045,7 +2045,7 @@ on:
       - CHANGES.md
 
 concurrency:
-  group: release-publisher
+  group: release-publish
   cancel-in-progress: false
 
 permissions:
@@ -2219,7 +2219,7 @@ Run workflow → bugfix / feature / major). It:
 
 Nothing is tagged or published yet. Closing the pull request cancels the release.
 
-**2. Review the changelog and merge.** That triggers `Release publisher`, which
+**2. Review the changelog and merge.** That triggers the publish workflow, which
 reads the version back out of `CHANGES.md`, checks every version file agrees,
 tags, and publishes the GitHub release.
 
@@ -2234,7 +2234,7 @@ a separate ref namespace.
 
 ## Why the release pull request needs a click
 
-The ruleset requires two status checks, `ci-ok` and `changelog-gate`. Nothing
+The ruleset requires two status checks, `ci-passed` and `changelog-updated`. Nothing
 merges to `main` without them, including a release.
 
 A pull request opened by `GITHUB_TOKEN` does not start its `pull_request`
@@ -2252,7 +2252,7 @@ The same restriction covers pushes: a push made with `GITHUB_TOKEN` does not
 trigger workflows either, and the release branch is created by the Actions token
 through the Git Data API. There is no automatic path to a green check here.
 
-`changelog-gate` skips itself on `release/*` branches. A skipped job reports
+`changelog-updated` skips itself on `release/*` branches. A skipped job reports
 Success, so it satisfies the requirement without running.
 
 **Check this still holds** by opening a release pull request and looking for the
@@ -2266,12 +2266,12 @@ workflow skipped by a `paths` or `branches` filter stays **Pending** forever and
 blocks the pull request. GitHub's own guidance: do not use path or branch
 filtering to skip workflow runs if the workflow is required.
 
-So `ci.yml` and `changelog-gate.yml` carry no `paths` filter, and every
+So `ci.yml` and `changelog.yml` carry no `paths` filter, and every
 conditional lives inside a job. If someone adds `paths:` to save CI minutes,
 every pull request that does not match it becomes unmergeable, with no failing
 check and no log to explain why.
 
-## Why `Release publisher` has no manual trigger
+## Why publishing has no manual trigger
 
 Publishing should be a consequence of merging a release pull request, not
 something anyone starts from a dropdown. A failed run is re-run from the Actions
@@ -2284,7 +2284,7 @@ the re-run does exactly what the original attempt would have done.
 Under `### New`:
 
 ```markdown
-- **Release publisher**: reads the released version back out of `CHANGES.md`,
+- **Publish release**: reads the released version back out of `CHANGES.md`,
   refuses to tag when any version file disagrees, creates an annotated tag and
   publishes the release. It exposes `version`, `tag` and `release_id` as job
   outputs — the seam that per-language publish add-ons will attach to.
@@ -2295,8 +2295,8 @@ Under `### New`:
 - [ ] **Step 5: Commit, push, merge**
 
 ```bash
-git add .github/workflows/release-publisher.yml RELEASING.md CHANGES.md
-git commit -m "Add Release publisher: half two of the release
+git add .github/workflows/release-publish.yml RELEASING.md CHANGES.md
+git commit -m "Add release-publish: half two of the release
 
 Reads the version back out of CHANGES.md, so this works for repositories
 that have no version file at all. Cross-checks every declared version
@@ -2307,7 +2307,7 @@ draft and published by a finalize job, so spec 2's add-ons have somewhere
 to attach artifacts before anyone sees it.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
-git push -u origin workflow/release-publisher
+git push -u origin workflow/release-publish
 gh pr create --fill --base main
 gh pr merge --squash --delete-branch
 git checkout main && git pull
@@ -2343,7 +2343,7 @@ Expected: latest runs `success`; `unreleased empty: false`
 - [ ] **Step 2: Dispatch the release**
 
 ```bash
-gh workflow run create-release-pr.yml --repo oposs/repo-infra -f release_type=feature
+gh workflow run release-pr.yml --repo oposs/repo-infra -f release_type=feature
 ```
 
 `feature` gives `0.1.0` from the zero version, which is the right first release for something not yet complete.
@@ -2353,7 +2353,7 @@ gh workflow run create-release-pr.yml --repo oposs/repo-infra -f release_type=fe
 Run:
 ```bash
 gh run watch --repo oposs/repo-infra \
-  "$(gh run list --repo oposs/repo-infra --workflow create-release-pr.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+  "$(gh run list --repo oposs/repo-infra --workflow release-pr.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 Expected: conclusion `success`, with a notice reading `All N checks green on <sha>`
 
@@ -2393,7 +2393,7 @@ gh pr checks --repo oposs/repo-infra --watch \
   "$(gh pr list --repo oposs/repo-infra --head release/v0.1.0 --json number --jq '.[0].number')"
 ```
 
-Expected: `ci-ok` **pass** (it ran), `changelog-gate` **skipping** or **pass** (exempt on `release/*`). The PR must report mergeable before the next step.
+Expected: `ci-passed` **pass** (it ran), `changelog-updated` **skipping** or **pass** (exempt on `release/*`). The PR must report mergeable before the next step.
 
 If the banner never appears and the checks stay pending with no runs at all, stop — that means GitHub no longer creates runs for `GITHUB_TOKEN`-authored pull requests, which invalidates spec D2 and makes both required contexts unreachable. Record it against the spec's risk register before working around it.
 
@@ -2411,7 +2411,7 @@ Note: a squash merge produces a single commit on `main` that changes `CHANGES.md
 Run:
 ```bash
 gh run watch --repo oposs/repo-infra \
-  "$(gh run list --repo oposs/repo-infra --workflow release-publisher.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+  "$(gh run list --repo oposs/repo-infra --workflow release-publish.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 Expected: both `publish` and `finalize` jobs `success`
 
@@ -2442,7 +2442,7 @@ gh pr create --fill --base main
 gh pr merge --squash --delete-branch
 git checkout main && git pull
 gh run watch --repo oposs/repo-infra \
-  "$(gh run list --repo oposs/repo-infra --workflow release-publisher.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+  "$(gh run list --repo oposs/repo-infra --workflow release-publish.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 Expected: the run succeeds with the notice `v0.1.0 is already tagged - nothing to do.` and **no** second release
 
@@ -2454,15 +2454,15 @@ Add to `CHANGES.md` under `### Changed` on a new pull request, then merge it:
 
 ```markdown
 - The release system is proven end to end: `v0.1.0` was cut by dispatching
-  **Create release PR**, merging the pull request it opened, and letting
-  **Release publisher** tag and publish, with no manual step in between.
+  **Create release PR**, merging the pull request it opened, and letting the
+  publish workflow tag and publish, with no manual step in between.
 ```
 
 ---
 
 ## Self-review
 
-**Spec coverage.** Against spec 1: D1 Task 3 Step 8; D2 Task 3 Steps 1 and 8 (the `ci-ok` job and the `ci-ok` context), Task 8 Step 8 (the `changelog-gate` context), Task 11 Step 5 (the approval click) and `RELEASING.md`; D3 Task 3 Steps 6–7; D5 Tasks 4 and 10; D6 Tasks 1 and 4; D7 Task 9 (the tool-step comment block); D8 Tasks 2, 4–7 and the CI job in Task 3; D9 Tasks 7 and 10; D11 markers on every workflow file; D12 not exercised here because `repo-infra`'s own config is written by hand — it lands in the plugin plan with `detection.json`; D13 Tasks 3 and 8 (neither required workflow carries a `paths` filter; both escape hatches are job-level).
+**Spec coverage.** Against spec 1: D1 Task 3 Step 8; D2 Task 3 Steps 1 and 8 (the `ci-passed` job and the `ci-passed` context), Task 8 Step 8 (the `changelog-updated` context), Task 11 Step 5 (the approval click) and `RELEASING.md`; D3 Task 3 Steps 6–7; D5 Tasks 4 and 10; D6 Tasks 1 and 4; D7 Task 9 (the tool-step comment block); D8 Tasks 2, 4–7 and the CI job in Task 3; D9 Tasks 7 and 10; D11 markers on every workflow file; D12 not exercised here because `repo-infra`'s own config is written by hand — it lands in the plugin plan with `detection.json`; D13 Tasks 3 and 8 (neither required workflow carries a `paths` filter; both escape hatches are job-level).
 
 **Deliberately deferred to the plugin plan** (spec 1, second half): `detection.json`, `manifest.json`, `SKILL.md`, `references/`, the `check` and `apply` commands, the Python checker, and packaging `ruleset-main.json` as a shipped asset rather than a scratch file. D4 (per-repo rather than org-level protection) is a policy this plan follows and the plugin plan enforces.
 
