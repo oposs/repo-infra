@@ -85,30 +85,36 @@ def _node_lockfile_combinations():
         "npm": ("package-lock.json", None),
     }
 
-    # Fixture name mapping for multi-lockfile combinations
+    # Fixture name mapping for multi-lockfile combinations (keys sorted for determinism)
     fixture_names = {
-        ("pnpm",): "repo-node-pnpm",
         ("bun",): "repo-node-bun",
         ("npm",): "repo-node-npm",
-        ("pnpm", "bun"): "repo-node-pnpm-bun",
-        ("pnpm", "npm"): "repo-node-pnpm-npm",
+        ("pnpm",): "repo-node-pnpm",
         ("bun", "npm"): "repo-node-bun-npm",
-        ("pnpm", "bun", "npm"): "repo-node-ambiguous",
+        ("bun", "pnpm"): "repo-node-pnpm-bun",
+        ("npm", "pnpm"): "repo-node-pnpm-npm",
+        ("bun", "npm", "pnpm"): "repo-node-ambiguous",
     }
 
-    # Ambiguity mapping: which managers conflict
+    # Ambiguity mapping: which managers conflict (keys sorted for determinism)
     ambiguity_map = {
-        ("pnpm", "bun"): "node-pnpm-vs-bun",
-        ("pnpm", "npm"): "node-lockfiles",
         ("bun", "npm"): "node-bun-vs-npm",
+        ("bun", "pnpm"): "node-pnpm-vs-bun",
+        ("npm", "pnpm"): "node-lockfiles",
     }
 
     cases = []
 
-    # Generate all non-empty combinations of lockfiles (2^3 - 1 = 7 cases)
-    for r in range(1, 4):
-        for combo in itertools.combinations(["pnpm", "bun", "npm"], r):
-            fixture = fixture_names[combo]
+    # Derive manager names from lockfiles dict (sorted for determinism).
+    # Adding a fourth manager extends coverage automatically.
+    manager_names = sorted(lockfiles.keys())
+
+    # Generate all non-empty combinations of lockfiles (2^n - 1 cases where n = len(lockfiles))
+    for r in range(1, len(lockfiles) + 1):
+        for combo in itertools.combinations(manager_names, r):
+            # Normalize combo by sorting it for consistent dict lookup
+            sorted_combo = tuple(sorted(combo))
+            fixture = fixture_names[sorted_combo]
 
             # Single lockfile: select its block, no ambiguities
             if len(combo) == 1:
@@ -122,7 +128,8 @@ def _node_lockfile_combinations():
                 expected_blocks = ["ci-lib"]
                 expected_ambiguities = []
                 for pair in itertools.combinations(combo, 2):
-                    expected_ambiguities.append(ambiguity_map[pair])
+                    sorted_pair = tuple(sorted(pair))
+                    expected_ambiguities.append(ambiguity_map[sorted_pair])
 
             cases.append((fixture, expected_blocks, expected_ambiguities))
 
