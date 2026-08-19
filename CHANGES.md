@@ -13,6 +13,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+- `changes.js`: parse, roll and extract release notes from `CHANGES.md`, with the
+  roller validating the file's shape before it writes. The previous implementations
+  were single regexes that produced nothing at all on an unexpected shape, and
+  "nothing" is indistinguishable from "no changes to release".
+
 ### Changed
 
 ### Fixed
