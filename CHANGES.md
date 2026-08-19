@@ -34,6 +34,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `CHANGES.md`, sets every declared version file and opens a `release/vX.Y.Z` pull
   request. It refuses to run when no check has reported on the commit, because a
   release of untested code is exactly what the guard exists to prevent.
+- **Publish release**: reads the released version back out of `CHANGES.md`,
+  refuses to tag when any version file disagrees, creates an annotated tag and
+  publishes the release. It exposes `version`, `tag` and `release_id` as job
+  outputs — the seam that per-language publish add-ons will attach to.
+- `RELEASING.md` documenting the two-step release and, more importantly, why each
+  of its unusual parts is the way it is.
 
 ### Changed
 
