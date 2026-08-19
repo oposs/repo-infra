@@ -1,5 +1,6 @@
+from repo_infra.detect import DetectResult
 from repo_infra.remote import Facts
-from repo_infra.state import classify_files, classify_remote
+from repo_infra.state import Item, classify_ambiguities, classify_files, classify_remote
 
 MANIFEST = {"assets": {}, "ci_blocks": {}, "actions": {}}
 ASSET = "name: CI\n# repo-infra: ci v3\n\njobs:\n  # repo-infra: ci-rust v2\n  fmt:\n"
@@ -136,3 +137,15 @@ def test_a_required_workflow_mentioning_paths_only_in_a_comment_is_not_a_conflic
     rendered = write(tmp_path, CI_WITH_FILTER_COMMENT_ONLY)
     items = {item.name: item for item in classify_files(tmp_path, rendered, MANIFEST)}
     assert items["ci"].state == "ok"
+
+
+def test_an_unresolved_ambiguity_becomes_an_ambiguous_item():
+    result = DetectResult(ambiguities=[
+        {"id": "node-lockfiles", "question": "pnpm or npm?", "options": ["pnpm", "npm"]},
+    ])
+    items = classify_ambiguities(result)
+    assert items == [Item("node-lockfiles", "ambiguous", "pnpm or npm?")]
+
+
+def test_no_ambiguities_means_no_items():
+    assert classify_ambiguities(DetectResult()) == []

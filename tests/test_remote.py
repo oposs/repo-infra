@@ -119,3 +119,15 @@ def test_ruleset_with_explicit_branch_protects_default_branch():
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
     assert result.protected is True
+
+
+def test_current_repo_reads_the_checkout_gh_is_run_from():
+    calls = []
+
+    def run(args):
+        calls.append(args)
+        return "oposs/repo-infra\n"
+
+    assert Gh(run=run).current_repo() == "oposs/repo-infra"
+    assert calls == [["gh", "repo", "view", "--json", "nameWithOwner",
+                      "-q", ".nameWithOwner"]]

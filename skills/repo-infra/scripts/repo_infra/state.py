@@ -16,6 +16,11 @@ from .markers import parse_markers
 
 Item = namedtuple("Item", "name state detail")
 
+# report.py and cli.py both import this rather than each spelling out the same
+# tuple, so the report's count and `check`'s exit code can never disagree
+# about what counts as drift.
+NEEDS_ATTENTION_STATES = ("missing", "outdated", "conflict", "ambiguous")
+
 # Reported as `missing`, a path-filtered required workflow would let `apply`
 # proceed and the breakage -- pull requests pending forever -- would only
 # surface at the next release. This must be a `conflict` instead (spec D13).
@@ -111,6 +116,16 @@ def classify_remote(facts):
         "" if ok else f"can_approve_pull_request_reviews = {facts.can_approve_pr}, "
                       f"default_workflow_permissions = {facts.workflow_permissions}"))
     return items
+
+
+def classify_ambiguities(result):
+    """Unresolved questions from detection, one item per ambiguity.
+
+    `apply` refuses to run while any of these stand, so they must count as
+    needing attention here too -- otherwise the report can say "nothing to
+    do" on a repository that `apply` then blocks on.
+    """
+    return [Item(a["id"], "ambiguous", a["question"]) for a in result.ambiguities]
 
 
 def _skips(repo_root):
