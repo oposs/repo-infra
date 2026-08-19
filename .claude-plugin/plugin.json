@@ -1,7 +1,7 @@
 {
   "name": "repo-infra",
   "description": "Bring a repository's release, protection, CI and documentation infrastructure up to the current standard, and keep it there.",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "author": {
     "name": "Tobias Oetiker",
     "email": "tobi@oetiker.ch"

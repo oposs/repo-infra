@@ -13,6 +13,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+### Changed
+
+### Fixed
+
+## 0.1.0 - 2026-08-19
+### New
 - `changes.js`: parse, roll and extract release notes from `CHANGES.md`, with the
   roller validating the file's shape before it writes. The previous implementations
   were single regexes that produced nothing at all on an unexpected shape, and
@@ -41,10 +47,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `RELEASING.md` documenting the two-step release and, more importantly, why each
   of its unusual parts is the way it is.
 
-### Changed
-
 ### Fixed
-
 - The release guard waited for its own job. It polls every check run on the
   commit, and its own job is one of them, so it timed out after 15 minutes
   reporting `Still running: Prepare the release pull request`. `checkState` and
