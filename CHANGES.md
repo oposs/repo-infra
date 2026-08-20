@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- A CI block for Checkmk plugins: lint, tests and a throwaway package build. The Checkmk API a plugin imports is declared by the plugin, not by this block.
 - The plugin reads a repository's ruleset, labels and workflow permissions.
 - The plugin ships the release workflows as versioned, installable assets.
 - The plugin can read and write asset version markers.
