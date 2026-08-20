@@ -1,0 +1,53 @@
+  cmk-lint:
+    name: Plugin lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install ruff
+
+      - run: ruff check local/
+
+  cmk-test:
+    name: Plugin tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest
+
+      # The Checkmk API a plugin imports is a toolchain concern, not an
+      # infrastructure one (D15): the plugin declares how to obtain it and
+      # this job only honours that declaration. The cmk-oposs-plugin skill is
+      # what writes the declaration and the test harness beside it.
+      - name: Install the dependencies the plugin declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+
+      - run: python3 -m pytest -q
+
+  cmk-package:
+    name: Package builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # A build with a throwaway version. If the package cannot be assembled,
+      # that is worth knowing on the pull request rather than at release time.
+      - uses: oposs/mkp-builder@v2
+        with:
+          version: 0.0.0
+          verbose: 'true'

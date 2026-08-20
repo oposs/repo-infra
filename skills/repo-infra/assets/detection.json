@@ -85,6 +85,12 @@
       ]
     },
     {
+      "id": "checkmk-plugin",
+      "signals": {"all": [".mkp-builder.ini"]},
+      "ci_block": "ci-checkmk-plugin",
+      "version_files": []
+    },
+    {
       "id": "perl-mkpl",
       "signals": {"all": ["Makefile.PL"], "none": ["configure.ac"]},
       "ci_block": "ci-perl-mkpl",

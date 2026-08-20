@@ -225,3 +225,17 @@ def test_an_autotools_repository_that_also_has_makefile_pl_is_not_both():
         assert result.blocks == ["ci-lib", "ci-perl-autotools"]
     finally:
         (HERE / "fixtures/repo-perl-autotools/Makefile.PL").unlink()
+
+
+def test_a_checkmk_plugin_gets_the_checkmk_block():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-checkmk")
+    assert result.ecosystems == ["checkmk-plugin"]
+    assert result.blocks == ["ci-lib", "ci-checkmk-plugin"]
+
+
+def test_a_checkmk_plugin_has_no_version_file():
+    """mkp-builder takes the version from the release tag, so there is nothing
+    in the tree to rewrite. CHANGES.md stays the single source of truth (D5)
+    and the publisher has nothing to cross-check -- correct, not a gap."""
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-checkmk")
+    assert result.version_files == []

@@ -37,7 +37,8 @@
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
     "ci-perl-autotools": {"version": 1, "jobs": ["perl-autotools"]},
-    "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]}
+    "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
+    "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]}
   },
   "actions": {
     "actions/checkout": "v7",
@@ -48,7 +49,8 @@
     "actions/setup-go": "v7",
     "golangci/golangci-lint-action": "v9",
     "oven-sh/setup-bun": "v2",
-    "shogo82148/actions-setup-perl": "v1"
+    "shogo82148/actions-setup-perl": "v1",
+    "oposs/mkp-builder": "v2"
   },
   "gh": {
     "ruleset-main": {"version": 1, "source": "gh/ruleset-main.json"}
