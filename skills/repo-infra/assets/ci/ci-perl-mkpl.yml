@@ -1,0 +1,37 @@
+  perl-mkpl:
+    name: Perl ${{ matrix.perl }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        perl: ['5.40', '5.36', '5.32']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: ${{ matrix.perl }}
+
+      - uses: actions/cache@v6
+        with:
+          path: thirdparty
+          key: cpan-${{ matrix.perl }}-${{ hashFiles('Makefile.PL') }}
+
+      - run: perl Makefile.PL
+
+      # A failed dependency build says nothing useful on stdout; the log is the
+      # only place the actual error appears.
+      - name: Build the vendored dependencies
+        run: |
+          if make thirdparty; then
+            :
+          else
+            cat thirdparty/work/*/build.log
+            exit 1
+          fi
+
+      - run: make test
+
+      - name: Prepare the cache
+        run: rm -f thirdparty/Makefile* && rm -rf thirdparty/work

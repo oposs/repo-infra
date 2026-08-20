@@ -70,6 +70,25 @@
           "verify": "\"version\"\\s*:\\s*\"$VERSION\""
         }
       ]
+    },
+    {
+      "id": "perl-autotools",
+      "signals": {"all": ["configure.ac", "cpanfile"]},
+      "ci_block": "ci-perl-autotools",
+      "version_files": [
+        {
+          "path": "configure.ac",
+          "pattern": "AC_INIT\\(\\[([^\\]]*)\\],\\s*\\[[^\\]]*\\]",
+          "replacement": "AC_INIT([$1], [$VERSION]",
+          "verify": "AC_INIT\\(\\[[^\\]]*\\],\\s*\\[$VERSION\\]"
+        }
+      ]
+    },
+    {
+      "id": "perl-mkpl",
+      "signals": {"all": ["Makefile.PL"], "none": ["configure.ac"]},
+      "ci_block": "ci-perl-mkpl",
+      "version_files": []
     }
   ],
   "candidates": [
