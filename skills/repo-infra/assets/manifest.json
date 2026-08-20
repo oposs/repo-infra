@@ -35,7 +35,9 @@
     "ci-rust": {"version": 1, "jobs": ["rust-check", "rust-test"]},
     "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
-    "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]}
+    "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
+    "ci-perl-autotools": {"version": 1, "jobs": ["perl-autotools"]},
+    "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]}
   },
   "actions": {
     "actions/checkout": "v7",
@@ -45,7 +47,8 @@
     "actions/cache": "v6",
     "actions/setup-go": "v7",
     "golangci/golangci-lint-action": "v9",
-    "oven-sh/setup-bun": "v2"
+    "oven-sh/setup-bun": "v2",
+    "shogo82148/actions-setup-perl": "v1"
   },
   "gh": {
     "ruleset-main": {"version": 1, "source": "gh/ruleset-main.json"}

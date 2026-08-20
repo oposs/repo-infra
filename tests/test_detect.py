@@ -206,3 +206,22 @@ def test_detect_does_not_share_mutable_ambiguity_references():
     result1.ambiguities[0]["mutated"] = True
 
     assert all("mutated" not in amb for amb in result2.ambiguities)
+
+
+def test_an_autotools_perl_repository_gets_the_autotools_block():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-perl-autotools")
+    assert result.blocks == ["ci-lib", "ci-perl-autotools"]
+
+
+def test_a_makefile_pl_repository_gets_the_makefile_pl_block():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-perl-mkpl")
+    assert result.blocks == ["ci-lib", "ci-perl-mkpl"]
+
+
+def test_an_autotools_repository_that_also_has_makefile_pl_is_not_both():
+    (HERE / "fixtures/repo-perl-autotools/Makefile.PL").write_text("1;\n", encoding="utf-8")
+    try:
+        result = Detection.load(REAL).detect(HERE / "fixtures/repo-perl-autotools")
+        assert result.blocks == ["ci-lib", "ci-perl-autotools"]
+    finally:
+        (HERE / "fixtures/repo-perl-autotools/Makefile.PL").unlink()
