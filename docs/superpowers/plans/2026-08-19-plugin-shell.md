@@ -83,43 +83,44 @@ Named so nobody has to work out whether they were forgotten:
 
 ```
 .claude-plugin/plugin.json          plugin manifest (exists; version file)
-pyproject.toml                      NEW: ruff + pytest config, version file (Task 6)
-Makefile                            NEW: test, lint, check (Task 2)
+pyproject.toml                      NEW: ruff + pytest config, version file (Task 5)
+Makefile                            NEW: test, lint, check (Task 1)
+pytest.ini                          NEW: pytest config (Task 1)
 commands/
-  check.md                          /repo-infra:check    (Task 12)
-  apply.md                          /repo-infra:apply    (Task 12)
+  check.md                          /repo-infra:check    (Task 11)
+  apply.md                          /repo-infra:apply    (Task 11)
 skills/repo-infra/
-  SKILL.md                          short; depth lives in references/ (Task 12)
+  SKILL.md                          short; depth lives in references/ (Task 11)
   references/
-    release-flow.md                 the decision, the traps, the recovery (Task 12)
-    conventions.md                  D6/D7/D9/D11/D15 house rules (Task 12)
+    release-flow.md                 the decision, the traps, the recovery (Task 11)
+    conventions.md                  D6/D7/D9/D11/D15 house rules (Task 11)
   assets/
-    manifest.json                   asset -> version + job ids; action -> major (Task 1)
+    manifest.json                   asset -> version + job ids; action -> major (Task 2)
     detection.json                  signals -> ecosystem -> version files (Task 3)
-    gh/ruleset-main.json            the D2 payload (Task 11)
+    gh/ruleset-main.json            the D2 payload (Task 10)
     workflows/                      release-pr, release-publish, changelog,
-                                    dependabot, lib/*.js  (Task 1)
+                                    dependabot, lib/*.js  (Task 2)
     ci/
       ci-frame.yml                  header through `jobs:` (Task 5)
       ci-aggregator.yml             the ci-passed job; needs: is generated (Task 5)
       ci-lib.yml                    node --test on the workflow library (Task 5)
-      ci-claude-plugin.yml          (Task 6)
-      ci-python.yml                 (Task 6)
-      ci-rust.yml   ci-go.yml       (Task 13)
-      ci-node-pnpm.yml  ci-node-bun.yml   (Task 14)
-      ci-perl-autotools.yml  ci-perl-mkpl.yml  (Task 15)
-      ci-checkmk-plugin.yml         (Task 16)
-    checkmk/                        cmk_stubs/, conftest.py, test_smoke.py (Task 16)
+      ci-claude-plugin.yml          (Task 5)
+      ci-python.yml                 (Task 5)
+      ci-rust.yml   ci-go.yml       (Task 12)
+      ci-node-pnpm.yml  ci-node-bun.yml   (Task 13)
+      ci-perl-autotools.yml  ci-perl-mkpl.yml  (Task 14)
+      ci-checkmk-plugin.yml         (Task 15)
+    checkmk/                        cmk_stubs/, conftest.py, test_smoke.py (Task 15)
   scripts/repo_infra/
-    __main__.py                     `python3 -m repo_infra` entry point (Task 9)
-    cli.py                          argparse: check / apply (Task 9)
-    markers.py                      parse and emit version markers (Task 2)
+    __main__.py                     `python3 -m repo_infra` entry point (Task 8)
+    cli.py                          argparse: check / apply (Task 8)
+    markers.py                      parse and emit version markers (Task 1)
     detect.py                       file signals -> ecosystems (Task 3)
     assemble.py                     assets + ecosystems -> files (Task 4)
     state.py                        installed vs manifest -> item states (Task 7)
-    remote.py                       gh wrapper, injectable runner (Task 8)
-    report.py                       text and --json output (Task 9)
-    apply.py                        write files, administer, open the PR (Tasks 10, 11)
+    remote.py                       gh wrapper, injectable runner (Task 6)
+    report.py                       text and --json output (Task 8)
+    apply.py                        write files, administer, open the PR (Tasks 9, 10)
 tests/
   fixtures/<shape>/                 real directory trees, one per repo shape
   test_*.py                         pytest, one file per module
