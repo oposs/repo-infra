@@ -80,7 +80,7 @@
           "path": "configure.ac",
           "pattern": "AC_INIT\\(\\[([^\\]]*)\\],\\s*\\[[^\\]]*\\]",
           "replacement": "AC_INIT([$1], [$VERSION]",
-          "verify": "AC_INIT\\(\\[[^\\]]*\\],\\s*\\[$VERSION\\]"
+          "verify": "AC_INIT\\(\\[[A-Za-z0-9][A-Za-z0-9._+-]*\\],\\s*\\[$VERSION\\]"
         }
       ]
     },
