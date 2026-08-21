@@ -77,10 +77,10 @@
       "ci_block": "ci-perl-autotools",
       "version_files": [
         {
-          "path": "configure.ac",
-          "pattern": "AC_INIT\\(\\[([^\\]]*)\\],\\s*\\[[^\\]]*\\]",
-          "replacement": "AC_INIT([$1], [$VERSION]",
-          "verify": "AC_INIT\\(\\[[A-Za-z0-9][A-Za-z0-9._+-]*\\],\\s*\\[$VERSION\\]"
+          "path": "VERSION",
+          "pattern": "^[0-9][^\\n]*$",
+          "replacement": "$VERSION",
+          "verify": "^$VERSION$"
         }
       ]
     },

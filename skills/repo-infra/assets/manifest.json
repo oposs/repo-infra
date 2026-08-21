@@ -31,7 +31,7 @@
     "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
-    "ci-perl-autotools": {"version": 1, "jobs": ["perl-autotools"]},
+    "ci-perl-autotools": {"version": 2, "jobs": ["perl-autotools"]},
     "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
     "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]}
   },

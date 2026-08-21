@@ -239,3 +239,31 @@ def test_a_checkmk_plugin_has_no_version_file():
     and the publisher has nothing to cross-check -- correct, not a gap."""
     result = Detection.load(REAL).detect(HERE / "fixtures/repo-checkmk")
     assert result.version_files == []
+
+
+def test_autotools_writes_the_version_file_not_configure_ac():
+    import json
+    import pathlib
+    assets = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
+    detection = json.loads((assets / "detection.json").read_text(encoding="utf-8"))
+    eco = [e for e in detection["ecosystems"] if e["id"] == "perl-autotools"][0]
+    assert [spec["path"] for spec in eco["version_files"]] == ["VERSION"]
+
+
+def test_the_version_file_spec_matches_a_real_version_file():
+    import json
+    import pathlib
+    import re
+    assets = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
+    detection = json.loads((assets / "detection.json").read_text(encoding="utf-8"))
+    eco = [e for e in detection["ecosystems"] if e["id"] == "perl-autotools"][0]
+    spec = eco["version_files"][0]
+    # The shape SmokePing and every hin-access-suite project ships.
+    assert re.search(spec["pattern"], "2.9.0\n", re.M)
+    # And the verify template, with the version escaped and the trailing
+    # (?![0-9]) appended the way bump.js does it (pattern.replace + append,
+    # not "or True" -- this is the guard that stops 2.9.1 from verifying
+    # against 2.9.10).
+    verify = spec["verify"].replace("$VERSION", re.escape("2.9.1")) + "(?![0-9])"
+    assert re.search(verify, "2.9.1\n", re.M)
+    assert not re.search(verify, "2.9.10\n", re.M)

@@ -99,3 +99,17 @@ def test_every_non_yaml_asset_is_covered_by_a_test():
     # own test file, or it ships unchecked.
     others = {p.suffix for p in ASSETS.rglob("*") if p.is_file()} - {".yml", ".yaml", ".json", ".js"}
     assert others == {".mk"}, "a new asset kind arrived with no test: %s" % others
+
+
+def test_the_autotools_block_installs_only_the_fixed_host_toolchain():
+    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    assert "autoconf automake gettext podman" in text
+    # D16: no per-repo package list, in any shape.
+    assert "apt-packages" not in text
+    assert "system_packages" not in text
+
+
+def test_the_autotools_block_runs_make_test():
+    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    assert "make test" in text
+    assert "make check" not in text
