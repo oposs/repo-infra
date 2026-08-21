@@ -1,6 +1,7 @@
 {
   "ecosystems": ["claude-plugin", "python"],
   "moving_major_tag": false,
+  "publish": [],
   "version_files": [
     {
       "path": ".claude-plugin/plugin.json",

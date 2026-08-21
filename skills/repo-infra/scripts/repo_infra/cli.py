@@ -37,10 +37,23 @@ def read_facts(repo):
     return Gh().facts(repo)
 
 
+def _publish_addons(root):
+    """The publish add-ons this repository installs, from its own config.
+
+    Detection cannot answer this: whether a repository publishes a tarball, a
+    crate or nothing at all is a decision, not a file signal (D12). An
+    unconverted repository has no config file and installs no add-ons.
+    """
+    config = pathlib.Path(root) / ".github/repo-infra.json"
+    if not config.is_file():
+        return []
+    return json.loads(config.read_text(encoding="utf-8")).get("publish", [])
+
+
 def _load(root):
     manifest = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
     result = Detection.load(ASSETS / "detection.json").detect(root)
-    return manifest, result, render_all(ASSETS, result, manifest)
+    return manifest, result, render_all(ASSETS, result, manifest, _publish_addons(root))
 
 
 def check(args):

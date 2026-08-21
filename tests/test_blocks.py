@@ -22,9 +22,9 @@ def every_asset_file():
 def required_workflow_files():
     """Only the assets that end up behind a required check.
 
-    release-publish.yml legitimately carries `paths: ['CHANGES.md']`: it is a
-    push trigger and neither of its jobs is a required context. Applying D13's
-    rule to it would be wrong.
+    The publish assets legitimately carry `paths: ['CHANGES.md']`: that is a
+    push trigger and none of their jobs is a required context. Applying D13's
+    rule to them would be wrong.
     """
     yield from sorted((ASSETS / "ci").glob("*.yml"))
     yield ASSETS / "workflows/changelog.yml"

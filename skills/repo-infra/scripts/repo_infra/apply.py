@@ -371,6 +371,7 @@ def write_config(repo_root, result, answers=None):
         "ecosystems": result.ecosystems,
         "moving_major_tag": existing.get("moving_major_tag", False),
         "version_files": existing.get("version_files") or result.version_files,
+        "publish": existing.get("publish", []),
     }
     for key in ("skip", "answers"):
         if key in existing:
