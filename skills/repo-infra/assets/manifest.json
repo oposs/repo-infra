@@ -38,6 +38,14 @@
   "publish_blocks": {
     "publish-source-tarball": {"version": 1, "jobs": ["publish-source-tarball"]}
   },
+  "build_assets": {
+    "container-test": {
+      "version": 1,
+      "source": "build/container-test.mk",
+      "target": "build/container-test.mk",
+      "comment": "#"
+    }
+  },
   "actions": {
     "actions/checkout": "v7",
     "actions/setup-node": "v7",

@@ -96,8 +96,14 @@ def assemble_publish(assets_root, addons, manifest):
     return "\n".join(parts) + "\n"
 
 
-def render_all(assets_root, result, manifest, publish=()):
-    """Every file this repository should have, keyed by repo-relative path."""
+def render_all(assets_root, result, manifest, publish=(), build=()):
+    """Every file this repository should have, keyed by repo-relative path.
+
+    `publish` and `build` are decisions the repository recorded, not things
+    detection can see (D12, D16): whether it attaches a tarball, whether it
+    builds in a container. An asset in `assets` ships to everyone; one in
+    `publish_blocks` or `build_assets` ships only when named.
+    """
     assets_root = pathlib.Path(assets_root)
     files = {}
     for name, spec in manifest["assets"].items():
@@ -110,6 +116,13 @@ def render_all(assets_root, result, manifest, publish=()):
                     files[f"{spec['target']}/{child.name}"] = _read(child)
         else:
             files[spec["target"]] = _read(source)
+
+    for name in build:
+        spec = manifest["build_assets"].get(name)
+        if spec is None:
+            raise AssemblyError(f"build asset {name} is not declared in the manifest")
+        files[spec["target"]] = _read(assets_root / spec["source"])
+
     files[".github/workflows/ci.yml"] = assemble_ci(assets_root, result.blocks, manifest)
     files[".github/workflows/release-publish.yml"] = assemble_publish(
         assets_root, publish, manifest)

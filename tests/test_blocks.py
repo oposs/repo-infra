@@ -92,3 +92,10 @@ def test_every_asset_uses_a_manifest_pinned_major(path):
         assert action in MANIFEST["actions"], "%s uses %s, not in the manifest" % (path.name, action)
         assert MANIFEST["actions"][action] == ref, "%s uses %s@%s, manifest pins %s" % (
             path.name, action, ref, MANIFEST["actions"][action])
+
+
+def test_every_non_yaml_asset_is_covered_by_a_test():
+    # every_asset_file() only walks YAML. Anything else under assets/ needs its
+    # own test file, or it ships unchecked.
+    others = {p.suffix for p in ASSETS.rglob("*") if p.is_file()} - {".yml", ".yaml", ".json", ".js"}
+    assert others == {".mk"}, "a new asset kind arrived with no test: %s" % others
