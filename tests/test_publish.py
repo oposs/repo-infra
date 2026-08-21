@@ -31,3 +31,29 @@ def test_the_placeholder_must_appear_exactly_once():
     # placeholder would silently publish a release before the add-ons ran.
     text = (ASSETS / "publish/publish-finalize.yml").read_text(encoding="utf-8")
     assert text.count("    needs: []") == 1
+
+
+def test_the_tarball_addon_lands_between_publish_and_finalize():
+    text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
+    assert "    needs: [publish, publish-source-tarball]" in text
+    assert text.index("  publish-source-tarball:") < text.index("  finalize:")
+
+
+def test_the_tarball_addon_carries_its_marker():
+    text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
+    assert ("publish-source-tarball", 1) in [
+        (m.asset, m.version) for m in parse_markers(text)]
+
+
+def test_the_tarball_addon_declares_exactly_the_job_it_contains():
+    from repo_infra.assemble import block_job_ids
+    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
+    assert block_job_ids(text) == MANIFEST["publish_blocks"]["publish-source-tarball"]["jobs"]
+
+
+def test_the_tarball_addon_refuses_to_upload_nothing():
+    # A `make dist` that produced no tarball must fail the job, not publish a
+    # release with no artifact. Guard the guard: this is the whole point of the
+    # add-on and it is one easily-deleted line.
+    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
+    assert "no tarball" in text

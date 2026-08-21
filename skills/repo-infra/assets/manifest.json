@@ -35,7 +35,9 @@
     "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
     "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]}
   },
-  "publish_blocks": {},
+  "publish_blocks": {
+    "publish-source-tarball": {"version": 1, "jobs": ["publish-source-tarball"]}
+  },
   "actions": {
     "actions/checkout": "v7",
     "actions/setup-node": "v7",

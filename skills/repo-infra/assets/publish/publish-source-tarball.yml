@@ -1,0 +1,70 @@
+  publish-source-tarball:
+    name: Attach the source tarball
+    needs: [publish]
+    if: needs.publish.outputs.release_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Known limit: this configures on a bare runner, so a project that cannot
+      # configure without its own system packages cannot build its tarball here
+      # either (D16). Containerizing the dist build is the next teach; it is not
+      # this add-on's job to invent it.
+      - name: Install the autotools host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext
+
+      - run: ./bootstrap
+
+      - run: ./configure
+
+      - name: Build the distribution tarball
+        run: make dist
+
+      # `make dist` names the tarball from AC_INIT, which is not necessarily the
+      # repository name -- so find it rather than guess it. Exactly one is
+      # expected; two means a stale tarball is committed and the upload would be
+      # a coin toss.
+      - name: Locate the tarball
+        id: tarball
+        run: |
+          set -euo pipefail
+          mapfile -t found < <(find . -maxdepth 1 -name '*.tar.gz' -printf '%P\n' | sort)
+          if [ "${#found[@]}" -eq 0 ]; then
+            echo "make dist produced no tarball" >&2
+            exit 1
+          fi
+          if [ "${#found[@]}" -gt 1 ]; then
+            echo "more than one tarball in the source root: ${found[*]}" >&2
+            echo "remove the committed ones; this job cannot tell which to upload" >&2
+            exit 1
+          fi
+          echo "name=${found[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Attach it to the draft release
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const name = '${{ steps.tarball.outputs.name }}';
+            if (!name) {
+              core.setFailed('no tarball to upload');
+              return;
+            }
+            const data = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/${name}`);
+            const { data: asset } = await github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: Number('${{ needs.publish.outputs.release_id }}'),
+              name,
+              data,
+              headers: {
+                'content-type': 'application/gzip',
+                'content-length': data.length,
+              },
+            });
+            core.notice(`Attached ${asset.name} (${asset.size} bytes).`);
