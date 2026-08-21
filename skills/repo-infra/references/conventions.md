@@ -69,6 +69,37 @@ no way to `import` an ES module into one. An editor with type-aware completion
 will suggest `import`/`export` the moment it sees a `.js` file; the suggestion
 is wrong for this directory specifically, not a style preference to override.
 
+## `.github/repo-infra.json` is the repository's own decisions, not detection output
+
+Detection answers what a repository's files show; this file answers what
+cannot be read off them. Nothing writes it at runtime -- `write_config` exists
+for `apply` to call one day, but nothing calls it yet, so today it is
+hand-authored and hand-edited. `check` and `apply` only read it.
+
+- `ecosystems` -- the detected list, recorded so a later run can tell "still
+  this" from "detection changed underneath me". Not itself a lever to pull.
+- `moving_major_tag` -- whether publishing also moves a floating `vN` tag
+  alongside the exact `vN.N.N` one. Off by default; most consumers pin exact
+  tags, and a floating major tag is a promise to keep it working forever.
+- `version_files` -- where the release workflow writes the version, and what
+  it reads back to confirm the write took (D5/D6 and the module docstring in
+  `apply.py`).
+- `publish` -- which publish add-ons this repository's release workflow
+  assembles, by id (`manifest.json` `publish_blocks`). This branch makes the
+  key meaningful: `["publish-source-tarball"]` attaches the `make dist`
+  tarball to the release, and it is a **blocking prerequisite** for converting
+  any autotools repository that already publishes one -- convert without it
+  and the tarball a project ships today silently stops shipping.
+- `build` -- which build assets this repository's Makefile includes, by id
+  (`manifest.json` `build_assets`). `["container-test"]` installs
+  `build/container-test.mk`, the automake fragment defining `container:` and
+  `test:` for the D15 containerized-build seam (see
+  `references/teaching-the-standard.md`).
+- `skip` -- items a human deliberately declined, name to reason. `check` reads
+  this to stop nagging about a considered "no" instead of an oversight.
+- `answers` -- resolved ambiguities, id to the answer given. Recorded so
+  `apply` never has to guess on the next run.
+
 ## Markers record a generation, never a content hash
 
 Every installed asset carries `# repo-infra: <asset> vN` (or `// repo-infra:

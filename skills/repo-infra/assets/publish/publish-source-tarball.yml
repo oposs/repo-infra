@@ -43,6 +43,13 @@
             echo "remove the committed ones; this job cannot tell which to upload" >&2
             exit 1
           fi
+          # The name is interpolated into a github-script body below and
+          # appended to $GITHUB_OUTPUT -- reject anything that is not a plain
+          # tarball filename rather than trying to sanitise it.
+          if ! [[ "${found[0]}" =~ ^[A-Za-z0-9._+-]+\.tar\.gz$ ]]; then
+            echo "unexpected tarball name: ${found[0]@Q}" >&2
+            exit 1
+          fi
           echo "name=${found[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Attach it to the draft release

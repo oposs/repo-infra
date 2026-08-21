@@ -16,8 +16,9 @@ reason to edit the repository around it — it is a gap in the standard, and
 `apply` writes two different ways, and they need different handling:
 
 - **File items** (`ci`, `changelog`, `release-pr`, `release-publish`,
-  `dependabot`, `workflow-lib`) commit to the local `repo-infra/apply` branch.
-  Nothing leaves your machine until you push.
+  `dependabot`, `workflow-lib`, `container-test`, and any other build or
+  publish asset the repository has selected) commit to the local
+  `repo-infra/apply` branch. Nothing leaves your machine until you push.
 - **Administration items** (`default-branch`, `branch-protection` /
   `required-checks`, `no-changelog-label`, `actions-open-pr`) write straight to
   the live repository through the GitHub API — no commit, no branch, no review.

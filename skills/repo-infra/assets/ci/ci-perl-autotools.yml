@@ -7,8 +7,15 @@
 
       # The fixed host toolchain: enough to bootstrap, configure, and drive a
       # container. It is the same for every autotools project, which is what
-      # makes it infrastructure. A project needing more than this has crossed
-      # the D16 threshold, and the answer is its Containerfile, not this list.
+      # makes it infrastructure. Deliberately no package list (D16): a project
+      # needing more than this list is the next teach, not a place to add one.
+      #
+      # Known limit: only `make test` below can reach a container. `bootstrap`,
+      # `configure` and `make` still run on this bare runner, so a project that
+      # cannot configure without its own system packages has hit the D16
+      # threshold here too. There is also no way to pass `configure` flags, so
+      # a project's own escape hatch for this (SmokePing's `--enable-pkgonly`,
+      # which skips exactly this check) is unreachable from the standard.
       - name: Install the autotools host toolchain
         run: |
           sudo apt-get update

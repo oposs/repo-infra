@@ -89,7 +89,11 @@ def base_version_of(plugin_root, asset_path, version):
         return None
     for revision in revisions:
         try:
-            text = _git(plugin_root, "show", f"{revision}:{asset_path}")
+            # `git show rev:path` resolves `path` from the repository root, not
+            # from cwd -- the leading `./` is what tells git to resolve it
+            # relative to `plugin_root` instead, which is a subdirectory of the
+            # real plugin checkout (`skills/repo-infra`), never its root.
+            text = _git(plugin_root, "show", f"{revision}:./{asset_path}")
         except ApplyError:
             continue
         found = parse_markers(text)

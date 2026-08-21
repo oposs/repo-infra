@@ -12,9 +12,13 @@ name: Publish release (automatic)
 # There is deliberately no workflow_dispatch. Publishing should be a consequence
 # of merging a release pull request, never something started from a dropdown.
 # With main protected against direct pushes, that leaves exactly one route to a
-# release. Recovery does not need a manual trigger either: a failed run is re-run
-# from the Actions UI, and because the version is read from the repository rather
-# than from run inputs, the re-run does what the original attempt would have.
+# release. Recovery still does not need a manual trigger, but it needs the right
+# button: `publish` is idempotent by tag presence, so once the tag exists a
+# whole-workflow re-run finds it, sets no outputs, and skips every add-on and
+# `finalize` -- the release stays a draft forever. Use the Actions UI's
+# **Re-run failed jobs** instead: it keeps the successful job's outputs, so the
+# jobs that failed run again against them and finish what the first attempt
+# would have.
 
 on:
   push:

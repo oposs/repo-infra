@@ -29,6 +29,20 @@ def test_a_recognised_repository_still_points_at_apply():
     assert "does not recognise" not in text
 
 
+def test_a_repository_with_no_ecosystem_but_an_open_ambiguity_is_not_called_unrecognised():
+    """No ecosystem matched *and* an ambiguity is open -- unresolved is not the
+    same as unrecognised, so this must fall through to the ordinary
+    "/repo-infra:apply" message, not the teach-path one. The only thing
+    pinning `report.render_text`'s `and not has_ambiguous` guard today is
+    `test_an_unresolved_ambiguity_keeps_the_count_honest` in test_report.py,
+    which never mentions the teach path -- a future simplification that drops
+    the guard would keep that test green and silently revert this."""
+    ambiguous = [Item("node-lockfiles", "ambiguous", "pnpm-lock.yaml or package-lock.json?")]
+    text = render_text("oetiker/mdmost", FakeResult([]), ambiguous)
+    assert "does not recognise" not in text
+    assert "/repo-infra:apply" in text
+
+
 def test_a_recognised_and_current_repository_is_unchanged():
     text = render_text("oposs/repo-infra", FakeResult(["python"]), ADMIN_OK)
     assert "Up to date with the standard" in text

@@ -57,7 +57,7 @@ def render_text(repo, result, items):
         lines.append("")
         lines.append("Teach it first: see references/teaching-the-standard.md in the")
         lines.append("repo-infra skill. Running apply now would install the")
-        lines.append("repository-wide items and no CI at all.")
+        lines.append("repository-wide items and no CI for this repository's own code.")
         return "\n".join(lines) + "\n"
 
     if count:
