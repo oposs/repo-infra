@@ -55,8 +55,9 @@ def render_text(repo, result, items):
     if not result.ecosystems and not has_ambiguous:
         lines.append("the standard does not recognise this repository.")
         lines.append("")
-        lines.append("Teach it first: see the repo-infra skill. Running apply now")
-        lines.append("would install the repository-wide items and no CI at all.")
+        lines.append("Teach it first: see references/teaching-the-standard.md in the")
+        lines.append("repo-infra skill. Running apply now would install the")
+        lines.append("repository-wide items and no CI at all.")
         return "\n".join(lines) + "\n"
 
     if count:

@@ -32,6 +32,21 @@ repository through the GitHub API instead, with no commit and no branch. `apply`
 does not push the branch or open the pull request itself — that is the next
 step, and `/repo-infra:apply` walks through it.
 
+## When the standard has no answer
+
+`check` and `apply` assume the standard knows what this repository is. Sometimes
+it does not — the report says `the standard does not recognise this repository`,
+or you read the repository and find the standard silent about something it needs,
+or in conflict with something that already works.
+
+Do not patch the repository around the gap, and do not grow a variant asset for
+it. Teach the standard, then convert: ask the user, prove the answer in this
+repository's tree, upstream it to repo-infra, and merge this repository's pull
+request only once that has shipped.
+
+`references/teaching-the-standard.md` has the procedure, including which
+differences are gaps and which are just migration work.
+
 ## The four things that will surprise you
 
 1. **A `conflict` is not a bigger `missing`.** It means adopting the item breaks
@@ -68,3 +83,5 @@ step, and `/repo-infra:apply` walks through it.
   is for, and how to recover a half-finished one.
 - `references/conventions.md` — the house rules that are not derivable: the
   changelog deviation, the github-script injected names, the marker protocol.
+- `references/teaching-the-standard.md` — what to do when the standard has no
+  answer for this repository, and which differences count.

@@ -51,3 +51,13 @@ def test_the_entry_point_runs_exactly_as_the_skill_and_commands_invoke_it():
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert "check" in result.stdout and "apply" in result.stdout
+
+
+def test_the_report_points_at_a_reference_that_exists():
+    # report.py names this file by path. A rename that misses one of the two
+    # leaves an operator following a dead pointer at exactly the moment the
+    # tool has told them it cannot help.
+    from repo_infra import report
+    source = pathlib.Path(report.__file__).read_text(encoding="utf-8")
+    assert "references/teaching-the-standard.md" in source
+    assert (ROOT / "skills/repo-infra/references/teaching-the-standard.md").is_file()
