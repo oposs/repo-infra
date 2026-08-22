@@ -22,21 +22,47 @@ def test_the_macro_carries_its_marker_at_the_declared_version():
     assert ("container-m4", version) in [(m.asset, m.version) for m in parse_markers(text)]
 
 
+def _bracketed_body(text, marker):
+    """Return the text inside the m4 [...] group that immediately follows
+    `marker`, found by counting bracket depth rather than by string slicing.
+    This pins the check to the actual nesting structure, not to text that
+    merely appears somewhere after the marker."""
+    start = text.index(marker) + len(marker)
+    assert text[start] == "[", "marker %r is not followed by a bracket group" % marker
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "[":
+            depth += 1
+        elif text[i] == "]":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:i]
+    raise AssertionError("unbalanced brackets after %r" % marker)
+
+
 def test_the_flag_defaults_to_driving_the_container():
     # D18: the default is the caller you do not control. A stranger with a
     # checkout types ./configure and must not be asked for librrd.
     text = MACRO.read_text(encoding="utf-8")
     assert "AC_ARG_ENABLE([container]" in text
-    assert "enable_container=yes" in text
     assert "--disable-container" in text
     # The flag names the semantics, not the location.
     assert "in-container" not in text
+    # AC_ARG_ENABLE(feature, help, action-if-given, action-if-not-given): the
+    # default must sit in the action-if-not-given position, not merely appear
+    # somewhere in the file. A macro with the default inverted (given <->
+    # not-given swapped) must fail this, not just one missing the string.
+    assert "[], [enable_container=yes])" in text
 
 
 def test_driver_mode_probes_only_the_engine_and_the_containerfile():
     text = MACRO.read_text(encoding="utf-8")
-    assert "AC_CHECK_PROGS([DOCKER], [podman docker])" in text
-    assert "Containerfile" in text
+    # The probes must live inside the action body of the
+    # `enable_container = yes` guard, not merely appear somewhere in the file
+    # after it. Isolate that bracket group by depth, not by text order.
+    guard = _bracketed_body(text, 'AS_IF([test "x$enable_container" = xyes], ')
+    assert "AC_CHECK_PROGS([DOCKER], [podman docker])" in guard
+    assert "Containerfile" in guard
 
 
 def test_the_error_message_names_the_way_out():
