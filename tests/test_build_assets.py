@@ -54,7 +54,7 @@ def test_test_dev_does_not_rebuild_the_full_image():
     # Depending on `container` would rebuild on every source edit and delete the
     # entire point of the target.
     text = FRAGMENT.read_text(encoding="utf-8")
-    line = [l for l in text.splitlines() if l.startswith("test-dev:")][0]
+    line = [row for row in text.splitlines() if row.startswith("test-dev:")][0]
     assert "container-base" in line
     assert "test-dev: container\n" not in text
 
