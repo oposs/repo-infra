@@ -62,11 +62,13 @@ it does not decide the outcome. Containerizing is the expected answer, but the
 project dropping the dependency is a real alternative, and so is something
 nobody has thought of.
 
-If containerizing is the answer, what repo-infra ships for it is the
-`container-test` build asset (`build/container-test.mk`, defining `container:`
-and `test:`) -- installed by naming it in the repository's own `build` list in
-`.github/repo-infra.json` (`references/conventions.md`). Nothing installs it
-automatically; it is a decision, not a detection.
+If containerizing is the answer, what repo-infra ships for it is a pair of build
+assets: `container-m4` (`m4/repo-infra-container.m4`, the `--disable-container`
+switch) and `container` (`build/container.mk`, the driver targets). Install them
+by naming both in the repository's own `build` list in `.github/repo-infra.json`
+(`references/conventions.md`), and write the `Containerfile` the contract there
+describes. Nothing installs them automatically; it is a decision, not a
+detection.
 
 What is never available is carrying on natively while installing packages from
 CI. If you find yourself wanting a place to list apt packages, you have hit the

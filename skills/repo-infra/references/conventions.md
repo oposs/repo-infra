@@ -90,15 +90,68 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   tarball to the release, and it is a **blocking prerequisite** for converting
   any autotools repository that already publishes one -- convert without it
   and the tarball a project ships today silently stops shipping.
-- `build` -- which build assets this repository's Makefile includes, by id
-  (`manifest.json` `build_assets`). `["container-test"]` installs
-  `build/container-test.mk`, the automake fragment defining `container:` and
-  `test:` for the D15 containerized-build seam (see
-  `references/teaching-the-standard.md`).
+- `build` -- which build assets this repository's Makefile and `configure.ac`
+  install, by id (`manifest.json` `build_assets`). A containerized autotools
+  repository names both: `["container-m4", "container"]` installs
+  `m4/repo-infra-container.m4` and `build/container.mk`, which together make
+  the tree a container driver (D18). Nothing installs them automatically; it is
+  a decision, not a detection (see `references/teaching-the-standard.md`).
 - `skip` -- items a human deliberately declined, name to reason. `check` reads
   this to stop nagging about a considered "no" instead of an oversight.
 - `answers` -- resolved ambiguities, id to the answer given. Recorded so
   `apply` never has to guess on the next run.
+
+## The Containerfile contract (D18)
+
+repo-infra owns the *shape* of the build environment; the project owns its
+*content*. The `Containerfile` is therefore the project's own file and is not
+shipped, versioned or drift-checked -- every project must edit it to name its
+own packages, and a checker could not tell an intended edit from a stale copy.
+
+What it must do, so the driver targets can reach it:
+
+1. **Carry the autotools toolchain** -- `autoconf`, `automake` and `make` are in
+   the image, because the image's build phase runs them.
+2. **Run the real build in its build phase** --
+   `./configure --disable-container && make && make install`. The flag names the
+   semantics, not the location: it means "do the real build in this tree", which
+   is also what a distro packager on a bare build host wants.
+3. **Leave the build tree at `/src`** -- `make dist` and `make test` are run
+   against that path from outside.
+
+`configure.ac` calls `REPO_INFRA_CONTAINER` and wraps its own dependency checks:
+
+    REPO_INFRA_CONTAINER
+    AS_IF([test "x$enable_container" = xno], [
+      dnl librrd, RRDs, everything real -- probed here and nowhere else
+    ])
+
+**Single-file test runs.** `make test-dev TARGET=t/foo.t` reaches one file
+through `make test TESTS=<file>`. Automake honours a command-line `TESTS=`
+override for free, so a project whose `test` target is `test: check` needs to do
+nothing. A project that drives `prove` itself must honour `TESTS` the same way.
+
+**What `Makefile.am` must look like.** A project already defines its own
+`test:` for the native case (`test: check`) and now also includes
+`build/container.mk`. Both definitions are unconditional, so automake sees
+`test:` defined twice and warns at generation time:
+
+    build/container.mk:NN: warning: test was already defined in condition TRUE, which includes condition CONTAINER_DRIVER
+
+The fix is to guard the project's own target with the negated conditional, so
+the two definitions are never both live:
+
+    if !CONTAINER_DRIVER
+    test: check
+    endif
+    include $(top_srcdir)/build/container.mk
+
+With that guard, `autoreconf` emits zero warnings and both modes still behave
+correctly -- native runs the real suite, driver delegates to podman.
+
+**`make install` needs `DESTDIR`.** In driver mode, `make install` without
+`DESTDIR` refuses with a usage message rather than mounting the host's
+`$(prefix)` read-write into the container.
 
 ## Markers record a generation, never a content hash
 

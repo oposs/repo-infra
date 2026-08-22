@@ -16,7 +16,7 @@ reason to edit the repository around it — it is a gap in the standard, and
 `apply` writes two different ways, and they need different handling:
 
 - **File items** (`ci`, `changelog`, `release-pr`, `release-publish`,
-  `dependabot`, `workflow-lib`, `container-test`, and any other build or
+  `dependabot`, `workflow-lib`, `container-m4`, `container`, and any other build or
   publish asset the repository has selected) commit to the local
   `repo-infra/apply` branch. Nothing leaves your machine until you push.
 - **Administration items** (`default-branch`, `branch-protection` /
