@@ -115,3 +115,11 @@ def test_the_autotools_block_runs_make_test():
     text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
     assert "make test" in text
     assert "make check" not in text
+
+
+def test_the_autotools_block_no_longer_documents_a_bare_configure_limit():
+    # D18 closed it: plain ./configure is driver mode, so the runner never
+    # probes the project's system dependencies.
+    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    assert "Known limit" not in text
+    assert "enable-pkgonly" not in text

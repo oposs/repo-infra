@@ -36,7 +36,7 @@
     "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]}
   },
   "publish_blocks": {
-    "publish-source-tarball": {"version": 1, "jobs": ["publish-source-tarball"]}
+    "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"]}
   },
   "build_assets": {
     "container": {

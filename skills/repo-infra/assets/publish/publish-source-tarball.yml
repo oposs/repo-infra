@@ -9,14 +9,13 @@
     steps:
       - uses: actions/checkout@v7
 
-      # Known limit: this configures on a bare runner, so a project that cannot
-      # configure without its own system packages cannot build its tarball here
-      # either (D16). Containerizing the dist build is the next teach; it is not
-      # this add-on's job to invent it.
+      # `make dist` is a container call in a repository that converted to the
+      # D18 driver, and a plain automake dist in one that did not. The same two
+      # commands cover both, so long as the engine is here.
       - name: Install the autotools host toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake gettext
+          sudo apt-get install -y autoconf automake gettext podman
 
       - run: ./bootstrap
 

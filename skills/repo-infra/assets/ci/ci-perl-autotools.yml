@@ -7,15 +7,14 @@
 
       # The fixed host toolchain: enough to bootstrap, configure, and drive a
       # container. It is the same for every autotools project, which is what
-      # makes it infrastructure. Deliberately no package list (D16): a project
-      # needing more than this list is the next teach, not a place to add one.
+      # makes it infrastructure. Deliberately no package list (D16).
       #
-      # Known limit: only `make test` below can reach a container. `bootstrap`,
-      # `configure` and `make` still run on this bare runner, so a project that
-      # cannot configure without its own system packages has hit the D16
-      # threshold here too. There is also no way to pass `configure` flags, so
-      # a project's own escape hatch for this (SmokePing's `--enable-pkgonly`,
-      # which skips exactly this check) is unreachable from the standard.
+      # These four commands serve both kinds of autotools repository unchanged.
+      # A containerized one configures into driver mode (D18), so `make` builds
+      # its image and `make test` runs the suite inside it -- and `configure`
+      # never probes the project's own dependencies on this runner. One that
+      # stayed native has no Containerfile, does not call REPO_INFRA_CONTAINER,
+      # and runs plain autotools here.
       - name: Install the autotools host toolchain
         run: |
           sudo apt-get update
@@ -29,5 +28,6 @@
 
       # The seam (D15). `make test` is the contract; whether the project runs
       # its suite natively or inside its own container is its business, and
-      # build/container-test.mk is what repo-infra ships for the second case.
+      # m4/repo-infra-container.m4 and build/container.mk are what repo-infra
+      # ships for the second case.
       - run: make test

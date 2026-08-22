@@ -41,7 +41,7 @@ def test_the_tarball_addon_lands_between_publish_and_finalize():
 
 def test_the_tarball_addon_carries_its_marker():
     text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
-    assert ("publish-source-tarball", 1) in [
+    assert ("publish-source-tarball", 2) in [
         (m.asset, m.version) for m in parse_markers(text)]
 
 
@@ -57,3 +57,11 @@ def test_the_tarball_addon_refuses_to_upload_nothing():
     # add-on and it is one easily-deleted line.
     text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
     assert "no tarball" in text
+
+
+def test_the_tarball_block_can_drive_a_container():
+    # `make dist` is a container call in driver mode (D18), so the runner needs
+    # an engine. Without it configure fails before dist is ever reached.
+    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
+    assert "autoconf automake gettext podman" in text
+    assert "Known limit" not in text
