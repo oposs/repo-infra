@@ -12,6 +12,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- Autotools repositories can now build in a container end to end. `configure`
+  and `make` outside the container drive podman; inside, they are plain
+  autotools. A CI runner no longer probes a project's system dependencies.
+- `make test-dev TARGET=t/foo.t` runs one test file against the live working
+  tree, without rebuilding the image.
 - The plugin documents what to do when the standard has no answer for a
   repository's shape: question, prove, upstream, with a report that says so
   instead of a false "N items need attention" count.
