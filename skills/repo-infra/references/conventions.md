@@ -113,23 +113,47 @@ What it must do, so the driver targets can reach it:
 1. **Carry the autotools toolchain** -- `autoconf`, `automake` and `make` are in
    the image, because the image's build phase runs them.
 2. **Run the real build in its build phase** --
-   `./configure --disable-container && make && make install`. The flag names the
-   semantics, not the location: it means "do the real build in this tree", which
-   is also what a distro packager on a bare build host wants.
+   `./bootstrap && ./configure --disable-container && make && make install`.
+   `configure` does not exist in a fresh checkout, so the image must bootstrap
+   first. `--disable-container` names the semantics, not the location: it means
+   "do the real build in this tree", which is also what a distro packager on a
+   bare build host wants.
 3. **Leave the build tree at `/src`** -- `make dist` and `make test` are run
    against that path from outside.
 
-`configure.ac` calls `REPO_INFRA_CONTAINER` and wraps its own dependency checks:
+`configure.ac` calls `REPO_INFRA_CONTAINER` and wraps its own dependency checks.
+The macro installs to `m4/repo-infra-container.m4`, so the project must also
+declare its macro directory -- without it, `aclocal` never sees the file, and
+`autoreconf` fails with `CONTAINER_DRIVER does not appear in AM_CONDITIONAL`,
+an error that points at this fragment for a line the project never wrote:
+
+    AC_CONFIG_MACRO_DIRS([m4])
 
     REPO_INFRA_CONTAINER
     AS_IF([test "x$enable_container" = xno], [
       dnl librrd, RRDs, everything real -- probed here and nowhere else
     ])
 
+and in `Makefile.am`, so a bare `aclocal` run finds it too:
+
+    ACLOCAL_AMFLAGS = -I m4
+
 **Single-file test runs.** `make test-dev TARGET=t/foo.t` reaches one file
 through `make test TESTS=<file>`. Automake honours a command-line `TESTS=`
 override for free, so a project whose `test` target is `test: check` needs to do
 nothing. A project that drives `prove` itself must honour `TESTS` the same way.
+
+**`test-dev` needs `TEST_DEV_MOUNTS`.** The project declares, in its own
+`Makefile.am` before the include, which directories hold the interpreted source
+it wants to edit and re-run against without rebuilding the image:
+
+    TEST_DEV_MOUNTS = lib t bin/plugins
+
+There is no way for the fragment to guess this list -- a blanket mount of the
+whole tree would hide everything `configure` generated inside the image -- so
+`test-dev` refuses with a usage message when it is unset, the same way it
+refuses a missing `TARGET`, rather than silently testing the image's baked-in
+copy instead of the file just edited.
 
 **What `Makefile.am` must look like.** A project already defines its own
 `test:` for the native case (`test: check`) and now also includes
@@ -170,3 +194,12 @@ frame marker sits on line 2, and each ecosystem's block carries its own marker
 directly above its jobs. `check` reads every marker in the file, so a
 Python-and-Claude-plugin repository can be outdated on `ci-python` while
 `ci-claude-plugin` is current, and upgrading one never touches the other.
+
+A marker and `CHANGES.md` can answer "did this generation ship?" differently,
+and that is by design, not an inconsistency to reconcile: the marker's question
+is "is what I have exactly what `apply` installs right now", so it must count
+every generation an asset ever reached, including one that only ever lived on a
+branch; `CHANGES.md`'s question is "what did a released version add", so a
+generation nobody outside this repository received earns no bullet. A marker
+bump with no matching changelog entry is not a gap between the two files -- it
+is the two files doing their separate jobs correctly.

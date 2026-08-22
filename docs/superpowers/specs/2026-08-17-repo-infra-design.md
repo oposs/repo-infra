@@ -574,7 +574,10 @@ does is now partly standard.
 parameterized by make variables the project sets in its own `Makefile.am`
 (`SKIP_TESTS`, `PGDB`, `CONTAINER_PREFIX`, `APP_CONFIG_ENV`). That is runtime
 parameterization, not install-time substitution, so D15's "assets are literal
-files" holds without exception.
+files" holds without exception. This paragraph describes `hin-agw-common`'s own
+fragment, the worked example that motivated this decision — not the shape
+repo-infra went on to ship; see D18, which replaced that shape with a
+different one and dropped this knob family from the shipped asset.
 
 **Shipping from repo-infra rather than a sibling repository is the point.** A
 fifth repository holding shared build machinery would sit outside the drift
@@ -582,6 +585,39 @@ checker, and nothing would report when a project's copy went stale. As a
 repo-infra asset it carries a version marker like every other, so `check` says
 "your container test fragment is two generations old" — which is the capability
 this whole tool exists to provide.
+
+**Amended by D18**: the fragment is a driver, not a test helper; the file the
+project owns is called `Containerfile`, not `Dockerfile`; and the runtime knobs
+named above (`SKIP_TESTS`, `PGDB`, `CONTAINER_PREFIX`, `APP_CONFIG_ENV`) are
+gone from the shipped asset.
+
+### D18 — autotools plays two roles, and the default is the one you do not control
+
+Full spec: `2026-08-22-autotools-container-driver-design.md`. D17 shipped one
+fragment for the container build and a separate one for running tests inside
+it; the gap between them left `configure` and the build itself running
+natively even for a project that has crossed the D16 threshold precisely
+because it cannot configure without its own system packages
+(`oetiker/SmokePing`, which cannot configure without `RRDs`).
+
+D18 replaces both with a single driver, `build/container.mk`, plus a new asset
+kind — the m4 macro `assets/m4/repo-infra-container.m4`, which defines
+`REPO_INFRA_CONTAINER`. Outside the container this is the whole build: `make`
+builds the image and drives every other target through it, probing nothing
+but a container engine and the presence of a `Containerfile`. Inside the
+image's build phase — where `configure` ran with `--disable-container` — the
+`CONTAINER_DRIVER` conditional is false, the fragment defines nothing at all,
+and plain autotools runs with every real dependency probed and present. The
+same tree therefore serves a stranger's bare `./configure && make` and a
+distro packager on a bare build host with the same flag and the same meaning.
+
+The project-facing runtime knobs D17 introduced (`SKIP_TESTS`, `PGDB`,
+`CONTAINER_PREFIX`, `APP_CONFIG_ENV`) are gone: inside the container the
+project's own native `test:` target runs unmodified, so how the suite is
+invoked is the project's business again, the way D15 originally intended. What
+repo-infra now ships and drift-checks is the mode switch and the driver
+fragment; what the project owns is its `Containerfile` and what goes in it —
+D17's shape/content line holds, drawn one layer down.
 
 ## Spec 1 — the frame
 

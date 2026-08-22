@@ -31,7 +31,7 @@ AC_DEFUN([REPO_INFRA_CONTAINER], [
     AS_IF([test -z "$DOCKER"],
       [AC_MSG_ERROR([no container engine found. Install podman, or pass --disable-container to build in this tree.])])
     AS_IF([test -f "$srcdir/Containerfile"], [],
-      [AC_MSG_ERROR([no Containerfile in $srcdir. Write one, or pass --disable-container to build in this tree.])])
+      [AC_MSG_ERROR([no Containerfile in $srcdir -- write one, or pass --disable-container to build in this tree.])])
   ])
 
   AM_CONDITIONAL([CONTAINER_DRIVER], [test "x$enable_container" = xyes])

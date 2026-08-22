@@ -15,7 +15,6 @@
 #
 # The project may set, before the include:
 #
-#   CONTAINERFILE     path to the container definition  (default: Containerfile)
 #   CONTAINER_TAG     tag to build and run              (default: $(PACKAGE)-build:local)
 #   TEST_DEV_MOUNTS   dirs holding interpreted source   (default: none)
 #
@@ -38,7 +37,6 @@
 
 if CONTAINER_DRIVER
 
-CONTAINERFILE ?= Containerfile
 CONTAINER_TAG ?= $(PACKAGE)-build:local
 TEST_DEV_MOUNTS ?=
 TARGET ?=
@@ -50,14 +48,14 @@ TARGET ?=
 # podman's layer cache makes a no-change rebuild cheap, and `make test` must
 # never test a stale image.
 container:
-	$(DOCKER) build -t $(CONTAINER_TAG) -f $(top_srcdir)/$(CONTAINERFILE) $(top_srcdir)
+	$(DOCKER) build -t $(CONTAINER_TAG) -f $(top_srcdir)/Containerfile $(top_srcdir)
 
 # Same image, narrower prerequisite: rebuild only when the container definition
 # changes. This is what the dev loop hangs off, so editing a script rebuilds
 # nothing.
 container-base: .stamp-container-base
-.stamp-container-base: $(top_srcdir)/$(CONTAINERFILE)
-	$(DOCKER) build -t $(CONTAINER_TAG) -f $(top_srcdir)/$(CONTAINERFILE) $(top_srcdir)
+.stamp-container-base: $(top_srcdir)/Containerfile
+	$(DOCKER) build -t $(CONTAINER_TAG) -f $(top_srcdir)/Containerfile $(top_srcdir)
 	touch $@
 
 all-local: container
@@ -70,20 +68,26 @@ test: container
 # CI -- what CI must verify is that the image builds and its contents pass,
 # which is `make test`.
 #
-# The mounts are read-write, not :ro. automake's own test-driver writes
-# <test>.log and <test>.trs next to each test file on every run -- a native
-# `make check` already does this to the same tree, so a read-write mount here
-# grants no capability the developer did not already have. A :ro mount was
-# tried and fails outright: "Read-only file system" from test-driver itself.
+# The mounts are read-write, not :ro. The developer already owns the whole
+# source tree, so a read-write mount of a directory they can edit anyway grants
+# no capability they did not already have -- and automake's own test-driver
+# writes <test>.log and <test>.trs next to each test file on every run, which a
+# native `make check` already does to the same tree. A :ro mount was tried and
+# fails outright: "Read-only file system" from test-driver itself.
 test-dev: container-base
 	@if [ -z "$(TARGET)" ]; then \
 		echo "Error: TARGET is required"; \
 		echo "Usage: make test-dev TARGET=t/foo.t"; \
 		exit 1; \
 	fi
+	@if [ -z "$(TEST_DEV_MOUNTS)" ]; then \
+		echo "Error: TEST_DEV_MOUNTS is not set"; \
+		echo "Set it in Makefile.am, e.g. TEST_DEV_MOUNTS = lib t bin/plugins"; \
+		exit 1; \
+	fi
 	$(DOCKER) run --rm -it \
 		$(foreach d,$(TEST_DEV_MOUNTS),-v $(abs_top_srcdir)/$(d):/src/$(d)) \
-		$(CONTAINER_TAG) make -C /src test TESTS=/src/$(TARGET)
+		$(CONTAINER_TAG) make -C /src test TESTS=$(TARGET)
 
 # The tarball is built by the same toolchain every time. Building it on the host
 # instead would let a host-built and an image-built tarball differ, and nobody

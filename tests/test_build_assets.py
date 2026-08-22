@@ -89,6 +89,27 @@ def test_the_dev_mounts_are_declared_by_the_project():
     assert "-v $(abs_top_srcdir):/src" not in text
 
 
+def test_test_dev_requires_dev_mounts():
+    # An unset TEST_DEV_MOUNTS would silently test the image's baked-in copy --
+    # the one failure mode test-dev exists to make impossible. TARGET and
+    # DESTDIR already refuse the same way; this is the third instance.
+    text = FRAGMENT.read_text(encoding="utf-8")
+    assert "TEST_DEV_MOUNTS is not set" in text
+
+
+def test_test_dev_passes_a_relative_tests_override():
+    # Automake generates a literal per-test rule from the TESTS declared in
+    # Makefile.am (e.g. "t/foo.t.log: t/foo.t"), matched against the exact
+    # string in $(TESTS) at make time. TESTS=/src/t/foo.t does not match that
+    # rule -- confirmed live: it prints "Nothing to be done for
+    # '/src/t/foo.t.log'" and then fails to create the .trs file, so test-dev
+    # errors on every invocation regardless of TEST_DEV_MOUNTS. TARGET is
+    # already the same relative form Makefile.am's own TESTS uses.
+    text = FRAGMENT.read_text(encoding="utf-8")
+    assert "TESTS=$(TARGET)" in text
+    assert "TESTS=/src/$(TARGET)" not in text
+
+
 def test_no_ci_block_calls_the_dev_loop():
     # test-dev is a developer convenience. What CI must verify is that the image
     # builds and its contents pass, which is `make test`.
