@@ -69,6 +69,12 @@ test: container
 # The dev loop: one test file, run against the live working tree. Never used by
 # CI -- what CI must verify is that the image builds and its contents pass,
 # which is `make test`.
+#
+# The mounts are read-write, not :ro. automake's own test-driver writes
+# <test>.log and <test>.trs next to each test file on every run -- a native
+# `make check` already does this to the same tree, so a read-write mount here
+# grants no capability the developer did not already have. A :ro mount was
+# tried and fails outright: "Read-only file system" from test-driver itself.
 test-dev: container-base
 	@if [ -z "$(TARGET)" ]; then \
 		echo "Error: TARGET is required"; \
@@ -76,7 +82,7 @@ test-dev: container-base
 		exit 1; \
 	fi
 	$(DOCKER) run --rm -it \
-		$(foreach d,$(TEST_DEV_MOUNTS),-v $(abs_top_srcdir)/$(d):/src/$(d):ro) \
+		$(foreach d,$(TEST_DEV_MOUNTS),-v $(abs_top_srcdir)/$(d):/src/$(d)) \
 		$(CONTAINER_TAG) make -C /src test TESTS=/src/$(TARGET)
 
 # The tarball is built by the same toolchain every time. Building it on the host
@@ -113,6 +119,7 @@ install: container
 		echo "Usage: make install DESTDIR=/path/to/stage"; \
 		exit 1; \
 	fi
+	@mkdir -p $(DESTDIR)
 	$(DOCKER) run --rm -v $(DESTDIR):/dest $(CONTAINER_TAG) \
 		make -C /src install DESTDIR=/dest
 
