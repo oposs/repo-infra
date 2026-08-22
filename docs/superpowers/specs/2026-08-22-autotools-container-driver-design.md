@@ -122,6 +122,8 @@ per-target table to learn:
 | `dist` | run `make dist` in the image, copy the tarball out |
 | `install` | run `make install` in the image against a mounted `DESTDIR` |
 | `clean` | local clean, and remove the image |
+| `container-base` | rebuild the image only if the `Containerfile` changed |
+| `test-dev` | run one test file against the live working tree — see below |
 
 The alternative — letting dependency-free targets like `dist` run natively on
 the host — was rejected. It creates a rule a user has to learn, and worse, it
@@ -160,6 +162,97 @@ finds the engine at configure time and substitutes it, so the fragment reads
 `@DOCKER@` and a project with only `docker` installed needs to do nothing. The
 old `DOCKER ?= podman` default goes with it.
 
+## The dev loop — `make test-dev TARGET=t/foo.t`
+
+`make test` is the trusted path: it rebuilds the image and tests exactly what
+was built, and it is what CI runs. It is also the wrong tool for changing one
+line in a script and re-running one test, because the `Containerfile` bakes the
+source in — any edit invalidates that layer and the image rebuilds.
+
+`test-dev` is the cheap loop, for the scripting case only. It mounts the live
+working tree over the image's copy and runs **one** test file.
+
+`hin-agw-common/automake/test-dev.mk` is the proven shape and this follows it:
+
+```make
+if REPO_INFRA_CONTAINER
+TARGET ?=
+test-dev: container-base
+	@if [ -z "$(TARGET)" ]; then \
+		echo "Error: TARGET is required"; \
+		echo "Usage: make test-dev TARGET=t/foo.t"; \
+		exit 1; \
+	fi
+	$(DOCKER) run --rm -it $(TEST_DEV_MOUNTS) $(CONTAINER_TAG) \
+		make -C /src test TESTS=/src/$(TARGET)   # seam: see below
+endif
+```
+
+Three properties, each load-bearing:
+
+**`TARGET` is required.** `test-dev` runs one file. Running everything is what
+`make test` is for, and it is the one that rebuilds first — so the fast target
+can never be mistaken for the trustworthy one.
+
+**It depends on `container-base`, not `container`.** `container-base` is a
+stamp-file rule whose only prerequisite is the `Containerfile`. Editing a script
+rebuilds nothing; editing the `Containerfile` rebuilds. Depending on `container`
+would rebuild the image on every source edit and delete the entire point of the
+target.
+
+**`-it`.** The reference uses it and the reason is a debugger.
+
+### The single-file seam is `TESTS=`
+
+The reference invokes its own runner script with the file as an argument. D18
+has no runner script — the contract is `make test` and nothing below it. So the
+seam for one file is a variable, not an argument:
+
+    make test TESTS=/src/t/foo.t
+
+**Automake honours this for free.** `TESTS` is an ordinary make variable, and a
+command-line assignment overrides the `Makefile.am` value, so a project whose
+`test` target is `test: check` needs to do nothing at all. A project whose
+`test` target drives `prove` itself must honour `TESTS` the same way — one line
+in its own `Makefile.am`, and it is stated in the `conventions.md` contract
+alongside `make test`.
+
+This adds no knob to the fragment and no second seam to the standard. It does
+rest on an autoconf behaviour that must be confirmed rather than assumed, so it
+joins the spike below.
+
+### The mounts are declared by the project
+
+`TEST_DEV_MOUNTS` names the directories holding interpreted source and tests.
+The fragment cannot know which those are, and the answer is project content —
+the side of D17 it belongs on.
+
+**This deviates from the reference deliberately.** In `hin-agw-common`,
+`TEST_DEV_MOUNTS` is the complete raw `-v` argument string, because that repo's
+in-image layout (`/app`) does not mirror its source tree and each mount needs
+its own mapping. D18 fixes the tree at `/src` as a mirror of the source, so the
+project can declare bare directory names and the fragment builds the flags:
+
+```make
+# project's Makefile.am, before the include
+TEST_DEV_MOUNTS = lib t bin/plugins
+```
+
+### Why it does not overlay the whole tree
+
+An autotools project generates files into its build tree — `bin/smokeping.dist`
+becomes `bin/smokeping` with paths substituted in. Those exist in the image and
+not on the host. A blanket `-v $(abs_top_srcdir):/src:ro` hides them, and the
+suite then fails for a reason unrelated to the edit being tested. Overlaying
+only the declared script directories leaves everything `configure` generated
+visible.
+
+### It never runs in CI
+
+`test-dev` is a developer convenience. No CI block calls it, and none should:
+what CI must verify is that the image builds and its contents pass, which is
+`make test`.
+
 ## What CI becomes
 
 **`ci-perl-autotools.yml` needs no change to its commands.** It already reads:
@@ -190,6 +283,7 @@ for it. There is no branch in the CI block and no flag for `apply` to decide.
 |---|---|
 | `m4/repo-infra-container.m4` — the flag and the conditional | Its `Containerfile` |
 | `build/container.mk` — the driver targets | Its dependency checks, inside the conditional |
+| The `test-dev` shape | `TEST_DEV_MOUNTS` — which directories hold scripts |
 | The `make test` contract, unchanged | Its test suite and how it runs |
 
 **The `Containerfile` is documented, not shipped.** It gains a contract, stated
@@ -214,10 +308,17 @@ fragment does not simply replace them: automake offers hooks (`all-local`,
 the release depends on.
 
 **The implementation plan opens with a throwaway spike** on a scratch autotools
-tree: can an included fragment replace `dist` cleanly under an automake
-conditional, or does driver mode need a `Makefile.am` empty enough that the
-real targets do nothing and the work hangs on hooks? The answer shapes the
-fragment and nothing else should be written before it lands.
+tree, answering two questions:
+
+1. Can an included fragment replace `dist` cleanly under an automake
+   conditional, or does driver mode need a `Makefile.am` empty enough that the
+   real targets do nothing and the work hangs on hooks?
+2. Does `make test TESTS=<file>` on the command line actually override the
+   `Makefile.am` value through automake's `check`? The single-file seam above
+   depends on it.
+
+The answers shape the fragment and nothing else should be written before they
+land.
 
 This is deliberately not guessed here. A plan containing complete code is
 exactly as untested as anything else.
@@ -239,13 +340,18 @@ exactly as untested as anything else.
 - **A `--disable-container` equivalent for non-autotools ecosystems.** There is
   no `configure` to hang it on and no second repository asking yet.
 - **Multi-stage Containerfile guidance.** Baking the source into the image means
-  an edit invalidates the layer and rebuilds. For a Perl project `make` is
-  cheap, so the cost is not yet real. If it becomes real, that is a note in
-  `conventions.md`, not a mechanism.
+  an edit invalidates the layer and rebuilds. `test-dev` answers that for the
+  scripting case without touching the `Containerfile` at all, which is the
+  cheaper answer. If a compiled project makes the rebuild cost real, that is a
+  new question and a new teach.
+- **A `test-dev` that runs more than one file.** The reference has run with
+  exactly one required `TARGET` for two years. Widening it would blur the line
+  between the fast target and the trustworthy one.
 
 ## Open questions
 
 None outstanding. Three were resolved on 2026-08-22 and are folded into the text
 above: which side of the container carries the flag (the inside), what the flag
-means (build natively here, not "I am in a container"), and how far the driver
-delegates (everything real runs in the container).
+means (build natively here, not "I am in a container"), how far the driver
+delegates (everything real runs in the container), and how `test-dev` finds the
+live source (the project declares the directories).
