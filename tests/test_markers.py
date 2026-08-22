@@ -72,3 +72,19 @@ def test_asset_id_rejects_underscores():
 def test_asset_id_accepts_hyphens_in_lowercase():
     text = "# repo-infra: workflow-lib-v2 v1\n"
     assert parse_markers(text) == [Marker(asset="workflow-lib-v2", version=1, line=1)]
+
+
+def test_dnl_is_a_marker_comment():
+    # m4 assets comment with `dnl`, which discards the line instead of copying
+    # it into the generated configure.
+    found = parse_markers("dnl repo-infra: container-m4 v1\nAC_DEFUN([X], [])\n")
+    assert [(m.asset, m.version, m.line) for m in found] == [("container-m4", 1, 1)]
+
+
+def test_dnl_needs_a_word_boundary():
+    # `dnlrepo-infra:` is not a comment in any language.
+    assert parse_markers("dnlrepo-infra: container-m4 v1\n") == []
+
+
+def test_marker_line_renders_the_dnl_comment():
+    assert marker_line("container-m4", 1, comment="dnl") == "dnl repo-infra: container-m4 v1"

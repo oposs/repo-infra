@@ -20,9 +20,11 @@ Marker = namedtuple("Marker", "asset version line")
 # and later modules must validate against exactly this.
 ASSET_ID = r"[a-z0-9][a-z0-9-]*"
 
-# `#` for YAML, `//` for the JavaScript workflow library. Trailing prose after
-# the version is allowed so a marker can carry "do not delete this line".
-_MARKER = re.compile(r"^\s*(?:#|//)\s*repo-infra:\s+(" + ASSET_ID + r")\s+v(\d+)(?:\s.*)?$")
+# `#` for YAML and make, `//` for the JavaScript workflow library, `dnl` for m4.
+# Trailing prose after the version is allowed so a marker can carry
+# "do not delete this line".
+_MARKER = re.compile(
+    r"^\s*(?:#|//|dnl\b)\s*repo-infra:\s+(" + ASSET_ID + r")\s+v(\d+)(?:\s.*)?$")
 
 
 def parse_markers(text):
