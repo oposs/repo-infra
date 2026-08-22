@@ -27,18 +27,21 @@
 #     Makefile:NNN: warning: overriding recipe for target 'dist'
 #     Makefile:NNN: warning: ignoring old recipe for target 'dist'
 #
-# (and the same pair for `install`). These come from GNU Make itself parsing
-# the generated Makefile -- not from automake, so `AUTOMAKE_OPTIONS =
-# -Wno-override` does not silence them and must not be added. They are the
-# expected sound of this fragment replacing automake's own recipes; they are
-# not a sign anything is broken.
+# Only `dist` warns, not `install`: automake's generated `install:` is
+# prerequisite-only and carries no recipe body of its own, so there is no old
+# recipe for this fragment's `install:` to override, while automake's `dist:`
+# does have one. These lines come from GNU Make itself parsing the generated
+# Makefile -- not from automake, so `AUTOMAKE_OPTIONS = -Wno-override` does not
+# silence them and must not be added. They are the expected sound of this
+# fragment replacing automake's own `dist` recipe; they are not a sign
+# anything is broken.
+
+if CONTAINER_DRIVER
 
 CONTAINERFILE ?= Containerfile
 CONTAINER_TAG ?= $(PACKAGE)-build:local
 TEST_DEV_MOUNTS ?=
 TARGET ?=
-
-if CONTAINER_DRIVER
 
 .PHONY: container container-base test test-dev
 
@@ -78,13 +81,39 @@ test-dev: container-base
 
 # The tarball is built by the same toolchain every time. Building it on the host
 # instead would let a host-built and an image-built tarball differ, and nobody
-# would notice until a user unpacked the wrong one.
+# would notice until a user unpacked the wrong one. Exactly one tarball is
+# expected in /src afterwards (mirroring the same hazard and guard as
+# publish/publish-source-tarball.yml): none means the build failed silently,
+# more than one means a stale tarball is sitting next to the fresh one and
+# nothing says which is which.
 dist: container
 	$(DOCKER) run --rm -v $(abs_top_builddir):/out $(CONTAINER_TAG) \
-		sh -c 'make -C /src dist && cp /src/*.tar.gz /out/'
+		sh -c 'set -eu; \
+			make -C /src dist; \
+			cd /src; \
+			set -- *.tar.gz; \
+			if [ "$$#" -eq 0 ] || [ "$$1" = "*.tar.gz" ]; then \
+				echo "make dist produced no tarball" >&2; \
+				exit 1; \
+			fi; \
+			if [ "$$#" -gt 1 ]; then \
+				echo "more than one tarball in /src: $$*" >&2; \
+				echo "remove the stale one; this target cannot tell which to ship" >&2; \
+				exit 1; \
+			fi; \
+			cp "$$1" /out/'
 
+# DESTDIR is required, not defaulted: with none given, mounting $(prefix)'s
+# default (/usr/local) read-write into the container would write into the
+# host's real system directory as the container's root, something a native
+# `make install` could never do without sudo.
 install: container
-	$(DOCKER) run --rm -v $(DESTDIR)$(prefix):/dest $(CONTAINER_TAG) \
+	@if [ -z "$(DESTDIR)" ]; then \
+		echo "Error: DESTDIR is required"; \
+		echo "Usage: make install DESTDIR=/path/to/stage"; \
+		exit 1; \
+	fi
+	$(DOCKER) run --rm -v $(DESTDIR):/dest $(CONTAINER_TAG) \
 		make -C /src install DESTDIR=/dest
 
 clean-local:
