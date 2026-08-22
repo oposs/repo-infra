@@ -39,10 +39,10 @@
     "publish-source-tarball": {"version": 1, "jobs": ["publish-source-tarball"]}
   },
   "build_assets": {
-    "container-test": {
+    "container": {
       "version": 1,
-      "source": "build/container-test.mk",
-      "target": "build/container-test.mk",
+      "source": "build/container.mk",
+      "target": "build/container.mk",
       "comment": "#"
     },
     "container-m4": {
