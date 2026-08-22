@@ -44,6 +44,12 @@
       "source": "build/container-test.mk",
       "target": "build/container-test.mk",
       "comment": "#"
+    },
+    "container-m4": {
+      "version": 1,
+      "source": "m4/repo-infra-container.m4",
+      "target": "m4/repo-infra-container.m4",
+      "comment": "dnl"
     }
   },
   "actions": {

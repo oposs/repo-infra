@@ -97,8 +97,10 @@ def test_every_asset_uses_a_manifest_pinned_major(path):
 def test_every_non_yaml_asset_is_covered_by_a_test():
     # every_asset_file() only walks YAML. Anything else under assets/ needs its
     # own test file, or it ships unchecked.
+    #   .mk -> tests/test_build_assets.py
+    #   .m4 -> tests/test_container_m4.py
     others = {p.suffix for p in ASSETS.rglob("*") if p.is_file()} - {".yml", ".yaml", ".json", ".js"}
-    assert others == {".mk"}, "a new asset kind arrived with no test: %s" % others
+    assert others == {".mk", ".m4"}, "a new asset kind arrived with no test: %s" % others
 
 
 def test_the_autotools_block_installs_only_the_fixed_host_toolchain():
