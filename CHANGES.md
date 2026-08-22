@@ -20,7 +20,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The plugin documents what to do when the standard has no answer for a
   repository's shape: question, prove, upstream, with a report that says so
   instead of a false "N items need attention" count.
-- A containerized test fragment for autotools projects. repo-infra ships the shape of the build environment; the project keeps its Containerfile and what goes in it.
+- A container driver (`build/container.mk`) provides the build infrastructure for autotools projects. repo-infra defines the build environment; the project keeps its Containerfile and what goes in it.
 - A publish add-on that attaches the `make dist` source tarball to a release. It is the first of spec 2's add-ons, and any autotools repository needs it before it can be converted without losing the tarball it publishes today.
 - A CI block for Checkmk plugins: lint, tests and a throwaway package build. The Checkmk API a plugin imports is declared by the plugin, not by this block.
 - The plugin reads a repository's ruleset, labels and workflow permissions.
