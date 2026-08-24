@@ -50,7 +50,34 @@
       # 0.1.1 and Cargo.lock still at 0.1.0, and the publish failed 6 minutes
       # later.
       - name: Reconcile Cargo.lock with the bumped version
-        run: cargo update --workspace
+        run: |
+          set -euo pipefail
+          cargo update --workspace
+
+          # cargo refuses to publish from a tree with uncommitted changes, and
+          # the step above just rewrote Cargo.lock -- so without this the job
+          # dies with "1 files in the working directory contain changes that
+          # were not yet committed into git", after packaging, every time.
+          #
+          # Commit it locally. The runner is ephemeral and nothing is pushed:
+          # main is protected against direct pushes, which is the standard's own
+          # rule, so this commit exists only to make the tree clean for
+          # packaging. Its one visible consequence is that .cargo_vcs_info.json
+          # in the published crate names a commit that exists nowhere but this
+          # runner.
+          #
+          # Not --allow-dirty, which would also wave through a modified *source*
+          # file and publish something no tag ever pointed at.
+          #
+          # The `if` is a real condition, not a swallowed failure: a re-run
+          # against an already-reconciled lock has nothing to commit, and
+          # `git commit` treats that as an error.
+          if ! git diff --quiet -- Cargo.lock; then
+            git -c user.name='github-actions[bot]' \
+                -c user.email='github-actions[bot]@users.noreply.github.com' \
+                commit -q -m 'Reconcile Cargo.lock for ${{ needs.publish.outputs.tag }}' \
+                -- Cargo.lock
+          fi
 
       # One invocation for both the single-crate and the workspace case:
       # --workspace publishes every publishable member in dependency order, so

@@ -92,11 +92,20 @@ occasionally, but on every release, by construction.
 
 Three places could fix it. The block was chosen.
 
-- **`version_files`** would regex `Cargo.lock`. Rejected: it is a generated
-  file whose format cargo does not promise, and `bumpFile` rewrites only the
-  first match (`new RegExp(spec.pattern, 'm')` with a non-global `.replace`),
-  so a workspace's second crate would silently never be bumped. A spec that
-  cannot express the workspace case cannot serve `tvision-rs`.
+- **`version_files`** would regex `Cargo.lock`. Rejected — but **not** for the
+  reason first given when the question was put to the user, which was that
+  `bumpFile` rewrites only the first match (`new RegExp(spec.pattern, 'm')`
+  with a non-global `.replace`) and so could never bump a workspace's second
+  crate. That is wrong: each spec carries its *own* pattern, and two specs over
+  the same file apply in sequence, so one anchored on `name = "tvision-rs"` and
+  another on `name = "tvision-rs-macros"` would each hit their own entry. The
+  workspace case is expressible.
+
+  The reasons that survive are weaker but real: `Cargo.lock` is a generated
+  file whose layout cargo does not promise, and every Rust repository would
+  hand-write two brittle multi-line regexes per publishable crate into its own
+  `.github/repo-infra.json`. The ruling stands on those; the reader should know
+  it was made on one argument that did not.
 - **A Rust step in `release-pr.yml`** would install a toolchain in the one
   asset every ecosystem shares, so a Perl repository would install Rust to roll
   its changelog. It also puts a build toolchain on repo-infra's side of the D15
@@ -143,20 +152,75 @@ converts green and fails at its first release — the same shape as the existing
 open question about a declared `version_files` path that does not exist. No
 mechanism is proposed here; it is recorded so it is not rediscovered.
 
-## What must be proved before this upstreams
+## What running it found — the defect no test had
 
-Stage 2 is not satisfied by reasoning. Against `oetiker/tvision-rs`, the
-workspace consumer:
+The block above is the *second* version. The first one could never have
+published anything, and 303 passing tests said it was fine.
 
-1. The block runs green with `cargo publish --workspace --locked --dry-run`,
-   proving checkout, toolchain, the lock reconciliation, `--locked`, packaging
-   and member ordering.
-2. `rust-lang/crates-io-auth-action@v1` yields a usable token from a Trusted
-   Publisher registered against `release-publish.yml`, proving the pin.
-3. A real release publishes both crates in one invocation, proving that
-   `--workspace` handles index propagation and that the hand-rolled retry loop
-   is genuinely unnecessary.
+`cargo update --workspace` rewrites `Cargo.lock`. `cargo publish` refuses to
+package from a tree with uncommitted changes. So the two steps the ruling put
+next to each other are in direct conflict, and the job fails **after**
+packaging every crate:
 
-Step 3 is irreversible: a crates.io version can be yanked but never unpublished.
-It needs the user's explicit go, and it is the only step that actually settles
-the retry-loop claim.
+    error: 1 files in the working directory contain changes that were not yet
+    committed into git
+
+Reproduced against `oetiker/tvision-rs` by constructing exactly the commit
+repo-infra produces — `Cargo.toml` at the new version, `Cargo.lock` at the old
+one — and running the two commands in order. `mdmost` and `tvision-rs` never
+meet this because they reconcile the lock in a *version* job that then commits
+and pushes it; repo-infra has no such job, and cannot push to a protected
+`main` anyway.
+
+The fix is a local commit of the reconciled lock: the runner is ephemeral,
+nothing is pushed, and the commit exists only to make the tree clean. Its one
+visible cost is that `.cargo_vcs_info.json` in the published crate names a
+commit that exists nowhere but that runner.
+
+**This is D19's lesson one layer further out.** Executing the assets was not
+enough, and pointing the tool at a repository it did not author was not enough
+either. The block had to be run *in the state the standard actually produces* —
+a bumped manifest against an unbumped lock — which is a state no fixture and no
+existing consumer ever contains.
+
+The guard that now catches it is behavioural, not textual: the test runs the
+step's own shell against a throwaway git tree with a stand-in `cargo` on PATH
+and asserts the tree ends clean. A substring assertion cannot do this — `true;
+git commit …` still contains every word it would look for, which is exactly how
+the first fault injection for it passed while the defect was live.
+
+## What proving it established
+
+Against `oetiker/tvision-rs`, on the constructed release commit:
+
+- `cargo publish --workspace --locked` fails immediately on the unbumped lock,
+  before any build. The problem D21 exists to solve is real, not predicted.
+- `cargo update --workspace` moved exactly the two workspace entries and left
+  110 dependencies untouched, so the restriction that makes the step safe holds
+  in practice.
+- `cargo publish --workspace --locked --dry-run` then exits 0, packaging and
+  building `tvision-rs-macros` first and `tvision-rs` against it. `--workspace`
+  handles member ordering with no retry loop and no wait for the index.
+
+One thing this surfaced and did **not** need to solve: an internal dependency
+pin (`tvision-rs-macros = { path = …, version = "0.15.0" }`) is not touched by
+an anchored `^version` spec, so it drifts behind the crate it pins. Caret
+semantics keep it resolving, so it is a quality issue, not a failure — and it
+is expressible as one more `version_files` spec in the repository's own config,
+which is the right layer for a pattern that names a crate.
+
+## What must still be proved before this upstreams
+
+Local simulation settled the cargo mechanics. Two things it cannot reach:
+
+1. **The OIDC exchange.** `rust-lang/crates-io-auth-action@v1` must yield a
+   usable token from a Trusted Publisher registered against
+   `release-publish.yml`. Nothing local can test this — it needs a real runner
+   with a real GitHub identity, and a publisher the user registers by hand on
+   crates.io. This is the one step that proves D21's central claim.
+2. **A real release.** Only an actual upload settles whether `--workspace`
+   handles index propagation, or whether `tvision-rs`'s retry loop was carrying
+   weight the dry run cannot see.
+
+Step 2 is irreversible: a crates.io version can be yanked but never
+unpublished. It needs the user's explicit go.

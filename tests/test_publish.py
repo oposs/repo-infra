@@ -80,6 +80,17 @@ def _crates_io_job():
     return yaml.safe_load(text)["jobs"]["publish-crates-io"]
 
 
+def _shell_code(run):
+    """A `run:` block with its shell comments removed.
+
+    The block explains in comments why it does NOT use `--allow-dirty` or
+    `|| true`. Those comments live inside the run string, so a plain substring
+    search cannot tell the explanation from the thing it warns against.
+    """
+    return "\n".join(
+        line for line in run.splitlines() if not line.strip().startswith("#"))
+
+
 def test_the_crates_io_addon_lands_between_publish_and_finalize():
     text = assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST)
     assert "    needs: [publish, publish-crates-io]" in text
@@ -168,7 +179,7 @@ def test_no_step_swallows_its_own_failure():
     # mdmost v0.1.1: a swallowed bump failure tagged 0.1.1 with the lock still
     # at 0.1.0, and the publish died 6 minutes later.
     for run in (s.get("run", "") for s in _crates_io_job()["steps"]):
-        assert "|| true" not in run
+        assert "|| true" not in _shell_code(run)
 
 
 def test_the_publish_covers_the_whole_workspace_and_stays_locked():
@@ -178,3 +189,77 @@ def test_the_publish_covers_the_whole_workspace_and_stays_locked():
     publish = next(r for r in runs if "cargo publish" in r)
     assert "--workspace" in publish
     assert "--locked" in publish
+
+
+def test_the_reconciled_lock_is_committed_before_packaging():
+    # cargo refuses to publish from a tree with uncommitted changes, and the
+    # reconcile step rewrites Cargo.lock -- so the commit is what makes the
+    # publish reachable at all. Proven against oetiker/tvision-rs: without it
+    # the job packages both crates and then dies with "1 files in the working
+    # directory contain changes that were not yet committed into git".
+    runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
+    reconcile = next(r for r in runs if "cargo update" in r)
+    assert "git" in reconcile and "commit" in reconcile
+
+
+def test_the_publish_never_waves_through_a_dirty_tree():
+    # --allow-dirty is the tempting one-word alternative to the commit above.
+    # It also publishes a modified *source* file that no tag ever pointed at.
+    for run in (s.get("run", "") for s in _crates_io_job()["steps"]):
+        assert "--allow-dirty" not in _shell_code(run)
+
+
+def test_the_reconcile_step_actually_leaves_the_tree_clean():
+    """Run the block's own reconcile shell against a throwaway git tree.
+
+    The requirement is behavioural -- after this step `cargo publish` must find
+    nothing uncommitted -- and no substring assertion can check it: `true; git
+    commit ...` still contains the words. Proven necessary against
+    oetiker/tvision-rs, where the missing commit made the job package both
+    crates and then die on the dirty Cargo.lock.
+    """
+    import re
+    import shutil
+    import subprocess
+    import tempfile
+
+    run = next(r for r in (s.get("run", "") for s in _crates_io_job()["steps"])
+               if "cargo update" in r)
+    # The runner expands workflow expressions before bash ever sees them.
+    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", run)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = pathlib.Path(tmp) / "tree"
+        tree.mkdir()
+        git = ["git", "-c", "user.email=t@e", "-c", "user.name=t"]
+        subprocess.run(["git", "init", "-q", "-b", "main", str(tree)], check=True)
+        (tree / "Cargo.lock").write_text('version = "0.1.0"\n', encoding="utf-8")
+        subprocess.run(git + ["add", "Cargo.lock"], cwd=tree, check=True)
+        subprocess.run(git + ["commit", "-qm", "seed"], cwd=tree, check=True)
+
+        # A stand-in cargo that does what `cargo update --workspace` does to the
+        # tree: rewrite Cargo.lock. Nothing here needs the real toolchain.
+        bin_dir = pathlib.Path(tmp) / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "cargo"
+        fake.write_text(
+            '#!/bin/sh\nprintf \'version = "1.2.3"\\n\' > Cargo.lock\n', encoding="utf-8")
+        fake.chmod(0o755)
+        env = {
+            "PATH": f"{bin_dir}:{shutil.which('git') and '/usr/bin'}:/bin:/usr/bin",
+            "HOME": tmp,
+        }
+
+        proc = subprocess.run(["bash", "-c", script], cwd=tree, env=env,
+                              capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+
+        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=tree,
+                               capture_output=True, text=True, check=True).stdout
+        assert dirty == "", f"cargo publish would refuse this tree:\n{dirty}"
+
+        # And it is idempotent: a re-run has nothing to commit, which `git
+        # commit` reports as an error unless the step guards for it.
+        again = subprocess.run(["bash", "-c", script], cwd=tree, env=env,
+                               capture_output=True, text=True)
+        assert again.returncode == 0, again.stderr
