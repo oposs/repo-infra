@@ -123,3 +123,25 @@ def test_the_autotools_block_no_longer_documents_a_bare_configure_limit():
     text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
     assert "Known limit" not in text
     assert "enable-pkgonly" not in text
+
+
+def test_the_selftest_block_declares_exactly_its_one_job():
+    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    assert block_job_ids(text) == MANIFEST["ci_blocks"]["ci-repo-infra-selftest"]["jobs"]
+    assert block_job_ids(text) == ["repo-infra-selftest"]
+
+
+def test_the_selftest_block_runs_only_the_container_marked_tests():
+    # The marker is what keeps the ordinary pytest job sub-second. A selftest
+    # job that ran the whole suite would duplicate it and hide its own cost.
+    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    assert "-m container" in text
+
+
+def test_both_blocks_install_a_byte_identical_host_toolchain():
+    # D19: podman on an Ubuntu runner is the link the self-test exists to
+    # exercise. If the two blocks drift, the self-test keeps passing against a
+    # toolchain the autotools block no longer ships -- green and worthless.
+    line = "sudo apt-get install -y autoconf automake gettext podman"
+    for name in ("ci/ci-perl-autotools.yml", "ci/ci-repo-infra-selftest.yml"):
+        assert line in (ASSETS / name).read_text(encoding="utf-8"), name
