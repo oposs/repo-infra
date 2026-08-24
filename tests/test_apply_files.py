@@ -181,3 +181,55 @@ def test_the_config_keeps_answers_that_are_already_recorded(tmp_path):
     assert written["skip"] == {"man-pages": "library, no CLI"}
     assert written["moving_major_tag"] is True
     assert written["ecosystems"] == ["rust"]
+
+
+# --- directory assets ship more than one file ----------------------------
+
+LIB = {
+    ".github/workflows/lib/bump.js": "// repo-infra: workflow-lib v1\nmodule.exports = {};\n",
+    ".github/workflows/lib/checks.js": "// repo-infra: workflow-lib v1\nmodule.exports = {};\n",
+    ".github/workflows/lib/version.js": "// repo-infra: workflow-lib v1\nmodule.exports = {};\n",
+}
+
+
+def test_a_missing_directory_asset_installs_every_file(tmp_path):
+    """One marker, copied into each file, is still one item -- so an item can
+    name nine paths. Installing the first alone leaves `check` reporting
+    `files disagree` on a conversion that just reported success."""
+    written = apply_file_item(
+        tmp_path, "workflow-lib", LIB, [Item("workflow-lib", "missing", "")], tmp_path)
+    assert written == sorted(LIB)
+    for path, text in LIB.items():
+        assert (tmp_path / path).read_text(encoding="utf-8") == text
+
+
+def test_an_outdated_directory_asset_refuses_instead_of_guessing(tmp_path):
+    """`_asset_source` finds an asset by its marker, which for a directory
+    resolves to whichever file sorts first -- so every later file would be
+    compared against the wrong history. D12: the tool never guesses."""
+    for path, text in LIB.items():
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    with pytest.raises(ApplyError) as raised:
+        apply_file_item(tmp_path, "workflow-lib", LIB,
+                        [Item("workflow-lib", "outdated", "")], tmp_path)
+    assert "3 files" in str(raised.value)
+    for path in LIB:
+        assert path in str(raised.value)
+
+
+def test_a_merge_is_refused_for_a_directory_asset(tmp_path):
+    merged = tmp_path / "merged.js"
+    merged.write_text("// repo-infra: workflow-lib v1\n", encoding="utf-8")
+    with pytest.raises(ApplyError) as raised:
+        apply_file_item(tmp_path, "workflow-lib", LIB,
+                        [Item("workflow-lib", "missing", "")], tmp_path, merged=str(merged))
+    assert "single-file asset" in str(raised.value)
+
+
+def test_a_single_file_asset_still_reports_exactly_one_written_path(tmp_path):
+    """The generalisation must not turn every item into a list of one that
+    callers then mishandle -- commit_item stages whatever comes back."""
+    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "missing", "")], tmp_path)
+    assert written == [".github/workflows/ci.yml"]

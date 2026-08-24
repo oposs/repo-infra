@@ -102,11 +102,21 @@ def base_version_of(plugin_root, asset_path, version):
     return None
 
 
-def _target_for(name, rendered):
-    for path, text in rendered.items():
-        if any(m.asset == name for m in parse_markers(text)):
-            return path, text
-    raise ApplyError(f"{name}: no rendered file carries that asset")
+def _targets_for(name, rendered):
+    """Every rendered path carrying this asset's marker, not just the first.
+
+    A directory asset ships one marker copied into each of its files, so
+    `workflow-lib` names nine paths under one item. Returning the first is how
+    `apply --item workflow-lib` came to install `bump.js` alone and leave the
+    next `check` reporting `files disagree` on a conversion that had just
+    succeeded -- silently, because one written file is indistinguishable from
+    nine at the moment of writing.
+    """
+    targets = sorted((path, text) for path, text in rendered.items()
+                     if any(m.asset == name for m in parse_markers(text)))
+    if not targets:
+        raise ApplyError(f"{name}: no rendered file carries that asset")
+    return targets
 
 
 def _scratch_dir(repo_root):
@@ -123,8 +133,21 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         detail = next(i.detail for i in items if i.name == name)
         raise ApplyError(f"{name}: conflict — {detail}. This is a migration, not an upgrade.")
 
-    path, expected = _target_for(name, rendered)
+    targets = _targets_for(name, rendered)
+    path, expected = targets[0]
     wanted = next(m.version for m in parse_markers(expected) if m.asset == name)
+
+    # A directory asset upgrade cannot use the merge machinery below: the base
+    # lookup finds an asset's source by its marker, which for a directory
+    # resolves to whichever file sorts first, so every file after it would be
+    # compared against the wrong history. Refusing is the honest answer while
+    # no directory asset has ever been bumped -- guessing is what D12 forbids.
+    if len(targets) > 1 and (merged is not None or state == "outdated"):
+        raise ApplyError(
+            f"{name}: ships {len(targets)} files, and only a single-file asset can be "
+            "merged or upgraded in place. Reconcile "
+            + ", ".join(p for p, _ in targets)
+            + " by hand against the plugin's copies, then re-run `check`.")
 
     if merged is not None:
         # The refusal that raised NeedsMerge recorded what was on disk at the
@@ -159,7 +182,7 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         return written
 
     if state == "missing":
-        return [write_asset(repo_root, path, expected)]
+        return [write_asset(repo_root, p, text) for p, text in targets]
 
     # outdated
     installed = (pathlib.Path(repo_root) / path).read_text(encoding="utf-8")
