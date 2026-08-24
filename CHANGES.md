@@ -12,6 +12,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- repo-infra's own CI builds a real container and runs the autotools driver it
+  ships against it, as a required check. The assets are the product, so a
+  regression in them no longer merges.
 - Autotools repositories can now build in a container end to end. `configure`
   and `make` outside the container drive podman; inside, they are plain
   autotools. A CI runner no longer probes a project's system dependencies.
