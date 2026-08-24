@@ -1,0 +1,6 @@
+FROM docker.io/library/alpine@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
+RUN apk add --no-cache autoconf automake make perl
+COPY . /src
+WORKDIR /src
+RUN autoreconf -i && ./configure --disable-container --prefix=/opt/selftest \
+ && make && make install
