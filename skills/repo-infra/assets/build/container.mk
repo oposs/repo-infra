@@ -95,7 +95,8 @@ test-dev: container-base
 # expected in /src afterwards (mirroring the same hazard and guard as
 # publish/publish-source-tarball.yml): none means the build failed silently,
 # more than one means a stale tarball is sitting next to the fresh one and
-# nothing says which is which.
+# nothing says which is which, and one that cannot be listed is `make dist`
+# reporting success over an archive it never actually wrote.
 dist: container
 	$(DOCKER) run --rm -v $(abs_top_builddir):/out $(CONTAINER_TAG) \
 		sh -c 'set -eu; \
@@ -109,6 +110,15 @@ dist: container
 			if [ "$$#" -gt 1 ]; then \
 				echo "more than one tarball in /src: $$*" >&2; \
 				echo "remove the stale one; this target cannot tell which to ship" >&2; \
+				exit 1; \
+			fi; \
+			if ! tar tzf "$$1" 2>/dev/null | grep -q .; then \
+				echo "make dist reported success but $$1 is empty or unreadable" >&2; \
+				echo "likely cause: automake 1.17+ defaults to the ustar archive" >&2; \
+				echo "format, but busybox tar (the default on minimal images like" >&2; \
+				echo "Alpine) cannot write it, so automake silently falls back to" >&2; \
+				echo "am__tar=false -- install GNU tar (e.g. Alpine package \"tar\")" >&2; \
+				echo "in the Containerfile" >&2; \
 				exit 1; \
 			fi; \
 			cp "$$1" /out/'
