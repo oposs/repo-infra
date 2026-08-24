@@ -12,6 +12,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Fixed
+- `apply` can enable required checks on a repository that already has a `main`
+  ruleset. It could only create one, and GitHub rejects a duplicate name with
+  422 -- so the repositories most likely to be converted, the protected ones,
+  were the ones it could not finish.
 - `apply` installs every file of a directory asset. It wrote only the first,
   so a fresh conversion installed one file of the workflow library and the
   next `check` reported `files disagree` on work that had just succeeded.

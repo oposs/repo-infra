@@ -298,8 +298,19 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "then apply this item again.")
         payload = (pathlib.Path(assets_root) / "gh/ruleset-main.json").read_text(
             encoding="utf-8")
-        output = gh.run(["gh", "api", "--method", "POST", f"repos/{repo}/rulesets",
-                         "--input", _stage_ruleset_payload(repo_root, payload)])
+        staged = _stage_ruleset_payload(repo_root, payload)
+        # POST creates; it cannot adopt. A repository that already had a
+        # ruleset of this name -- every repository whose `branch-protection`
+        # reads `ok` before conversion -- got `422 Validation Failed` and no
+        # required checks. Updating the one that is there is the same write,
+        # aimed at the object that exists.
+        existing = gh.ruleset_id(repo, json.loads(payload)["name"])
+        if existing is None:
+            output = gh.run(["gh", "api", "--method", "POST",
+                             f"repos/{repo}/rulesets", "--input", staged])
+        else:
+            output = gh.run(["gh", "api", "--method", "PUT",
+                             f"repos/{repo}/rulesets/{existing}", "--input", staged])
         # A ruleset POST replaces the whole object -- the server can reject,
         # rewrite or partially apply it, so "the call did not error" is not
         # evidence the branch is actually guarded. Read back what was created

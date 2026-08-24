@@ -9,6 +9,12 @@ from repo_infra.remote import Facts, Gh, GhError
 
 ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 
+# `gh api repos/o/r/rulesets` -- the listing apply reads to find out whether
+# a ruleset of this name already exists. The write call cannot match this
+# fragment, because `--method POST`/`--method PUT` sits between `api` and
+# the path, so scripting it first keeps the two calls apart.
+LIST = "api repos/o/r/rulesets"
+
 
 class Recorder:
     """A gh runner that records every call and answers reads from a script.
@@ -188,7 +194,7 @@ def test_the_ruleset_is_installed_once_the_workflows_are_confirmed_on_the_branch
     is success, so both workflows read as confirmed present on GitHub, with
     nothing installed in `tmp_path` at all. That absence of local files is
     the point: this precondition no longer cares what is on disk."""
-    recorder = Recorder({"rulesets": faithful_ruleset()})
+    recorder = Recorder({LIST: "[]", "rulesets": faithful_ruleset()})
     apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
     calls = [" ".join(c) for c in recorder.calls]
     assert any("POST" in c and "repos/o/r/rulesets" in c and "--input" in c for c in calls)
@@ -207,19 +213,19 @@ def test_the_ruleset_creation_is_refused_when_the_server_drops_a_required_contex
     not actually require both checks."""
     stripped = json.loads(faithful_ruleset())
     stripped["rules"][0]["parameters"]["required_status_checks"] = [{"context": "ci-passed"}]
-    recorder = Recorder({"rulesets": json.dumps(stripped)})
+    recorder = Recorder({LIST: "[]", "rulesets": json.dumps(stripped)})
     with pytest.raises(ApplyError, match="changelog-updated"):
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
 
 
 def test_the_ruleset_creation_is_refused_when_enforcement_is_not_active(tmp_path):
-    recorder = Recorder({"rulesets": faithful_ruleset(enforcement="disabled")})
+    recorder = Recorder({LIST: "[]", "rulesets": faithful_ruleset(enforcement="disabled")})
     with pytest.raises(ApplyError, match="active"):
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
 
 
 def test_the_ruleset_creation_is_refused_when_it_does_not_cover_the_default_branch(tmp_path):
-    recorder = Recorder({"rulesets": faithful_ruleset(
+    recorder = Recorder({LIST: "[]", "rulesets": faithful_ruleset(
         conditions={"ref_name": {"include": ["refs/heads/some-other-branch"], "exclude": []}})})
     with pytest.raises(ApplyError, match="default branch"):
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
@@ -229,7 +235,7 @@ def test_the_ruleset_creation_is_refused_when_it_grants_a_bypass(tmp_path):
     """A ruleset that grants a bypass is not the ruleset we shipped -- the
     payload's bypass_actors is always [], so any non-empty value here can
     only have come from the server, not from what was sent."""
-    recorder = Recorder({"rulesets": faithful_ruleset(
+    recorder = Recorder({LIST: "[]", "rulesets": faithful_ruleset(
         bypass_actors=[{"actor_type": "OrganizationAdmin", "bypass_mode": "always"}])})
     with pytest.raises(ApplyError, match="bypass"):
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
@@ -245,3 +251,50 @@ def test_branch_protection_is_the_same_refusal_as_required_checks(tmp_path):
 def test_an_unknown_admin_item_is_an_error(tmp_path):
     with pytest.raises(ApplyError, match="not an administration item"):
         apply_admin_item(Gh(run=Recorder({})), "o/r", "something-else", facts(), ASSETS, tmp_path)
+
+
+# --- adopting a ruleset that is already there ----------------------------
+
+EXISTING = json.dumps([{"id": 4242, "name": "main", "source_type": "Repository"}])
+
+
+def test_an_existing_ruleset_of_the_same_name_is_updated_not_recreated(tmp_path):
+    """POST creates; it cannot adopt. GitHub answers a second ruleset with a
+    name already taken with 422, so `oposs/mkp-builder` -- protected before it
+    was converted, like most repositories -- could not be given required checks
+    at all. `branch-protection` reading `ok` is the same ruleset saying so."""
+    recorder = Recorder({LIST: EXISTING, "rulesets": faithful_ruleset()})
+    apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
+    calls = [" ".join(c) for c in recorder.calls]
+    assert any("PUT" in c and "repos/o/r/rulesets/4242" in c and "--input" in c for c in calls)
+    assert not any("POST" in c and "rulesets" in c for c in calls)
+
+
+def test_an_organisation_ruleset_of_the_same_name_is_not_adopted(tmp_path):
+    """An organisation ruleset cannot be written through the repository
+    endpoint, and its name does not collide with a repository one -- so it is
+    not a reason to skip the POST."""
+    org = json.dumps([{"id": 99, "name": "main", "source_type": "Organization"}])
+    recorder = Recorder({LIST: org, "rulesets": faithful_ruleset()})
+    apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
+    calls = [" ".join(c) for c in recorder.calls]
+    assert any("POST" in c and "repos/o/r/rulesets" in c for c in calls)
+
+
+def test_a_ruleset_with_another_name_is_left_alone(tmp_path):
+    other = json.dumps([{"id": 7, "name": "release-tags", "source_type": "Repository"}])
+    recorder = Recorder({LIST: other, "rulesets": faithful_ruleset()})
+    apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
+    calls = [" ".join(c) for c in recorder.calls]
+    assert any("POST" in c and "repos/o/r/rulesets" in c for c in calls)
+    assert not any("rulesets/7" in c for c in calls)
+
+
+def test_an_updated_ruleset_is_still_read_back_and_checked(tmp_path):
+    """The PUT path must keep every guard the POST path has -- a write that
+    reports success is not evidence the branch is guarded."""
+    stripped = json.loads(faithful_ruleset())
+    stripped["rules"] = [r for r in stripped["rules"] if r["type"] != "required_status_checks"]
+    recorder = Recorder({LIST: EXISTING, "rulesets": json.dumps(stripped)})
+    with pytest.raises(ApplyError):
+        apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
