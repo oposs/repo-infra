@@ -1,22 +1,24 @@
   perl-autotools:
-    name: Perl ${{ matrix.perl }}
+    name: Build and test
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        perl: ['5.40', '5.36', '5.32']
     steps:
       - uses: actions/checkout@v7
 
-      - uses: shogo82148/actions-setup-perl@v1
-        with:
-          perl-version: ${{ matrix.perl }}
-
-      - uses: actions/cache@v6
-        with:
-          path: thirdparty
-          key: cpan-${{ matrix.perl }}-${{ hashFiles('**/cpanfile') }}
+      # The fixed host toolchain: enough to bootstrap, configure, and drive a
+      # container. It is the same for every autotools project, which is what
+      # makes it infrastructure. Deliberately no package list (D16).
+      #
+      # These four commands serve both kinds of autotools repository unchanged.
+      # A containerized one configures into driver mode (D18), so `make` builds
+      # its image and `make test` runs the suite inside it -- and `configure`
+      # never probes the project's own dependencies on this runner. One that
+      # stayed native has no Containerfile, does not call REPO_INFRA_CONTAINER,
+      # and runs plain autotools here.
+      - name: Install the autotools host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext podman
 
       - run: ./bootstrap
 
@@ -24,10 +26,8 @@
 
       - run: make
 
+      # The seam (D15). `make test` is the contract; whether the project runs
+      # its suite natively or inside its own container is its business, and
+      # m4/repo-infra-container.m4 and build/container.mk are what repo-infra
+      # ships for the second case.
       - run: make test
-
-      # The cache is written after the job, so strip the generated build files
-      # first: restoring them stale into the next run breaks it in ways that
-      # look like a dependency problem.
-      - name: Prepare the cache
-        run: rm -f thirdparty/Makefile* && rm -rf thirdparty/work

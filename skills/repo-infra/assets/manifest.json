@@ -5,11 +5,6 @@
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
     },
-    "release-publish": {
-      "version": 1,
-      "source": "workflows/release-publish.yml",
-      "target": ".github/workflows/release-publish.yml"
-    },
     "changelog": {
       "version": 1,
       "source": "workflows/changelog.yml",
@@ -36,9 +31,27 @@
     "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
-    "ci-perl-autotools": {"version": 1, "jobs": ["perl-autotools"]},
+    "ci-perl-autotools": {"version": 2, "jobs": ["perl-autotools"]},
     "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
+    "ci-repo-infra-selftest": {"version": 1, "jobs": ["repo-infra-selftest"]},
     "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]}
+  },
+  "publish_blocks": {
+    "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"]}
+  },
+  "build_assets": {
+    "container": {
+      "version": 1,
+      "source": "build/container.mk",
+      "target": "build/container.mk",
+      "comment": "#"
+    },
+    "container-m4": {
+      "version": 1,
+      "source": "m4/repo-infra-container.m4",
+      "target": "m4/repo-infra-container.m4",
+      "comment": "dnl"
+    }
   },
   "actions": {
     "actions/checkout": "v7",

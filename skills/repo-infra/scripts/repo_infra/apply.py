@@ -89,7 +89,11 @@ def base_version_of(plugin_root, asset_path, version):
         return None
     for revision in revisions:
         try:
-            text = _git(plugin_root, "show", f"{revision}:{asset_path}")
+            # `git show rev:path` resolves `path` from the repository root, not
+            # from cwd -- the leading `./` is what tells git to resolve it
+            # relative to `plugin_root` instead, which is a subdirectory of the
+            # real plugin checkout (`skills/repo-infra`), never its root.
+            text = _git(plugin_root, "show", f"{revision}:./{asset_path}")
         except ApplyError:
             continue
         found = parse_markers(text)
@@ -371,6 +375,8 @@ def write_config(repo_root, result, answers=None):
         "ecosystems": result.ecosystems,
         "moving_major_tag": existing.get("moving_major_tag", False),
         "version_files": existing.get("version_files") or result.version_files,
+        "publish": existing.get("publish", []),
+        "build": existing.get("build", []),
     }
     for key in ("skip", "answers"):
         if key in existing:

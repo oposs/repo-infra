@@ -80,7 +80,7 @@ full detail for spec 1. Specs 2–4 get their own design documents.
 | Spec | Contents |
 |---|---|
 | **1 — the frame** | plugin skeleton, detection, drift checker, branch protection, action versions, CI per language, release core, changelog gate |
-| **2 — publish add-ons** | the seam, plus crates.io, MKP, npm, nfpm deb/rpm/apk, Windows zip + winget, ghcr containers |
+| **2 — publish add-ons** | the seam, plus the autotools source tarball, crates.io, MKP, npm, nfpm deb/rpm/apk, Windows zip + winget, ghcr containers |
 | **3 — prose** | writing-style skill, man-page skill, repo hygiene files |
 | **4 — docs sites** | mdBook build, `gh-pages` branch store, versioning, cull, backfill, linkcheck |
 
@@ -501,6 +501,123 @@ re-assembles what `apply` would install for this repository and fails on any
 difference. So the shipped asset and the file demonstrably releasing this repo
 cannot drift apart, and the installer is exercised on every pull request rather
 than once at the first conversion.
+
+**Amended by D17**: repo-infra also owns the *shape* of the build environment
+for projects over the D16 threshold. The project still owns its content.
+
+### D16 — the containerization threshold
+
+A project builds natively while it needs nothing beyond the runner's default
+image plus its ecosystem toolchain. **The moment it needs an additional system
+package, the standard can no longer build it, and that is the signal to raise
+the question with the human.**
+
+**The threshold decides when to ask. It does not decide the answer.** Whether a
+given repository goes to containers is a discussion, not a detection — this is
+stage 1 of the teach path, not an automatic rewrite. Containerization is the
+expected answer and the reason D17 exists, but the alternatives are real: the
+project may drop the dependency, or the conversation may produce something the
+standard does not have yet. What is *not* available is carrying on natively
+while quietly installing packages from CI.
+
+There is deliberately **no mechanism for declaring system packages to CI.**
+Wanting one is the trigger, not a missing feature. Three shapes were considered
+and rejected:
+
+| Rejected | Why |
+|---|---|
+| `.github/apt-packages.txt`, installed if present | Solves a problem containerization deletes, and couples CI to whatever the runner image ships. |
+| A `system_packages` field in `.github/repo-infra.json` | Same, plus it puts a build-toolchain fact in repo-infra's own config. |
+| A project-owned `ci-setup.sh` | Arbitrary commands on the runner, and every repository solves the problem its own way. |
+
+The rule is a property of the **project**, not of its language. Rust, Go and
+Node ship hermetic toolchains and will usually stay below the threshold; a Perl
+project linking `librrd` is over it on day one. Nothing is mandatory and no
+ecosystem is exempt — the threshold decides when the question comes up.
+
+**Why containers rather than a package list.** Building and testing inside a
+container cuts the dependence on whatever a developer happens to have
+installed, makes a local run and a CI run the same commands with the same
+result, and isolates the project from the idiosyncrasies of whichever CI system
+runs it. A package list achieves none of the three.
+
+**The host toolchain stays unified and small.** A containerized job still needs
+enough on the host to drive the build: `autoconf automake gettext podman` for
+autotools. That list is the same for every project of that kind and lives in the
+CI block — it is infrastructure, not a per-repo declaration.
+
+**The timing is favourable and will not stay that way.** Almost nothing in the
+estate has a container setup yet, so a single shape can be set before habits
+diverge. `hin-agw-common` is the only worked example and was built as shared
+infrastructure from the start.
+
+### D17 — repo-infra owns the shape of the build environment; the project owns its content
+
+This amends D15, which assigned build and test toolchains wholesale to the
+project. D16 makes that boundary too coarse: if every repository that crosses
+the threshold writes its own container test machinery, the estate acquires one
+divergent implementation per repository, which is exactly the accommodation D15
+exists to forbid.
+
+The line moves to:
+
+| repo-infra ships, versioned and drift-checked | The project owns |
+|---|---|
+| The automake fragments — container build, container test | Its `Dockerfile` |
+| The `make test` contract | Which packages go in the image, what the tests do |
+
+The seam is unchanged: a single `make test` in the CI block. What that target
+does is now partly standard.
+
+**This does not require substitution tokens, and that is why it works.**
+`hin-agw-common/automake/test-container.mk` is a literal, generic file
+parameterized by make variables the project sets in its own `Makefile.am`
+(`SKIP_TESTS`, `PGDB`, `CONTAINER_PREFIX`, `APP_CONFIG_ENV`). That is runtime
+parameterization, not install-time substitution, so D15's "assets are literal
+files" holds without exception. This paragraph describes `hin-agw-common`'s own
+fragment, the worked example that motivated this decision — not the shape
+repo-infra went on to ship; see D18, which replaced that shape with a
+different one and dropped this knob family from the shipped asset.
+
+**Shipping from repo-infra rather than a sibling repository is the point.** A
+fifth repository holding shared build machinery would sit outside the drift
+checker, and nothing would report when a project's copy went stale. As a
+repo-infra asset it carries a version marker like every other, so `check` says
+"your container test fragment is two generations old" — which is the capability
+this whole tool exists to provide.
+
+**Amended by D18**: the fragment is a driver, not a test helper; the file the
+project owns is called `Containerfile`, not `Dockerfile`; and the runtime knobs
+named above (`SKIP_TESTS`, `PGDB`, `CONTAINER_PREFIX`, `APP_CONFIG_ENV`) are
+gone from the shipped asset.
+
+### D18 — autotools plays two roles, and the default is the one you do not control
+
+Full spec: `2026-08-22-autotools-container-driver-design.md`. D17 shipped one
+fragment for the container build and a separate one for running tests inside
+it; the gap between them left `configure` and the build itself running
+natively even for a project that has crossed the D16 threshold precisely
+because it cannot configure without its own system packages
+(`oetiker/SmokePing`, which cannot configure without `RRDs`).
+
+D18 replaces both with a single driver, `build/container.mk`, plus a new asset
+kind — the m4 macro `assets/m4/repo-infra-container.m4`, which defines
+`REPO_INFRA_CONTAINER`. Outside the container this is the whole build: `make`
+builds the image and drives every other target through it, probing nothing
+but a container engine and the presence of a `Containerfile`. Inside the
+image's build phase — where `configure` ran with `--disable-container` — the
+`CONTAINER_DRIVER` conditional is false, the fragment defines nothing at all,
+and plain autotools runs with every real dependency probed and present. The
+same tree therefore serves a stranger's bare `./configure && make` and a
+distro packager on a bare build host with the same flag and the same meaning.
+
+The project-facing runtime knobs D17 introduced (`SKIP_TESTS`, `PGDB`,
+`CONTAINER_PREFIX`, `APP_CONFIG_ENV`) are gone: inside the container the
+project's own native `test:` target runs unmodified, so how the suite is
+invoked is the project's business again, the way D15 originally intended. What
+repo-infra now ships and drift-checks is the mode switch and the driver
+fragment; what the project owns is its `Containerfile` and what goes in it —
+D17's shape/content line holds, drawn one layer down.
 
 ## Spec 1 — the frame
 

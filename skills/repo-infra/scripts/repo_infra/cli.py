@@ -37,10 +37,25 @@ def read_facts(repo):
     return Gh().facts(repo)
 
 
+def _chosen(root, key):
+    """A list the repository recorded in its own config, or nothing.
+
+    Detection cannot answer these: whether a repository publishes a tarball or
+    builds in a container is a decision (D12, D16). An unconverted repository
+    has no config file and has chosen nothing.
+    """
+    config = pathlib.Path(root) / ".github/repo-infra.json"
+    if not config.is_file():
+        return []
+    return json.loads(config.read_text(encoding="utf-8")).get(key, [])
+
+
 def _load(root):
     manifest = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
     result = Detection.load(ASSETS / "detection.json").detect(root)
-    return manifest, result, render_all(ASSETS, result, manifest)
+    rendered = render_all(ASSETS, result, manifest,
+                          _chosen(root, "publish"), _chosen(root, "build"))
+    return manifest, result, rendered
 
 
 def check(args):

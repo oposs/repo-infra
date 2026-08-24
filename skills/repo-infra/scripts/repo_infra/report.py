@@ -41,6 +41,25 @@ def render_text(repo, result, items):
         lines.append("")
 
     count = sum(1 for item in items if item.state in NEEDS_ATTENTION_STATES)
+
+    # No ecosystem matched, so no CI block can be selected and the file items
+    # below are conclusions drawn from a repository kind we do not have. Saying
+    # "N items need attention" here reads as a broken repository; the true
+    # statement is that the standard has never met this shape. Teaching it comes
+    # first, and `apply` is not the next step.
+    # An unresolved ambiguity means detection is incomplete, not that the shape
+    # is unrecognised. Once the operator answers the question, an ecosystem may
+    # yet match. Printing "does not recognise" here would be a false statement.
+    # The test `test_an_unresolved_ambiguity_keeps_the_count_honest` encodes this.
+    has_ambiguous = any(item.state == "ambiguous" for item in items)
+    if not result.ecosystems and not has_ambiguous:
+        lines.append("the standard does not recognise this repository.")
+        lines.append("")
+        lines.append("Teach it first: see references/teaching-the-standard.md in the")
+        lines.append("repo-infra skill. Running apply now would install the")
+        lines.append("repository-wide items and no CI for this repository's own code.")
+        return "\n".join(lines) + "\n"
+
     if count:
         noun = "item" if count == 1 else "items"
         verb = "needs" if count == 1 else "need"

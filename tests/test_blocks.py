@@ -22,9 +22,9 @@ def every_asset_file():
 def required_workflow_files():
     """Only the assets that end up behind a required check.
 
-    release-publish.yml legitimately carries `paths: ['CHANGES.md']`: it is a
-    push trigger and neither of its jobs is a required context. Applying D13's
-    rule to it would be wrong.
+    The publish assets legitimately carry `paths: ['CHANGES.md']`: that is a
+    push trigger and none of their jobs is a required context. Applying D13's
+    rule to them would be wrong.
     """
     yield from sorted((ASSETS / "ci").glob("*.yml"))
     yield ASSETS / "workflows/changelog.yml"
@@ -92,3 +92,68 @@ def test_every_asset_uses_a_manifest_pinned_major(path):
         assert action in MANIFEST["actions"], "%s uses %s, not in the manifest" % (path.name, action)
         assert MANIFEST["actions"][action] == ref, "%s uses %s@%s, manifest pins %s" % (
             path.name, action, ref, MANIFEST["actions"][action])
+
+
+def test_every_non_yaml_asset_is_covered_by_a_test():
+    # every_asset_file() only walks YAML. Anything else under assets/ needs its
+    # own test file, or it ships unchecked.
+    #   .mk -> tests/test_build_assets.py
+    #   .m4 -> tests/test_container_m4.py
+    others = {p.suffix for p in ASSETS.rglob("*") if p.is_file()} - {".yml", ".yaml", ".json", ".js"}
+    assert others == {".mk", ".m4"}, "a new asset kind arrived with no test: %s" % others
+
+
+def test_the_autotools_block_installs_only_the_fixed_host_toolchain():
+    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    assert "autoconf automake gettext podman" in text
+    # D16: no per-repo package list, in any shape.
+    assert "apt-packages" not in text
+    assert "system_packages" not in text
+
+
+def test_the_autotools_block_runs_make_test():
+    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    assert "make test" in text
+    assert "make check" not in text
+
+
+def test_the_autotools_block_no_longer_documents_a_bare_configure_limit():
+    # D18 closed it: plain ./configure is driver mode, so the runner never
+    # probes the project's system dependencies.
+    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    assert "Known limit" not in text
+    assert "enable-pkgonly" not in text
+
+
+def test_the_selftest_block_declares_exactly_its_one_job():
+    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    assert block_job_ids(text) == MANIFEST["ci_blocks"]["ci-repo-infra-selftest"]["jobs"]
+    assert block_job_ids(text) == ["repo-infra-selftest"]
+
+
+def test_the_selftest_block_runs_only_the_container_marked_tests():
+    # The marker is what keeps the ordinary pytest job sub-second. A selftest
+    # job that ran the whole suite would duplicate it and hide its own cost.
+    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    assert "-m container" in text
+
+
+def test_all_three_blocks_install_a_byte_identical_host_toolchain():
+    # D19: podman on an Ubuntu runner is the link the self-test exists to
+    # exercise. If any of these three blocks drift, the self-test keeps
+    # passing against a toolchain another block no longer ships -- green and
+    # worthless. This check uses full-line equality, not substring
+    # containment, to catch indentation changes and appended packages.
+    # The literal is pinned per file: that alone already forces all three
+    # files to carry the same string, so no separate pairwise equality is
+    # needed on top of it.
+    expected_line = "          sudo apt-get install -y autoconf automake gettext podman"
+    for name in (
+        "ci/ci-perl-autotools.yml",
+        "ci/ci-repo-infra-selftest.yml",
+        "publish/publish-source-tarball.yml",
+    ):
+        text = (ASSETS / name).read_text(encoding="utf-8")
+        lines = [line for line in text.split('\n') if "apt-get install" in line]
+        assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
+        assert lines[0] == expected_line, f"{name}: expected {repr(expected_line)}, got {repr(lines[0])}"

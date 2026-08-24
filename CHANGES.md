@@ -12,6 +12,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- repo-infra's own CI builds a real container and runs the autotools driver it
+  ships against it, as a required check. The assets are the product, so a
+  regression in them no longer merges.
+- Autotools repositories can now build in a container end to end. `configure`
+  and `make` outside the container drive podman; inside, they are plain
+  autotools. A CI runner no longer probes a project's system dependencies.
+  repo-infra ships the *shape* of the build environment (`build/container.mk`);
+  the project keeps its Containerfile and what goes in it.
+- `make test-dev TARGET=t/foo.t` runs one test file against the live working
+  tree, without rebuilding the image.
+- The plugin documents what to do when the standard has no answer for a
+  repository's shape: question, prove, upstream, with a report that says so
+  instead of a false "N items need attention" count.
+- A publish add-on that attaches the `make dist` source tarball to a release. It is the first of spec 2's add-ons, and any autotools repository needs it before it can be converted without losing the tarball it publishes today.
 - A CI block for Checkmk plugins: lint, tests and a throwaway package build. The Checkmk API a plugin imports is declared by the plugin, not by this block.
 - The plugin reads a repository's ruleset, labels and workflow permissions.
 - The plugin ships the release workflows as versioned, installable assets.
@@ -30,6 +44,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The autotools CI block installs one fixed host toolchain and calls `make test`, rather than building natively against whatever the runner image happens to ship. A project that needs more than the toolchain declares it in its own Containerfile.
+- The autotools release writes `VERSION` instead of rewriting `configure.ac`, which is where every autotools repository examined keeps its version.
+- `check` now says when the standard does not recognise a repository at all, instead of reporting a count of missing items drawn from a repository kind it never identified.
 - The release system is proven end to end: `v0.1.0` was cut by dispatching
   **Create release PR**, merging the pull request it opened, and letting the
   publish workflow tag and publish. The one manual step is the deliberate

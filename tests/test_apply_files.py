@@ -1,9 +1,17 @@
 # tests/test_apply_files.py
 import json
+import subprocess
 
 import pytest
 
-from repo_infra.apply import MERGE_DIR, ApplyError, NeedsMerge, apply_file_item, write_asset
+from repo_infra.apply import (
+    MERGE_DIR,
+    ApplyError,
+    NeedsMerge,
+    apply_file_item,
+    base_version_of,
+    write_asset,
+)
 from repo_infra.state import Item
 
 ASSET = "name: CI\n# repo-infra: ci v3\njobs:\n  fmt:\n"
@@ -132,6 +140,32 @@ def test_a_conflict_is_never_applied(tmp_path):
     installed(tmp_path, "name: CI\njobs:\n  fmt:\n")
     with pytest.raises(ApplyError, match="conflict"):
         apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "conflict", "not managed")], tmp_path)
+
+
+def test_base_version_of_finds_the_base_when_the_plugin_root_is_a_subdirectory(
+        tmp_path_factory):
+    """The real plugin checkout is a git repository with `skills/repo-infra`
+    as a *subdirectory* of its root, not the root itself -- unlike
+    `plugin_checkout` above, where the fixture's root and the plugin root are
+    the same directory. `git show rev:path` resolves `path` from the
+    repository root, never from cwd, so calling it with the asset path alone
+    always failed to find a base that plainly exists in history."""
+    root = tmp_path_factory.mktemp("plugin-nested")
+    plugin_root = root / "skills/repo-infra"
+    assets = plugin_root / "assets/ci"
+    assets.mkdir(parents=True)
+
+    def run(*args):
+        subprocess.run(args, cwd=root, check=True, capture_output=True)
+
+    run("git", "init", "-q")
+    run("git", "config", "user.email", "test@example.com")
+    run("git", "config", "user.name", "Test")
+    (assets / "ci-frame.yml").write_text(OLD, encoding="utf-8")
+    run("git", "add", "-A")
+    run("git", "commit", "-qm", "v1")
+
+    assert base_version_of(plugin_root, "assets/ci/ci-frame.yml", 1) == OLD
 
 
 def test_the_config_keeps_answers_that_are_already_recorded(tmp_path):

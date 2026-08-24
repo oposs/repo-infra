@@ -239,3 +239,74 @@ def test_a_checkmk_plugin_has_no_version_file():
     and the publisher has nothing to cross-check -- correct, not a gap."""
     result = Detection.load(REAL).detect(HERE / "fixtures/repo-checkmk")
     assert result.version_files == []
+
+
+def test_autotools_writes_the_version_file_not_configure_ac():
+    import json
+    import pathlib
+    assets = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
+    detection = json.loads((assets / "detection.json").read_text(encoding="utf-8"))
+    eco = [e for e in detection["ecosystems"] if e["id"] == "perl-autotools"][0]
+    assert [spec["path"] for spec in eco["version_files"]] == ["VERSION"]
+
+
+def test_the_version_file_spec_matches_a_real_version_file():
+    import json
+    import pathlib
+    import re
+    assets = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
+    detection = json.loads((assets / "detection.json").read_text(encoding="utf-8"))
+    eco = [e for e in detection["ecosystems"] if e["id"] == "perl-autotools"][0]
+    spec = eco["version_files"][0]
+    # The shape SmokePing and every hin-access-suite project ships.
+    assert re.search(spec["pattern"], "2.9.0\n", re.M)
+    # And the verify template, with the version escaped and the trailing
+    # (?![0-9]) appended the way bump.js does it (pattern.replace + append,
+    # not "or True" -- this is the guard that stops 2.9.1 from verifying
+    # against 2.9.10).
+    verify = spec["verify"].replace("$VERSION", re.escape("2.9.1")) + "(?![0-9])"
+    assert re.search(verify, "2.9.1\n", re.M)
+    assert not re.search(verify, "2.9.10\n", re.M)
+
+
+def test_the_real_file_detects_a_repository_that_ships_repo_infras_assets():
+    # D19: "this repository ships repo-infra's own assets" is a real,
+    # file-detectable property. Exactly one repository has it, by the settled
+    # four-repo split -- and any repository that vendored those assets would
+    # want the self-test too.
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-selfhost")
+    assert "repo-infra" in result.ecosystems
+    assert "ci-repo-infra-selftest" in result.blocks
+
+
+def test_an_ordinary_repository_does_not_get_the_selftest():
+    # This fixture has no skills/ directory at all, so it only guards against
+    # the signal being deleted outright (an "all": [] entry matches
+    # everything). It does not distinguish the manifest from a bare skills/
+    # directory -- test_a_skills_directory_alone_does_not_get_the_selftest
+    # below covers that.
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-claude-plugin")
+    assert "repo-infra" not in result.ecosystems
+    assert "ci-repo-infra-selftest" not in result.blocks
+
+
+def test_every_ecosystem_entry_carries_version_files():
+    # version_files is uniform by convention, not by schema: detect.py reads
+    # it with `.get("version_files", [])`, so an entry that omits the key is
+    # silently equivalent to one that spells out `[]` -- nothing at runtime
+    # would ever notice or complain. That is exactly how the repo-infra
+    # entry sat without the key until it was caught in review. This test is
+    # the guard that stops an eleventh entry from doing the same unnoticed.
+    import json
+    detection = json.loads(REAL.read_text(encoding="utf-8"))
+    assert all("version_files" in eco for eco in detection["ecosystems"])
+
+
+def test_a_skills_directory_alone_does_not_get_the_selftest(tmp_path):
+    # The signal must be the manifest file itself, not merely the presence of
+    # a skills/repo-infra/assets/ directory. A repository that ships the
+    # directory but not the manifest must not match.
+    (tmp_path / "skills/repo-infra/assets").mkdir(parents=True)
+    result = Detection.load(REAL).detect(tmp_path)
+    assert "repo-infra" not in result.ecosystems
+    assert "ci-repo-infra-selftest" not in result.blocks

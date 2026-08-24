@@ -4,13 +4,21 @@ description: Bring this repository up to the infrastructure standard, on a branc
 
 Run `/repo-infra:check` first and show the user the report. If it lists an
 `ambiguous` item, stop and ask the user that question before doing anything
-else — `apply` refuses to guess and will raise on it anyway.
+else — `apply` refuses to guess and will raise on it anyway. If it says the
+standard does not recognise this repository, stop: read
+`references/teaching-the-standard.md` and teach the standard first.
+
+Before applying, read the repository's own build, test and release setup and
+compare it to what you are about to install. A block that does not fit is not a
+reason to edit the repository around it — it is a gap in the standard, and
+`references/teaching-the-standard.md` says what to do with one.
 
 `apply` writes two different ways, and they need different handling:
 
 - **File items** (`ci`, `changelog`, `release-pr`, `release-publish`,
-  `dependabot`, `workflow-lib`) commit to the local `repo-infra/apply` branch.
-  Nothing leaves your machine until you push.
+  `dependabot`, `workflow-lib`, `container-m4`, `container`, and any other build or
+  publish asset the repository has selected) commit to the local
+  `repo-infra/apply` branch. Nothing leaves your machine until you push.
 - **Administration items** (`default-branch`, `branch-protection` /
   `required-checks`, `no-changelog-label`, `actions-open-pr`) write straight to
   the live repository through the GitHub API — no commit, no branch, no review.

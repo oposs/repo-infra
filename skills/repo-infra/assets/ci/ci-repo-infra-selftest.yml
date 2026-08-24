@@ -1,0 +1,25 @@
+  repo-infra-selftest:
+    name: Container self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest
+
+      # The same fixed host toolchain `ci-perl-autotools` installs, and
+      # deliberately the same string (D19). Podman on an Ubuntu runner is the
+      # one link nothing else exercises, and this is the line that carries it.
+      # A test pins the three blocks equal so they cannot drift apart silently.
+      - name: Install the autotools host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext podman
+
+      # Only the container-marked tests. The ordinary `pytest` job already ran
+      # everything else in under a second, and it did not need podman to do it.
+      - run: python3 -m pytest -m container -v tests
