@@ -17,7 +17,9 @@ def test_this_repository_is_what_the_assembler_would_install():
     """
     manifest = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
     result = Detection.load(ASSETS / "detection.json").detect(ROOT)
-    assert result.ecosystems == ["claude-plugin", "python"]
+    # D19: repo-infra ships its own assets, so it detects its own self-test
+    # ecosystem. This list changing is the proof the wiring is real.
+    assert result.ecosystems == ["claude-plugin", "python", "repo-infra"]
 
     for path, expected in sorted(render_all(ASSETS, result, manifest).items()):
         installed = ROOT / path

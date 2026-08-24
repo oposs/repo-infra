@@ -95,6 +95,15 @@
       "signals": {"all": ["Makefile.PL"], "none": ["configure.ac"]},
       "ci_block": "ci-perl-mkpl",
       "version_files": []
+    },
+    {
+      "id": "repo-infra",
+      "signals": {
+        "all": [
+          "skills/repo-infra/assets/manifest.json"
+        ]
+      },
+      "ci_block": "ci-repo-infra-selftest"
     }
   ],
   "candidates": [

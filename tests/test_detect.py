@@ -267,3 +267,20 @@ def test_the_version_file_spec_matches_a_real_version_file():
     verify = spec["verify"].replace("$VERSION", re.escape("2.9.1")) + "(?![0-9])"
     assert re.search(verify, "2.9.1\n", re.M)
     assert not re.search(verify, "2.9.10\n", re.M)
+
+
+def test_the_real_file_detects_a_repository_that_ships_repo_infras_assets():
+    # D19: "this repository ships repo-infra's own assets" is a real,
+    # file-detectable property. Exactly one repository has it, by the settled
+    # four-repo split -- and any repository that vendored those assets would
+    # want the self-test too.
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-selfhost")
+    assert "repo-infra" in result.ecosystems
+    assert "ci-repo-infra-selftest" in result.blocks
+
+
+def test_an_ordinary_repository_does_not_get_the_selftest():
+    # The signal must be the manifest itself, not merely a `skills/` directory.
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-claude-plugin")
+    assert "repo-infra" not in result.ecosystems
+    assert "ci-repo-infra-selftest" not in result.blocks
