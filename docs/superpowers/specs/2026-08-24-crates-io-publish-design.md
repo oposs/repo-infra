@@ -242,8 +242,43 @@ for `release-publish.yml` sits alongside the existing one. Both crates keep
 releasing from `release.yml` until the conversion lands, and no window exists
 where neither works.
 
-That leaves exactly one thing local work cannot reach: **a real release**. Only
-an actual upload settles whether `--workspace` handles index propagation, or
-whether `tvision-rs`'s 6×30 s retry loop was carrying weight the dry run cannot
-see. It is irreversible — a crates.io version can be yanked but never
-unpublished — so it needs the user's explicit go.
+### The retry loop is provably unnecessary
+
+The last design unknown was whether `--workspace` handles index propagation, or
+whether `tvision-rs`'s 6×30 s backoff was carrying weight. Cargo's own source
+(`src/cargo/ops/registry/cargo_publish.rs`) settles it — no publish required.
+
+`publish()` builds a `PublishPlan`: a graph of the publishable packages where
+"the weight of a package is the number of unpublished dependencies it has". It
+then loops, and each round:
+
+- refuses to start at all if `plan.has_cycles()`;
+- takes only `packages_ready_to_publish()` — "have no outstanding dependencies";
+- uploads those, then calls `wait_for_any_publish_confirmation`, which polls the
+  index;
+- marks the confirmed ones, unlocking their dependents for the next round.
+
+So dependency ordering and the index wait are cargo's job, done properly. And on
+timeout it does not fall through silently:
+
+    unable to publish {failed_list} due to a timeout while waiting for
+    published dependencies to be available.
+
+That is strictly better than the hand-rolled loop, which retried a whole `cargo
+publish` six times and could not tell "index not ready" from any other failure.
+The same file also confirms the `publish = false` opt-out is deliberate: "the
+intent is more like 'publish all publisable packages in this workspace', so skip
+`publish=false` packages".
+
+### What is left
+
+Only integration, not design. A green run on a real runner would show three
+things nothing local can: that the assembled YAML is valid to GitHub, that
+`crates-io-auth-action` yields a usable token from a publisher pinned to
+`release-publish.yml`, and that the lock commit works against a runner's
+checkout.
+
+None of that needs an irreversible upload. `cargo publish --workspace --locked
+--dry-run` exercises every step including the token exchange, and publishes
+nothing. A real release stays the final confirmation, but it is no longer where
+any open question lives.
