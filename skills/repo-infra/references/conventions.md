@@ -120,6 +120,12 @@ What it must do, so the driver targets can reach it:
    bare build host wants.
 3. **Leave the build tree at `/src`** -- `make dist` and `make test` are run
    against that path from outside.
+4. **List itself in `EXTRA_DIST`** -- `build/container.mk` and
+   `m4/repo-infra-container.m4` are distributed automatically (an included
+   fragment and a macro directory), but the project's own `Containerfile` is
+   not, so without this a released tarball extracts to a tree `configure`
+   refuses in its default mode: `no Containerfile in . -- write one, or pass
+   --disable-container to build in this tree.`
 
 `configure.ac` calls `REPO_INFRA_CONTAINER` and wraps its own dependency checks.
 The macro installs to `m4/repo-infra-container.m4`, so the project must also

@@ -2,6 +2,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import tarfile
 
 import pytest
 
@@ -68,6 +69,18 @@ def test_dist_leaves_a_tarball_on_the_host(tree):
     # and hide the very defect this test exists to catch. ":/out" comes from
     # the echoed `-v $(abs_top_builddir):/out` mount in container.mk's recipe.
     assert ":/out" in done.stdout
+
+    # The release path only works if the tarball can actually be configured
+    # after extraction (I3): build/container.mk and m4/repo-infra-container.m4
+    # are distributed automatically (an included fragment and a macro
+    # directory), but Containerfile is the project's own file and falls out
+    # unless the project lists it in EXTRA_DIST -- conventions.md's
+    # Containerfile contract, item 4. Read the real member names rather than
+    # assuming the "selftest-0.1/" prefix, since a version bump would move it.
+    with tarfile.open(tarballs[0]) as tar:
+        names = {pathlib.PurePosixPath(member).name for member in tar.getnames()}
+    for required in ("Containerfile", "container.mk", "repo-infra-container.m4"):
+        assert required in names, f"{required} missing from {tarballs[0].name}: {sorted(names)}"
 
 
 def test_test_dev_runs_the_live_working_tree(tree):
