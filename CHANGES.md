@@ -11,6 +11,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- `apply` installs every file of a directory asset. It wrote only the first,
+  so a fresh conversion installed one file of the workflow library and the
+  next `check` reported `files disagree` on work that had just succeeded.
+
 ### New
 - Repositories whose product is a GitHub Action are recognised. `action.yml`
   selects a `github-action` ecosystem, which validates the action manifest
