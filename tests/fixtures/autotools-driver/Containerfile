@@ -1,4 +1,6 @@
 FROM docker.io/library/alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+# alpine 3.24.1 -- the digest above is what actually pins the image; this
+# comment is for humans checking whether the pin is still in support.
 RUN apk add --no-cache autoconf automake make perl tar
 COPY . /src
 WORKDIR /src
