@@ -126,6 +126,11 @@ What it must do, so the driver targets can reach it:
    not, so without this a released tarball extracts to a tree `configure`
    refuses in its default mode: `no Containerfile in . -- write one, or pass
    --disable-container to build in this tree.`
+5. **Provide GNU tar** -- automake 1.17+ defaults `AM_INIT_AUTOMAKE`'s archive
+   format to `ustar`, and busybox tar cannot write that format, so on an image
+   whose default `tar` is busybox (Alpine's, for example) automake's probe
+   fails and it silently falls back to `am__tar=false`: `make dist` then exits
+   0 having archived nothing.
 
 `configure.ac` calls `REPO_INFRA_CONTAINER` and wraps its own dependency checks.
 The macro installs to `m4/repo-infra-container.m4`, so the project must also
