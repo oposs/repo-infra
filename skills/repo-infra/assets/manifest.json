@@ -38,7 +38,8 @@
     "ci-github-action": {"version": 1, "jobs": ["action-manifest", "action-test"]}
   },
   "publish_blocks": {
-    "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"]}
+    "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"]},
+    "publish-crates-io": {"version": 1, "jobs": ["publish-crates-io"]}
   },
   "build_assets": {
     "container": {
@@ -64,6 +65,7 @@
     "golangci/golangci-lint-action": "v9",
     "oven-sh/setup-bun": "v2",
     "shogo82148/actions-setup-perl": "v1",
+    "rust-lang/crates-io-auth-action": "v1",
     "oposs/mkp-builder": "v2"
   },
   "gh": {
