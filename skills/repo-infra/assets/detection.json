@@ -98,12 +98,9 @@
     },
     {
       "id": "repo-infra",
-      "signals": {
-        "all": [
-          "skills/repo-infra/assets/manifest.json"
-        ]
-      },
-      "ci_block": "ci-repo-infra-selftest"
+      "signals": {"all": ["skills/repo-infra/assets/manifest.json"]},
+      "ci_block": "ci-repo-infra-selftest",
+      "version_files": []
     }
   ],
   "candidates": [
