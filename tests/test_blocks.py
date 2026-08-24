@@ -142,6 +142,14 @@ def test_both_blocks_install_a_byte_identical_host_toolchain():
     # D19: podman on an Ubuntu runner is the link the self-test exists to
     # exercise. If the two blocks drift, the self-test keeps passing against a
     # toolchain the autotools block no longer ships -- green and worthless.
-    line = "sudo apt-get install -y autoconf automake gettext podman"
+    # This check uses full-line equality, not substring containment, to catch
+    # indentation changes and appended packages.
+    toolchain_lines = {}
     for name in ("ci/ci-perl-autotools.yml", "ci/ci-repo-infra-selftest.yml"):
-        assert line in (ASSETS / name).read_text(encoding="utf-8"), name
+        text = (ASSETS / name).read_text(encoding="utf-8")
+        lines = [line for line in text.split('\n') if "apt-get install" in line]
+        assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
+        toolchain_lines[name] = lines[0]
+
+    # Both files must have the exact same toolchain line, byte for byte.
+    assert toolchain_lines["ci/ci-perl-autotools.yml"] == toolchain_lines["ci/ci-repo-infra-selftest.yml"]
