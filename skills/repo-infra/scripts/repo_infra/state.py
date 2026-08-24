@@ -203,6 +203,29 @@ def classify_ambiguities(result):
     return [Item(a["id"], "ambiguous", a["question"]) for a in result.ambiguities]
 
 
+def classify_contracts(repo_root, result):
+    """Project-owned files an installed block depends on but cannot ship.
+
+    The counterpart of an ambiguity: not a question about this repository, but
+    a file the standard documents and the project must write (D20). Reported as
+    `conflict` rather than `missing` because there is nothing for `apply` to
+    install -- only a human can write it -- and because installing the block
+    without it does not merely leave a gap, it makes ci.yml invalid so that no
+    job in the repository runs at all.
+    """
+    items = []
+    if "github-action" in result.ecosystems:
+        seam = pathlib.Path(repo_root) / ".github/workflows/action-test.yml"
+        if not seam.is_file():
+            items.append(Item(
+                "action-test", "conflict",
+                "ci.yml's action-test job calls .github/workflows/action-test.yml "
+                "and this repository has no such file; GitHub rejects the whole "
+                "workflow, so every check stops reporting. Write it as the "
+                "project's own test (references/conventions.md)."))
+    return items
+
+
 def _skips(repo_root):
     """Deliberate refusals, recorded once in .github/repo-infra.json.
 

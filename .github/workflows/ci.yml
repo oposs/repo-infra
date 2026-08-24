@@ -53,7 +53,7 @@ jobs:
               sys.exit("plugin.json: version %r is not X.Y.Z" % data["version"])
           PY
 
-  # repo-infra: ci-python v1
+  # repo-infra: ci-python v2
   ruff:
     name: Lint
     runs-on: ubuntu-latest
@@ -82,11 +82,21 @@ jobs:
 
       - run: pip install pytest
 
+      # What a test suite needs to import is a toolchain concern, not an
+      # infrastructure one (D15): the project declares it and this job only
+      # honours the declaration. Same shape as ci-checkmk-plugin's step; a
+      # repository with no such file gets a no-op.
+      - name: Install the test dependencies the project declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+
       # Import paths come from the pytest `pythonpath` setting, so this command
       # is the same in every python repository the standard installs into.
       - run: python3 -m pytest -q
 
-  # repo-infra: ci-repo-infra-selftest v1
+  # repo-infra: ci-repo-infra-selftest v2
   repo-infra-selftest:
     name: Container self-test
     runs-on: ubuntu-latest
@@ -99,6 +109,18 @@ jobs:
           python-version: '3.11'
 
       - run: pip install pytest
+
+      # `-m container` filters *selection*, not *collection*: pytest imports
+      # every module under tests/ before it decides which to run, so a test
+      # file this job never runs can still stop it dead at import. That is how
+      # this step came to exist -- the ordinary pytest job had the dependency
+      # and this one did not, and the suite went from green to `1 error during
+      # collection` on a file marked out of scope.
+      - name: Install the test dependencies the project declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
 
       # The same fixed host toolchain `ci-perl-autotools` installs, and
       # deliberately the same string (D19). Podman on an Ubuntu runner is the

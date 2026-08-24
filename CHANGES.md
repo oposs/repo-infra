@@ -12,6 +12,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- Repositories whose product is a GitHub Action are recognised. `action.yml`
+  selects a `github-action` ecosystem, which validates the action manifest
+  against every workflow that calls it and runs the project's own action test.
+- A Python repository can declare test dependencies. `ci.yml`'s pytest job now
+  installs `requirements-dev.txt` when the repository has one, the same way the
+  Checkmk plugin job already did.
 - repo-infra's own CI builds a real container and runs the autotools driver it
   ships against it, as a required check. The assets are the product, so a
   regression in them no longer merges.

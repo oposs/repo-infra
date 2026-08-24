@@ -26,15 +26,16 @@
   "ci_blocks": {
     "ci-lib": {"version": 1, "jobs": ["lib"]},
     "ci-claude-plugin": {"version": 1, "jobs": ["plugin-manifest"]},
-    "ci-python": {"version": 1, "jobs": ["ruff", "pytest"]},
+    "ci-python": {"version": 2, "jobs": ["ruff", "pytest"]},
     "ci-rust": {"version": 1, "jobs": ["rust-check", "rust-test"]},
     "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
     "ci-perl-autotools": {"version": 2, "jobs": ["perl-autotools"]},
     "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
-    "ci-repo-infra-selftest": {"version": 1, "jobs": ["repo-infra-selftest"]},
-    "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]}
+    "ci-repo-infra-selftest": {"version": 2, "jobs": ["repo-infra-selftest"]},
+    "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
+    "ci-github-action": {"version": 1, "jobs": ["action-manifest", "action-test"]}
   },
   "publish_blocks": {
     "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"]}
