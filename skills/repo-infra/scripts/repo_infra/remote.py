@@ -49,6 +49,24 @@ class Gh:
     def api(self, path):
         return json.loads(self.run(["gh", "api", path]))
 
+    def ruleset_id(self, repo, name):
+        """The id of this repository's own ruleset called `name`, or None.
+
+        `apply` could only ever POST, and GitHub answers a second ruleset with
+        a name already taken with `422 Validation Failed`. Every repository
+        that was protected before it was converted hits that -- which is most
+        of them, and it is not even a surprise: `branch-protection` reads `ok`
+        from exactly the ruleset the POST then collides with.
+
+        Only `Repository`-source rulesets are candidates. An organisation
+        ruleset cannot be written through this endpoint, and its name does not
+        collide with a repository one.
+        """
+        for entry in self.api(f"repos/{repo}/rulesets"):
+            if entry.get("name") == name and entry.get("source_type") == "Repository":
+                return entry["id"]
+        return None
+
     def path_exists_on_branch(self, repo, ref, path):
         """True/False if confirmed by asking GitHub; None if the check
         itself could not be confirmed -- a network error, a permissions
