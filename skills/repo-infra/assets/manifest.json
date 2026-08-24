@@ -33,7 +33,7 @@
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
     "ci-perl-autotools": {"version": 2, "jobs": ["perl-autotools"]},
     "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
-    "ci-repo-infra-selftest": {"version": 1, "jobs": ["repo-infra-selftest"]},
+    "ci-repo-infra-selftest": {"version": 2, "jobs": ["repo-infra-selftest"]},
     "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
     "ci-github-action": {"version": 1, "jobs": ["action-manifest", "action-test"]}
   },

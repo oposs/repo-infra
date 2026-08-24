@@ -108,6 +108,22 @@ What a suite needs to import is a toolchain concern and the project declares it
 (D15); a repository without the file gets a no-op. This closes a gap that would
 have blocked the next Python repository needing any test dependency at all.
 
+### The revision the first CI run forced: ci-repo-infra-selftest v2
+
+Adding `requirements-dev.txt` to `ci-python` was not enough, and the container
+self-test found that within a minute of the branch being pushed. `-m container`
+filters **selection**, not **collection**: pytest imports every module under
+`tests/` before it decides which to run, so a test file that job was never
+going to run stopped it dead at import with `ModuleNotFoundError: No module
+named 'yaml'`. The local run was green because the developer machine had
+PyYAML.
+
+Any job that runs pytest over the suite needs whatever the suite imports, so
+`ci-repo-infra-selftest` gains the same guarded step, and `tests/test_blocks.py`
+now asserts the rule over every block: run pytest, install the declared test
+dependencies. It is the same family as the `addopts` trap recorded during D19 —
+a select and a deselect that look like one mechanism and are two.
+
 ## What was considered and rejected
 
 - **Static validation only, no execution.** Cheap and universal, and it would

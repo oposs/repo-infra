@@ -11,6 +11,18 @@
 
       - run: pip install pytest
 
+      # `-m container` filters *selection*, not *collection*: pytest imports
+      # every module under tests/ before it decides which to run, so a test
+      # file this job never runs can still stop it dead at import. That is how
+      # this step came to exist -- the ordinary pytest job had the dependency
+      # and this one did not, and the suite went from green to `1 error during
+      # collection` on a file marked out of scope.
+      - name: Install the test dependencies the project declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+
       # The same fixed host toolchain `ci-perl-autotools` installs, and
       # deliberately the same string (D19). Podman on an Ubuntu runner is the
       # one link nothing else exercises, and this is the line that carries it.

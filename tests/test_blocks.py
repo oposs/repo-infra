@@ -157,3 +157,21 @@ def test_all_three_blocks_install_a_byte_identical_host_toolchain():
         lines = [line for line in text.split('\n') if "apt-get install" in line]
         assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
         assert lines[0] == expected_line, f"{name}: expected {repr(expected_line)}, got {repr(lines[0])}"
+
+
+@pytest.mark.parametrize("block", sorted(MANIFEST["ci_blocks"]))
+def test_a_block_that_runs_pytest_installs_the_declared_test_dependencies(block):
+    """`-m <marker>` filters selection, not collection.
+
+    pytest imports every module under tests/ before deciding which to run, so a
+    job that runs only a subset still needs whatever the whole suite imports.
+    The container self-test job learned this the expensive way: it installed
+    pytest alone and died with `1 error during collection` on a test file it
+    was never going to run.
+    """
+    text = (ASSETS / "ci" / (block + ".yml")).read_text(encoding="utf-8")
+    if "python3 -m pytest" not in text:
+        return
+    assert "requirements-dev.txt" in text, (
+        "%s runs pytest but never installs the repository's declared test "
+        "dependencies" % block)
