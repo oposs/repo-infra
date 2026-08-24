@@ -290,6 +290,18 @@ def test_an_ordinary_repository_does_not_get_the_selftest():
     assert "ci-repo-infra-selftest" not in result.blocks
 
 
+def test_every_ecosystem_entry_carries_version_files():
+    # version_files is uniform by convention, not by schema: detect.py reads
+    # it with `.get("version_files", [])`, so an entry that omits the key is
+    # silently equivalent to one that spells out `[]` -- nothing at runtime
+    # would ever notice or complain. That is exactly how the repo-infra
+    # entry sat without the key until it was caught in review. This test is
+    # the guard that stops an eleventh entry from doing the same unnoticed.
+    import json
+    detection = json.loads(REAL.read_text(encoding="utf-8"))
+    assert all("version_files" in eco for eco in detection["ecosystems"])
+
+
 def test_a_skills_directory_alone_does_not_get_the_selftest(tmp_path):
     # The signal must be the manifest file itself, not merely the presence of
     # a skills/repo-infra/assets/ directory. A repository that ships the
