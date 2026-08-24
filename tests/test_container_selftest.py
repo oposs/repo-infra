@@ -1,3 +1,4 @@
+import os
 import pathlib
 import shutil
 import subprocess
@@ -12,9 +13,14 @@ pytestmark = pytest.mark.container
 
 
 def run(args, cwd, check=True, timeout=900):
-    """Run a command and return the CompletedProcess, output captured."""
+    """Run a command and return the CompletedProcess, output captured.
+
+    LC_ALL=C keeps make's own diagnostics (e.g. "No rule to make target")
+    in English regardless of the host locale.
+    """
     return subprocess.run(args, cwd=cwd, check=check, timeout=timeout,
-                          capture_output=True, text=True)
+                          capture_output=True, text=True,
+                          env={**os.environ, "LC_ALL": "C"})
 
 
 @pytest.fixture(scope="session")
@@ -47,21 +53,34 @@ def test_driver_mode_builds_the_image_and_tests_inside_it(tree):
     run(["./configure"], tree)
     done = run(["make", "test"], tree)
     assert "# TOTAL: 1" in done.stdout and "# PASS:  1" in done.stdout
+    # make's own un-silenced recipe echo for `test:` -- forgeable only by
+    # the real recipe running, not by a stale image passing on its own.
+    assert "make -C /src test" in done.stdout
 
 
 def test_dist_leaves_a_tarball_on_the_host(tree):
     run(["./configure"], tree)
-    run(["make", "dist"], tree)
+    done = run(["make", "dist"], tree)
     tarballs = sorted(tree.glob("*.tar.gz"))
     assert len(tarballs) == 1, tarballs
+    # Proves the containerised `dist:` override ran, not automake's native
+    # dist on the host -- which would also leave exactly one tarball behind
+    # and hide the very defect this test exists to catch. ":/out" comes from
+    # the echoed `-v $(abs_top_builddir):/out` mount in container.mk's recipe.
+    assert ":/out" in done.stdout
 
 
 def test_test_dev_runs_the_live_working_tree(tree):
-    """Proven by exit status, never by TAP text.
+    """Proven by the post-restore run, never by TAP text.
 
-    Automake's default driver judges a test by its exit status, so a script
-    printing `not ok 1` while exiting 0 reports PASS and proves nothing. Make
-    the host copy fail and require test-dev to fail with it.
+    `test-dev` depends on `container-base`, whose stamp does not exist yet the
+    first time this test breaks t/basic.t -- so that first `make` also builds
+    the image, baking the broken script into it, and the resulting failure
+    proves nothing about the -v mount (a baked-in failure, or even a podman
+    build error, would fail the same way). What actually proves the mount is
+    live is the run *after* restoring the file: the stamp already exists and
+    the Containerfile is unchanged, so no rebuild happens, and the run can
+    only pass if the mount overrides /src/t with the fixed host copy.
     """
     run(["./configure"], tree)
     test_file = tree / "t/basic.t"
@@ -70,6 +89,10 @@ def test_test_dev_runs_the_live_working_tree(tree):
     try:
         failed = run(["make", "test-dev", "TARGET=t/basic.t"], tree, check=False)
         assert failed.returncode != 0, "test-dev passed against a failing host copy"
+        # Reject a pass bought by an infrastructure failure (bad DOCKER, a
+        # podman build error) rather than the test actually running and
+        # failing -- only the latter proves anything about t/basic.t itself.
+        assert "# FAIL:  1" in failed.stdout, failed.stdout + failed.stderr
     finally:
         test_file.write_text(original, encoding="utf-8")
         test_file.chmod(0o755)
@@ -83,6 +106,21 @@ def test_the_refusals_abort_make(tree):
     assert no_target.returncode != 0
     assert "TARGET is required" in no_target.stdout + no_target.stderr
 
-    no_destdir = run(["make", "install"], tree, check=False)
+    # Streams merged, not captured separately: the echo goes to stdout and a
+    # dead guard's `mkdir -p` error goes to stderr, so separate capture has no
+    # ordering to check the guard actually short-circuited the recipe. The
+    # `container` prerequisite -- and everything podman prints for it -- runs
+    # to completion before the install recipe starts, so the text after the
+    # refusal message is the install recipe and nothing else: a live guard
+    # exits right there, a dead one falls through into `mkdir` with an empty
+    # operand.
+    no_destdir = subprocess.run(
+        ["make", "install"], cwd=tree, check=False, timeout=900, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        env={**os.environ, "LC_ALL": "C"},
+    )
     assert no_destdir.returncode != 0
-    assert "DESTDIR is required" in no_destdir.stdout + no_destdir.stderr
+    merged = no_destdir.stdout
+    assert "Error: DESTDIR is required" in merged
+    tail = merged.rsplit("Error: DESTDIR is required", 1)[1]
+    assert "mkdir" not in tail, tail
