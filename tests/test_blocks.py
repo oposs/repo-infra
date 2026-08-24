@@ -138,21 +138,22 @@ def test_the_selftest_block_runs_only_the_container_marked_tests():
     assert "-m container" in text
 
 
-def test_both_blocks_install_a_byte_identical_host_toolchain():
+def test_all_three_blocks_install_a_byte_identical_host_toolchain():
     # D19: podman on an Ubuntu runner is the link the self-test exists to
-    # exercise. If the two blocks drift, the self-test keeps passing against a
-    # toolchain the autotools block no longer ships -- green and worthless.
-    # This check uses full-line equality, not substring containment, to catch
-    # indentation changes and appended packages. The literal is pinned as well
-    # as the equality because equality alone lets both blocks drift together.
+    # exercise. If any of these three blocks drift, the self-test keeps
+    # passing against a toolchain another block no longer ships -- green and
+    # worthless. This check uses full-line equality, not substring
+    # containment, to catch indentation changes and appended packages.
+    # The literal is pinned per file: that alone already forces all three
+    # files to carry the same string, so no separate pairwise equality is
+    # needed on top of it.
     expected_line = "          sudo apt-get install -y autoconf automake gettext podman"
-    toolchain_lines = {}
-    for name in ("ci/ci-perl-autotools.yml", "ci/ci-repo-infra-selftest.yml"):
+    for name in (
+        "ci/ci-perl-autotools.yml",
+        "ci/ci-repo-infra-selftest.yml",
+        "publish/publish-source-tarball.yml",
+    ):
         text = (ASSETS / name).read_text(encoding="utf-8")
         lines = [line for line in text.split('\n') if "apt-get install" in line]
         assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
-        toolchain_lines[name] = lines[0]
         assert lines[0] == expected_line, f"{name}: expected {repr(expected_line)}, got {repr(lines[0])}"
-
-    # Both files must have the exact same toolchain line, byte for byte.
-    assert toolchain_lines["ci/ci-perl-autotools.yml"] == toolchain_lines["ci/ci-repo-infra-selftest.yml"]
