@@ -1,0 +1,4 @@
+# Test-time dependencies, installed by ci.yml's pytest job.
+# PyYAML: tests/test_github_action.py executes the ci-github-action
+# validator, and that script parses action.yml and the workflows.
+PyYAML

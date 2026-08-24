@@ -53,7 +53,7 @@ jobs:
               sys.exit("plugin.json: version %r is not X.Y.Z" % data["version"])
           PY
 
-  # repo-infra: ci-python v1
+  # repo-infra: ci-python v2
   ruff:
     name: Lint
     runs-on: ubuntu-latest
@@ -81,6 +81,16 @@ jobs:
           python-version: '3.11'
 
       - run: pip install pytest
+
+      # What a test suite needs to import is a toolchain concern, not an
+      # infrastructure one (D15): the project declares it and this job only
+      # honours the declaration. Same shape as ci-checkmk-plugin's step; a
+      # repository with no such file gets a no-op.
+      - name: Install the test dependencies the project declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
 
       # Import paths come from the pytest `pythonpath` setting, so this command
       # is the same in every python repository the standard installs into.

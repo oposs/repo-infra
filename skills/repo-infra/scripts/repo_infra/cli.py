@@ -9,7 +9,12 @@ from .apply import apply_admin_item, apply_file_item, commit_item, ensure_branch
 from .assemble import render_all
 from .detect import Detection
 from .remote import Facts, Gh
-from .state import NEEDS_ATTENTION_STATES, classify, classify_ambiguities
+from .state import (
+    NEEDS_ATTENTION_STATES,
+    classify,
+    classify_ambiguities,
+    classify_contracts,
+)
 
 ASSETS = pathlib.Path(__file__).resolve().parents[2] / "assets"
 
@@ -63,6 +68,7 @@ def check(args):
     repo = args.repo or Gh().current_repo()
     items = classify(args.root, rendered, manifest, read_facts(repo))
     items += classify_ambiguities(result)
+    items += classify_contracts(args.root, result)
     renderer = report.render_json if args.json else report.render_text
     print(renderer(repo, result, items))
     return 1 if any(i.state in NEEDS_ATTENTION_STATES for i in items) else 0

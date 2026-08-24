@@ -188,6 +188,50 @@ correctly -- native runs the real suite, driver delegates to podman.
 `DESTDIR` refuses with a usage message rather than mounting the host's
 `$(prefix)` read-write into the container.
 
+## The action-test contract (D20)
+
+Same shape as the Containerfile contract, one layer over: repo-infra owns the
+*seam*, the project owns the *test*. An action's real test is `uses: ./` with
+real inputs, and repo-infra cannot know what inputs this action takes -- so it
+does not try. It ships one literal job that calls a reusable workflow at a
+fixed path:
+
+    action-test:
+      uses: ./.github/workflows/action-test.yml
+
+`.github/workflows/action-test.yml` is therefore the project's own file: not
+shipped, not versioned, not drift-checked, and **not** assembler output despite
+living beside files that are. What it must do:
+
+1. **Trigger on `workflow_call` and nothing else.** `on: [workflow_call]`. Add
+   `push` or `pull_request` beside it and every run happens twice -- once here
+   and once through `ci.yml` -- which reads as flakiness rather than as a
+   duplicated trigger.
+2. **Carry its own `timeout-minutes`,** on each of its jobs. GitHub rejects
+   `runs-on`, `steps` and `timeout-minutes` on a job that calls a reusable
+   workflow, so the calling job cannot impose one and the standard's usual
+   per-job timeout has to come from inside.
+3. **Exist.** A `uses:` pointing at a missing workflow makes the whole of
+   `ci.yml` invalid, so *no* job runs and the pull request blocks on a check
+   that never reports -- loud, but the message names YAML rather than this
+   contract. `check` reports it as its own line for that reason.
+
+The path is fixed rather than configurable on purpose: a name in
+`.github/repo-infra.json` would be one more thing per repository to get wrong,
+for no gain over renaming one file during conversion.
+
+The block's other job, `action-manifest`, is repo-infra's own and needs nothing
+from the project. It reads `action.yml` and every workflow beside it, and fails
+on either half of a mismatch between the two -- an input a workflow passes that
+`action.yml` does not declare, or a `required: true` input a workflow omits.
+Both are silent in GitHub's own runner: the first prints `Unexpected input(s)`
+as a warning and drops the value, and the second is not enforced at all. A test
+that hits either one is green while testing nothing.
+
+The manifest is `action.yml`. GitHub also accepts `action.yaml`; the standard
+does not, and a repository spelling it the other way renames the file during
+conversion.
+
 ## Markers record a generation, never a content hash
 
 Every installed asset carries `# repo-infra: <asset> vN` (or `// repo-infra:
