@@ -2,8 +2,9 @@
 
 Date: 2026-08-24
 Extends: `2026-08-17-repo-infra-design.md` (the D-series), Spec 2's add-on table
-Proved in: `oetiker/tvision-rs` — the auth mechanism in production since
-0.15.0; the cargo mechanics by local simulation; a real release still pending
+Proved in: `oetiker/tvision-rs`, branch `repo-infra/proof-crates-io`,
+[run 32758119138](https://github.com/oetiker/tvision-rs/actions/runs/32758119138)
+— green; a real upload is the only step not exercised
 
 This document adds one decision, D21, and one publish add-on. It is the second
 case worked through the teach path (`references/teaching-the-standard.md`), and
@@ -270,15 +271,37 @@ The same file also confirms the `publish = false` opt-out is deliberate: "the
 intent is more like 'publish all publisable packages in this workspace', so skip
 `publish=false` packages".
 
-### What is left
+### The proof run — green
 
-Only integration, not design. A green run on a real runner would show three
-things nothing local can: that the assembled YAML is valid to GitHub, that
-`crates-io-auth-action` yields a usable token from a publisher pinned to
-`release-publish.yml`, and that the lock commit works against a runner's
-checkout.
+`oetiker/tvision-rs`, branch `repo-infra/proof-crates-io`. The branch carries
+the fixture (`Cargo.toml` at 0.15.1, `Cargo.lock` left at 0.15.0 — exactly what
+repo-infra's release pull request produces) and the shipped block **byte for
+byte, one line changed**: `--dry-run` appended to the publish. A stub `publish`
+job supplies the three outputs, so the block's `needs:`, its `release_id` guard
+and its `tag` reference all ran as written.
 
-None of that needs an irreversible upload. `cargo publish --workspace --locked
---dry-run` exercises every step including the token exchange, and publishes
-nothing. A real release stays the final confirmation, but it is no longer where
-any open question lives.
+What the log proves, step by step:
+
+- **Trusted Publishing works from the new filename.** `Retrieving GitHub Actions
+  JWT token with audience: crates.io` → `Retrieved JWT token successfully` →
+  `Requesting token from: https://crates.io/api/v1/trusted_publishing/tokens` →
+  `Retrieved token successfully`. crates.io accepted an OIDC claim naming
+  `release-publish.yml`, which is the migration hazard above, closed. The
+  action's post step revoked the token.
+- **The reconcile is correctly narrow.** `Locking 2 packages`, both workspace
+  members, `114 unchanged dependencies behind latest`.
+- **The lock commit works on a runner.** Proven by absence: the publish step did
+  *not* fail with "files in the working directory contain changes", which is
+  exactly how it fails without the commit.
+- **`--workspace` orders and verifies both crates.** `Packaging`/`Verifying`
+  `tvision-rs-macros` first, then `tvision-rs` against it, then
+  `aborting upload due to dry run` twice. Nothing was published.
+
+One thing `--dry-run` cannot reach: the returned token is scoped to the crates
+whose publisher configs matched, and a dry run never exercises that scope. If
+only one of the two crates had a config, this run would look identical. The
+first real release is what settles it — and it fails loudly rather than
+silently, so the risk is a failed release, not a wrong one.
+
+A real upload therefore remains the last unexercised step, but no design
+question depends on it.
