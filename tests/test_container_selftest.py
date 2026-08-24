@@ -137,3 +137,16 @@ def test_the_refusals_abort_make(tree):
     assert "Error: DESTDIR is required" in merged
     tail = merged.rsplit("Error: DESTDIR is required", 1)[1]
     assert "mkdir" not in tail, tail
+
+    # The third refusal: container.mk's own comment calls an unset
+    # TEST_DEV_MOUNTS "the one failure mode test-dev exists to make
+    # impossible". The fixture's Makefile.am sets TEST_DEV_MOUNTS = t, but a
+    # command-line variable assignment overrides a Makefile.am assignment in
+    # GNU make, so TEST_DEV_MOUNTS= on the command line reaches the guard
+    # without needing a second fixture shape. container-base's stamp already
+    # exists by this point (built above), so this costs no rebuild.
+    no_mounts = run(
+        ["make", "test-dev", "TARGET=t/basic.t", "TEST_DEV_MOUNTS="], tree, check=False
+    )
+    assert no_mounts.returncode != 0
+    assert "TEST_DEV_MOUNTS is not set" in no_mounts.stdout + no_mounts.stderr
