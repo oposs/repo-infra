@@ -1,5 +1,5 @@
 {
-  "ecosystems": ["claude-plugin", "python"],
+  "ecosystems": ["claude-plugin", "python", "repo-infra"],
   "moving_major_tag": false,
   "version_files": [
     {

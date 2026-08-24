@@ -26,3 +26,14 @@ def test_this_repository_is_what_the_assembler_would_install():
         assert installed.is_file(), "%s is missing from this repository" % path
         assert installed.read_text(encoding="utf-8") == expected, (
             "%s differs from its asset -- edit the asset, then re-render" % path)
+
+
+def test_repo_infra_json_ecosystems_matches_detection():
+    """.github/repo-infra.json's "ecosystems" is the detected list, recorded so a
+    later run can tell "still this" from "detection changed underneath me"
+    (skills/repo-infra/references/conventions.md). It is not assembler output, so
+    nothing else re-renders it if detection moves on -- this is the guard.
+    """
+    config = json.loads((ROOT / ".github/repo-infra.json").read_text(encoding="utf-8"))
+    result = Detection.load(ASSETS / "detection.json").detect(ROOT)
+    assert config["ecosystems"] == result.ecosystems
