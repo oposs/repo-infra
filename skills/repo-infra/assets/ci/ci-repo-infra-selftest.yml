@@ -5,6 +5,12 @@
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest
+
       # The same fixed host toolchain `ci-perl-autotools` installs, and
       # deliberately the same string (D19). Podman on an Ubuntu runner is the
       # one link nothing else exercises, and this is the line that carries it.
