@@ -11,6 +11,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### New
+- The `publish-crates-io` add-on (D21). A repository names it in its `publish`
+  list and its releases go to crates.io with **no stored credential**: the job
+  exchanges its GitHub OIDC identity for a short-lived token via
+  `rust-lang/crates-io-auth-action`, so no `CRATES_IO_TOKEN` secret exists
+  anywhere. One `cargo publish --workspace --locked` serves both the
+  single-crate and the multi-crate case, in dependency order, replacing the
+  hand-rolled publish-then-retry loop a workspace needs otherwise.
+  Converting a crate that already publishes needs a new Trusted Publisher
+  registered on crates.io first -- the pin names the workflow filename, and
+  conversion renames it. See `references/conventions.md`.
+
 ### Fixed
 - `apply` can enable required checks on a repository that already has a `main`
   ruleset. It could only create one, and GitHub rejects a duplicate name with

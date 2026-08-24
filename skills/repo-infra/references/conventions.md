@@ -90,6 +90,16 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   tarball to the release, and it is a **blocking prerequisite** for converting
   any autotools repository that already publishes one -- convert without it
   and the tarball a project ships today silently stops shipping.
+  `["publish-crates-io"]` publishes the whole cargo workspace to crates.io
+  (D21). It carries a prerequisite that lives outside the repository: crates.io
+  pins a Trusted Publisher to a *(repository, workflow filename)* pair, and the
+  filename the standard renders is always
+  `.github/workflows/release-publish.yml`. A crate that published before it was
+  converted has its publisher registered against its **old** workflow name, and
+  that pin does not follow the rename -- so register a new Trusted Publisher
+  per publishable crate before the first converted release, or the release
+  stays a draft and the crate never ships. `check` queries GitHub, not
+  crates.io, and cannot see this for you.
 - `build` -- which build assets this repository's Makefile and `configure.ac`
   install, by id (`manifest.json` `build_assets`). A containerized autotools
   repository names both: `["container-m4", "container"]` installs
