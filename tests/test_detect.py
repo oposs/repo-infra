@@ -280,7 +280,21 @@ def test_the_real_file_detects_a_repository_that_ships_repo_infras_assets():
 
 
 def test_an_ordinary_repository_does_not_get_the_selftest():
-    # The signal must be the manifest itself, not merely a `skills/` directory.
+    # This fixture has no skills/ directory at all, so it only guards against
+    # the signal being deleted outright (an "all": [] entry matches
+    # everything). It does not distinguish the manifest from a bare skills/
+    # directory -- test_a_skills_directory_alone_does_not_get_the_selftest
+    # below covers that.
     result = Detection.load(REAL).detect(HERE / "fixtures/repo-claude-plugin")
+    assert "repo-infra" not in result.ecosystems
+    assert "ci-repo-infra-selftest" not in result.blocks
+
+
+def test_a_skills_directory_alone_does_not_get_the_selftest(tmp_path):
+    # The signal must be the manifest file itself, not merely the presence of
+    # a skills/repo-infra/assets/ directory. A repository that ships the
+    # directory but not the manifest must not match.
+    (tmp_path / "skills/repo-infra/assets").mkdir(parents=True)
+    result = Detection.load(REAL).detect(tmp_path)
     assert "repo-infra" not in result.ecosystems
     assert "ci-repo-infra-selftest" not in result.blocks

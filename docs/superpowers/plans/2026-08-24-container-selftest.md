@@ -554,6 +554,16 @@ Append to the `ecosystems` list in `skills/repo-infra/assets/detection.json`.
 **Append at the end** — detection preserves file order and that order decides job
 order in the rendered `ci.yml`, so appending keeps the diff to one added job:
 
+**Correction (fix round 1 review):** this mechanism is false. `detect.py`
+sorts both `ecosystems` and `blocks` (and builds `blocks` from a `set`), so
+the position of an entry in `detection.json` has no effect on the rendered
+job order — moving the `repo-infra` entry to the front of the list produced a
+byte-identical `ci.yml`. The diff stayed to one added job because
+`ci-repo-infra-selftest` sorts last alphabetically among
+`{ci-claude-plugin, ci-python, ci-repo-infra-selftest}`, not because of where
+it was appended. Appending is still fine practice for readability, just not
+for the reason given above.
+
 ```json
     {
       "id": "repo-infra",
