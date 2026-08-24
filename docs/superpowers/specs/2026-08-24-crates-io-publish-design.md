@@ -2,7 +2,8 @@
 
 Date: 2026-08-24
 Extends: `2026-08-17-repo-infra-design.md` (the D-series), Spec 2's add-on table
-Proved in: *pending — `oetiker/tvision-rs`*
+Proved in: `oetiker/tvision-rs` — the auth mechanism in production since
+0.15.0; the cargo mechanics by local simulation; a real release still pending
 
 This document adds one decision, D21, and one publish add-on. It is the second
 case worked through the teach path (`references/teaching-the-standard.md`), and
@@ -135,14 +136,18 @@ the release pull request is authoritative for.
 ## The migration hazard
 
 **Converting a repository that already publishes breaks its Trusted Publisher.**
-`tvision-rs`'s publisher is registered against `release.yml`. Conversion
-replaces that workflow with `release-publish.yml`, and the pin does not follow.
-Both crates need a new Trusted Publisher registered on crates.io, by hand,
-before the first converted release.
+`workflow_filename` is a required part of the pin, so `tvision-rs`'s publisher
+-- registered against `release.yml` -- stops matching the moment conversion
+renames that workflow to `release-publish.yml`.
 
-This is manual, outward-facing, per-crate, and lives on crates.io. It belongs
-in the conversion checklist for any repository whose `publish` list contains
-`publish-crates-io`.
+It is not a cutover, though. A crate may hold up to `MAX_CONFIGS_PER_CRATE` = 5
+publishers, so the new one is *added* beside the old and both crates keep
+releasing from `release.yml` until the conversion merges. Nothing has to be
+deleted, and no window exists where neither works.
+
+This is manual, outward-facing, per-crate, and lives on crates.io -- one more
+config row per publishable crate. It belongs in the conversion checklist for
+any repository whose `publish` list contains `publish-crates-io`.
 
 ## Open question this creates
 
@@ -211,16 +216,34 @@ which is the right layer for a pattern that names a crate.
 
 ## What must still be proved before this upstreams
 
-Local simulation settled the cargo mechanics. Two things it cannot reach:
+**D21's central claim is already proved in production.** `oetiker/tvision-rs`
+has published every release since 0.15.0 through
+`rust-lang/crates-io-auth-action`, with no `CRATES_IO_TOKEN` anywhere. The
+mechanism is not a hypothesis; the decision only moves it under the standard.
 
-1. **The OIDC exchange.** `rust-lang/crates-io-auth-action@v1` must yield a
-   usable token from a Trusted Publisher registered against
-   `release-publish.yml`. Nothing local can test this — it needs a real runner
-   with a real GitHub identity, and a publisher the user registers by hand on
-   crates.io. This is the one step that proves D21's central claim.
-2. **A real release.** Only an actual upload settles whether `--workspace`
-   handles index propagation, or whether `tvision-rs`'s retry loop was carrying
-   weight the dry run cannot see.
+Local simulation settled the cargo mechanics. What is left is narrower than it
+first looked — **one field**.
 
-Step 2 is irreversible: a crates.io version can be yanked but never
-unpublished. It needs the user's explicit go.
+Verified against crates.io's own source
+(`crates/crates_io_api_types/src/trustpub.rs`, `NewGitHubConfig`), a GitHub
+trusted publisher is `(crate, repository_owner, repository_name,
+workflow_filename, environment?)`. `workflow_filename` is a required,
+non-nullable column — "Name of the workflow file inside the repository that
+will be used to publish the crate". `tvision-rs`'s own release workflow records
+the same fact in a comment: *"Both crates must have a Trusted Publisher
+configured on crates.io (repo oetiker/tvision-rs, workflow release.yml)"*.
+
+So conversion breaks the existing pin, because it renames `release.yml` to
+`release-publish.yml` — and nothing else about the mechanism changes.
+
+The cutover is safe: `MAX_CONFIGS_PER_CRATE` is **5**
+(`src/controllers/trustpub/github_configs/create.rs`), so a second publisher
+for `release-publish.yml` sits alongside the existing one. Both crates keep
+releasing from `release.yml` until the conversion lands, and no window exists
+where neither works.
+
+That leaves exactly one thing local work cannot reach: **a real release**. Only
+an actual upload settles whether `--workspace` handles index propagation, or
+whether `tvision-rs`'s 6×30 s retry loop was carrying weight the dry run cannot
+see. It is irreversible — a crates.io version can be yanked but never
+unpublished — so it needs the user's explicit go.
