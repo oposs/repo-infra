@@ -33,6 +33,40 @@ def block_job_ids(text):
     return [m.group(1) for m in (_JOB_ID.match(line) for line in text.splitlines()) if m]
 
 
+def ci_addon_blocks(result, addons, manifest):
+    """The opt-in CI blocks a repository named, checked against what it is (D22).
+
+    A CI add-on is the first block a repository *chooses* rather than detection
+    finding it -- `publish` and `build` already work this way (D12, D16),
+    because whether a project ships a static Linux binary is a decision its
+    files do not state. Two mistakes are cheap to make in a hand-written config
+    and expensive to debug in a generated workflow, so neither is rendered:
+
+    * naming a block whose ecosystem this repository does not have, which
+      installs a job that cannot pass and blocks every pull request;
+    * naming a block detection already installs, which emits the same job id
+      twice -- invalid YAML, so *no* job in ci.yml runs and the required check
+      never reports at all.
+    """
+    chosen = []
+    for name in addons:
+        meta = manifest["ci_blocks"].get(name)
+        if meta is None:
+            raise AssemblyError(f"ci add-on {name} is not declared in the manifest")
+        if not meta.get("optional"):
+            raise AssemblyError(
+                f"ci add-on {name} is not an opt-in block; detection installs it")
+        required = meta.get("requires")
+        if required and required not in result.ecosystems:
+            raise AssemblyError(
+                f"ci add-on {name} requires the {required} ecosystem, "
+                f"which this repository does not have")
+        if name in result.blocks or name in chosen:
+            raise AssemblyError(f"ci add-on {name} is already installed")
+        chosen.append(name)
+    return chosen
+
+
 def assemble_ci(assets_root, blocks, manifest):
     assets_root = pathlib.Path(assets_root)
     ci = assets_root / "ci"
@@ -96,13 +130,19 @@ def assemble_publish(assets_root, addons, manifest):
     return "\n".join(parts) + "\n"
 
 
-def render_all(assets_root, result, manifest, publish=(), build=()):
+def render_all(assets_root, result, manifest, publish=(), build=(), ci=()):
     """Every file this repository should have, keyed by repo-relative path.
 
-    `publish` and `build` are decisions the repository recorded, not things
-    detection can see (D12, D16): whether it attaches a tarball, whether it
-    builds in a container. An asset in `assets` ships to everyone; one in
-    `publish_blocks` or `build_assets` ships only when named.
+    `publish`, `build` and `ci` are decisions the repository recorded, not
+    things detection can see (D12, D16, D22): whether it attaches a tarball,
+    whether it builds in a container, whether it ships a static binary. An
+    asset in `assets` ships to everyone; one in `publish_blocks`,
+    `build_assets` or an *optional* `ci_blocks` entry ships only when named.
+
+    The add-on blocks land after the detected ones, so adding one never
+    reorders the jobs a repository already has -- and they join the generated
+    `needs:` list like any other block, which is what makes an add-on a
+    required check rather than advisory.
     """
     assets_root = pathlib.Path(assets_root)
     files = {}
@@ -123,7 +163,8 @@ def render_all(assets_root, result, manifest, publish=(), build=()):
             raise AssemblyError(f"build asset {name} is not declared in the manifest")
         files[spec["target"]] = _read(assets_root / spec["source"])
 
-    files[".github/workflows/ci.yml"] = assemble_ci(assets_root, result.blocks, manifest)
+    blocks = result.blocks + ci_addon_blocks(result, ci, manifest)
+    files[".github/workflows/ci.yml"] = assemble_ci(assets_root, blocks, manifest)
     files[".github/workflows/release-publish.yml"] = assemble_publish(
         assets_root, publish, manifest)
     return files
