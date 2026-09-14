@@ -24,6 +24,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   conversion renames it. See `references/conventions.md`.
 
 ### Fixed
+- A failed release attempt no longer makes its commit permanently
+  unreleasable. The release guard ignored only the current run's check runs,
+  so the failed check run an aborted attempt leaves behind was read as a
+  failing check by every later attempt -- and check runs cannot be deleted, so
+  no retry on that commit could ever succeed. `oetiker/smalti` lost its whole
+  first release to this. `release-pr` v2 gathers the ids through the new
+  `checks.js:guardIgnoreIds`, which covers every run of the workflow on the
+  commit; the logic moved out of the `script:` block because inline, nothing
+  could test it.
 - `apply` can enable required checks on a repository that already has a `main`
   ruleset. It could only create one, and GitHub rejects a duplicate name with
   422 -- so the repositories most likely to be converted, the protected ones,

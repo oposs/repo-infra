@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v1
+// repo-infra: workflow-lib v2
 'use strict';
 
 function escapeRegExp(s) {

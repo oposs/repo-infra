@@ -1,7 +1,7 @@
 {
   "assets": {
     "release-pr": {
-      "version": 1,
+      "version": 2,
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
     },
@@ -16,7 +16,7 @@
       "target": ".github/dependabot.yml"
     },
     "workflow-lib": {
-      "version": 1,
+      "version": 2,
       "source": "workflows/lib",
       "target": ".github/workflows/lib",
       "kind": "dir",
