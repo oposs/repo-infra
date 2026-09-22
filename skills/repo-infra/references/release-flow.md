@@ -55,10 +55,29 @@ ruleset gates the merge; the guard gates the dispatch.
 The guard's own job run is one of the check runs on the commit it is
 inspecting. Without excluding its own run, it polls for every check to
 complete — including the one that is currently doing the polling — and times
-out. A check run's id is its Actions job id, so the guard reads its own job ids
-from the current run and passes them as `ignoreCheckRunIds` before it starts
+out. A check run's id is its Actions job id, so the guard reads the job ids off
+this workflow's runs and passes them as `ignoreCheckRunIds` before it starts
 waiting. Any new job added to `release-pr.yml` needs no special handling for
 this; only the guard job itself, because only it waits on checks at all.
+
+**Every earlier attempt counts, not just the current run.** This is the half
+that was missing, and the failure it caused is permanent. A release attempt that
+dies for any reason leaves a *failed* check run on that `main` commit. Check
+runs cannot be deleted. So a guard that ignored only its own run saw the corpse
+of the previous attempt, reported `Failing checks on this commit: Prepare the
+release pull request`, and refused — and would refuse every later attempt on
+that commit for as long as the repository exists. Deleting the release branch
+does not help; the block is attached to the commit. `oetiker/smalti` lost its
+entire first release, 0.1.0, to exactly this, and had to push an empty commit to
+escape.
+
+`checks.js:guardIgnoreIds` therefore lists **every run of this workflow on this
+commit** — through `GITHUB_WORKFLOW_REF`, which needs the `actions: read`
+permission — and ignores the jobs of all of them, plus the current run's jobs
+unconditionally, because a run that has only just started can be missing from
+the listing for a moment. The logic lives in the library rather than inline in
+the `script:` block for one reason: inline, nothing could test it, and the
+one-run-only rule shipped and stayed shipped.
 
 ## GitHub keeps only the latest check run per context
 

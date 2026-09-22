@@ -12,6 +12,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- The `ci-rust-musl` add-on (D22), and with it the first CI block a repository
+  chooses rather than one detection finds. A Rust repository names it in a new
+  `ci` list in `.github/repo-infra.json` and every pull request cross-builds a
+  statically linked musl binary for `x86_64` and `aarch64`, then **asserts** the
+  linkage -- `crt-static` is a hint the linker may ignore, and a binary that
+  only runs on the machine that built it fails at the far end, on a host nobody
+  is watching. It is opt-in because `Cargo.toml` does not say whether a
+  repository ships a binary: a library crate has none to link. Once named it is
+  a required check, joining `ci-passed`. See `references/conventions.md`.
 - The `publish-crates-io` add-on (D21). A repository names it in its `publish`
   list and its releases go to crates.io with **no stored credential**: the job
   exchanges its GitHub OIDC identity for a short-lived token via
@@ -24,6 +33,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   conversion renames it. See `references/conventions.md`.
 
 ### Fixed
+- A failed release attempt no longer makes its commit permanently
+  unreleasable. The release guard ignored only the current run's check runs,
+  so the failed check run an aborted attempt leaves behind was read as a
+  failing check by every later attempt -- and check runs cannot be deleted, so
+  no retry on that commit could ever succeed. `oetiker/smalti` lost its whole
+  first release to this. `release-pr` v2 gathers the ids through the new
+  `checks.js:guardIgnoreIds`, which covers every run of the workflow on the
+  commit; the logic moved out of the `script:` block because inline, nothing
+  could test it.
 - `apply` can enable required checks on a repository that already has a `main`
   ruleset. It could only create one, and GitHub rejects a duplicate name with
   422 -- so the repositories most likely to be converted, the protected ones,

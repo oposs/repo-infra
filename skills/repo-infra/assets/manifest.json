@@ -1,7 +1,7 @@
 {
   "assets": {
     "release-pr": {
-      "version": 1,
+      "version": 2,
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
     },
@@ -16,7 +16,7 @@
       "target": ".github/dependabot.yml"
     },
     "workflow-lib": {
-      "version": 1,
+      "version": 2,
       "source": "workflows/lib",
       "target": ".github/workflows/lib",
       "kind": "dir",
@@ -28,6 +28,7 @@
     "ci-claude-plugin": {"version": 1, "jobs": ["plugin-manifest"]},
     "ci-python": {"version": 2, "jobs": ["ruff", "pytest"]},
     "ci-rust": {"version": 1, "jobs": ["rust-check", "rust-test"]},
+    "ci-rust-musl": {"version": 1, "jobs": ["rust-musl"], "optional": true, "requires": "rust"},
     "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},

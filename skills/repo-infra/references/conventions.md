@@ -106,6 +106,20 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   `m4/repo-infra-container.m4` and `build/container.mk`, which together make
   the tree a container driver (D18). Nothing installs them automatically; it is
   a decision, not a detection (see `references/teaching-the-standard.md`).
+- `ci` -- which **opt-in** CI blocks this repository's `ci.yml` assembles, by id
+  (`manifest.json` `ci_blocks`, the entries marked `"optional": true`). Every
+  other CI block arrives by detection; these are the ones detection cannot
+  answer, because the repository's files do not state the intent.
+  `["ci-rust-musl"]` adds a statically linked musl cross-build for
+  `x86_64` and `aarch64` (D22) -- a Rust repository that ships a Linux binary
+  wants it, and a library crate has no binary to link, which is why
+  `Cargo.toml` alone is not enough to decide. Once named it is **required**,
+  not advisory: the job joins `ci-passed`'s generated `needs:` list like any
+  other block, so a broken cross-compile blocks the pull request instead of
+  surfacing at release time. Naming a block whose ecosystem this repository
+  does not have, or one detection already installs, is refused at assembly
+  rather than rendered -- the second would emit a duplicate job id, which makes
+  the whole of `ci.yml` invalid so that *no* job runs at all.
 - `skip` -- items a human deliberately declined, name to reason. `check` reads
   this to stop nagging about a considered "no" instead of an oversight.
 - `answers` -- resolved ambiguities, id to the answer given. Recorded so
