@@ -33,6 +33,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   conversion renames it. See `references/conventions.md`.
 
 ### Fixed
+- A release can no longer be published with its artifacts missing. `finalize`
+  flipped a release from draft to public on the strength of its `needs:` list
+  alone, and that list is a generated line: a repository that had hand-added
+  its own publish job to it -- the only way there was -- lost the edit at the
+  next `apply`, and the revert did not fail. It simply stopped waiting. The
+  release went public while the `.deb` was still building, or after that job
+  had failed, and nothing anywhere went red; the first anyone knew was an
+  operator downloading a release that had no package on it. Two changes, and
+  both are needed. A repository's own publish job is now **declared**, in a new
+  `publish_local` list in `.github/repo-infra.json`, so the `needs:` entry is
+  generated and `apply` restores it instead of removing it. And `finalize` no
+  longer trusts ordering at all: it lists the release's assets and asserts the
+  ones the installed publish blocks say they attach, before it publishes
+  anything. Ordering cannot report its own absence; an assertion cannot pass
+  while being wrong. Missing assets now fail the job and leave the release a
+  draft, which is the recoverable state. The matching logic is the new
+  `assets.js` in the workflow library rather than text inside the `script:`
+  block, so it is tested. `release-publish` is v3 and `workflow-lib` is v3:
+  re-apply both, and if your repository hand-edits `finalize`'s `needs:`, move
+  that job into `publish_local` and take the generated line.
 - A failed release attempt no longer makes its commit permanently
   unreleasable. The release guard ignored only the current run's check runs,
   so the failed check run an aborted attempt leaves behind was read as a

@@ -100,6 +100,25 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   per publishable crate before the first converted release, or the release
   stays a draft and the crate never ships. `check` queries GitHub, not
   crates.io, and cannot see this for you.
+- `publish_local` -- publish jobs the repository writes **itself**, which
+  `finalize` must wait for and whose assets `finalize` must find. Each entry is
+  `{"job": "<job id>", "assets": ["<name pattern>", ...]}`. This exists because
+  some repositories run a publish job the standard does not ship yet --
+  smtp-proxy-rs builds a `.deb` and a container image, and there is no add-on
+  for that pair (R32: prove it here, upstream it later). The job block itself
+  is a local edit to the assembled `release-publish.yml`, which `apply` reports
+  as a conflict and a human merges; that half is loud and survives. Its entry
+  in `finalize`'s `needs:` used to be a local edit too, and that half did not
+  survive: one generated line, silently rewritten by the next `apply`, and the
+  revert **does not fail** -- `finalize` simply stops waiting and flips a
+  release to public while the `.deb` is still building, or after it failed.
+  Naming the job here makes that line generated instead, so `apply` restores it
+  rather than removing it. `assets` are asset **name patterns**, where `*`
+  stands for any run of characters: `["*.deb"]`, not a literal name that would
+  carry the version and go red on the next release. They are what `finalize`
+  asserts against the real release before publishing it -- ordering cannot
+  report its own absence, an assertion can. Declaring a job the assembler
+  already generates is refused at assembly.
 - `build` -- which build assets this repository's Makefile and `configure.ac`
   install, by id (`manifest.json` `build_assets`). A containerized autotools
   repository names both: `["container-m4", "container"]` installs

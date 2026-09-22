@@ -1,5 +1,5 @@
 name: Publish release (automatic)
-# repo-infra: release-publish v2
+# repo-infra: release-publish v3
 #
 # Half two. Merging the release pull request lands the rolled CHANGES.md on main,
 # and that merge triggers this.
