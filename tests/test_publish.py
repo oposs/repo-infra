@@ -19,7 +19,7 @@ def test_with_no_addons_finalize_needs_only_publish():
 
 def test_the_frame_marker_survives_assembly():
     text = assemble_publish(ASSETS, [], MANIFEST)
-    assert ("release-publish", 2) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert ("release-publish", 3) in [(m.asset, m.version) for m in parse_markers(text)]
 
 
 def test_an_unknown_addon_is_an_assembly_error():
@@ -263,3 +263,192 @@ def test_the_reconcile_step_actually_leaves_the_tree_clean():
         again = subprocess.run(["bash", "-c", script], cwd=tree, env=env,
                                capture_output=True, text=True)
         assert again.returncode == 0, again.stderr
+
+
+# --- finalize asserts what it is about to publish (A1) -----------------------
+#
+# `finalize` flips the release from draft to public. Its only safeguard used to
+# be its own `needs:` list, and a `needs:` list is a generated line: revert it
+# and nothing fails -- finalize stops waiting and publishes a release with no
+# artifacts on it. Ordering cannot report its own absence. These tests pin the
+# two halves of the fix: a repository-local publish job is DECLARED rather than
+# hand-edited into `needs:`, and finalize asks the release what it carries
+# before it publishes.
+
+DEB = {"job": "publish-deb-container", "assets": ["*.deb", "smtp-proxy-*-musl"]}
+
+
+def _finalize(addons=(), local=()):
+    text = assemble_publish(ASSETS, addons, MANIFEST, local)
+    return yaml.safe_load(text)["jobs"]["finalize"]
+
+
+def _finalize_script(addons=(), local=()):
+    steps = _finalize(addons, local)["steps"]
+    script = [s["with"]["script"] for s in steps if "github-script" in s.get("uses", "")]
+    assert len(script) == 1
+    return script[0]
+
+
+def test_a_repository_local_publish_job_joins_finalizes_needs():
+    # The whole point: smtp-proxy-rs's .deb job is not a standard add-on, so the
+    # assembler used to generate `needs: [publish]` and the second entry was
+    # added by hand -- and re-added by hand after every `apply`, or lost.
+    assert _finalize(local=[DEB])["needs"] == ["publish", "publish-deb-container"]
+
+
+def test_a_local_job_lands_after_the_standard_addons_in_needs():
+    needs = _finalize(addons=["publish-source-tarball"], local=[DEB])["needs"]
+    assert needs == ["publish", "publish-source-tarball", "publish-deb-container"]
+
+
+def test_a_local_job_that_collides_with_a_generated_one_is_refused():
+    # A duplicate in `needs:` is not fatal to GitHub, but it means the repository
+    # believes it owns a job the assembler generates -- the next version of that
+    # add-on would then fight the local block. Say so at assembly time.
+    with pytest.raises(AssemblyError, match="already generated"):
+        assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST,
+                         [{"job": "publish-source-tarball", "assets": []}])
+
+
+def test_a_local_entry_without_a_job_id_is_refused():
+    with pytest.raises(AssemblyError, match="must name a job"):
+        assemble_publish(ASSETS, [], MANIFEST, [{"assets": ["*.deb"]}])
+
+
+def test_finalize_expects_the_assets_the_installed_blocks_attach():
+    script = _finalize_script(addons=["publish-source-tarball"], local=[DEB])
+    assert "['*.tar.gz', '*.deb', 'smtp-proxy-*-musl']" in script
+
+
+def test_finalize_expects_nothing_from_a_block_that_attaches_nothing():
+    # publish-crates-io uploads to an external registry and deliberately puts no
+    # asset on the GitHub release. Expecting one would go red on every release.
+    assert "const expected = [];" in _finalize_script(addons=["publish-crates-io"])
+
+
+def test_finalize_asserts_the_assets_before_it_publishes():
+    # Order is the fix. Asserting after updateRelease would report the fault on
+    # a release that is already public, which is the state it exists to prevent.
+    script = _finalize_script(local=[DEB])
+    assert script.index("missingAssets") < script.index("draft: false")
+
+
+def test_finalize_reads_the_release_rather_than_trusting_its_needs_list():
+    script = _finalize_script(local=[DEB])
+    assert "listReleaseAssets" in script
+
+
+def test_finalize_fails_the_job_when_an_expected_asset_is_absent():
+    script = _finalize_script(local=[DEB])
+    assert "core.setFailed" in script
+
+
+def test_the_assets_placeholder_appears_exactly_once():
+    # Guards the asset the way the `needs:` placeholder is guarded: a finalize
+    # block that lost this line would publish without asserting anything.
+    text = (ASSETS / "publish/publish-finalize.yml").read_text(encoding="utf-8")
+    assert text.count("            const expected = [];") == 1
+
+
+def test_every_publish_block_declares_what_it_attaches():
+    # Not optional: a new add-on that forgets this silently contributes nothing
+    # to finalize's expectations, and the guard quietly stops covering it.
+    for name, meta in MANIFEST["publish_blocks"].items():
+        assert isinstance(meta.get("assets"), list), name
+
+
+def test_an_asset_pattern_that_could_break_out_of_the_literal_is_refused():
+    # The patterns are interpolated into a JavaScript string literal in the
+    # generated workflow. A quote from a hand-written config would end that
+    # literal and turn a declaration into code, in a job that holds
+    # `contents: write`.
+    with pytest.raises(AssemblyError, match="not an asset name pattern"):
+        assemble_publish(ASSETS, [], MANIFEST,
+                         [{"job": "x", "assets": ["'); throw new Error('"]}])
+
+
+def _run_finalize(tmp_path, attached, local=(DEB,)):
+    """Run the generated finalize script under node against a fake release.
+
+    Substring assertions cannot answer the question that matters -- does this
+    job publish a release that is missing its .deb? -- so this runs the real
+    generated code, the same way test_the_reconcile_step_actually_leaves_the
+    _tree_clean runs the real generated shell. `assets.js` is required from
+    this repository's own installed copy, which test_self_render.py pins to
+    the asset.
+    """
+    import json as _json
+    import os
+    import re
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+
+    script = _finalize_script(local=local)
+    # The runner expands workflow expressions before node ever sees them.
+    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", script)
+
+    harness = """
+const assert = require('node:assert/strict');
+const attached = %s;
+const published = [];
+const failures = [];
+const github = {
+  paginate: async () => attached.map((name) => ({ name })),
+  rest: { repos: { listReleaseAssets: 'listReleaseAssets',
+                   updateRelease: async (a) => { published.push(a); return { data: { html_url: 'u' } }; } } },
+};
+const core = {
+  setFailed: (m) => failures.push(m),
+  notice: () => {},
+  summary: { addHeading() { return this; }, addRaw() { return this; },
+             addLink() { return this; }, async write() {} },
+};
+const context = { repo: { owner: 'o', repo: 'r' } };
+(async () => {
+%s
+})().then(() => {
+  console.log(JSON.stringify({ published: published.length, failures }));
+});
+""" % (_json.dumps(list(attached)), script)
+
+    path = tmp_path / "finalize.js"
+    path.write_text(harness, encoding="utf-8")
+    proc = subprocess.run(
+        [node, str(path)], capture_output=True, text=True, cwd=ROOT,
+        env={"GITHUB_WORKSPACE": str(ROOT), "PATH": os.environ.get("PATH", "")})
+    assert proc.returncode == 0, proc.stderr
+    return _json.loads(proc.stdout)
+
+
+def test_the_generated_finalize_publishes_a_complete_release(tmp_path):
+    out = _run_finalize(tmp_path, ["smtp-proxy_1.2.3-1_amd64.deb", "smtp-proxy-1.2.3-musl"])
+    assert out["failures"] == []
+    assert out["published"] == 1
+
+
+def test_the_generated_finalize_refuses_a_release_with_no_assets(tmp_path):
+    # A1 exactly: finalize's `needs:` was reverted, so it ran before the add-on
+    # attached anything. Before this guard the release went public regardless.
+    out = _run_finalize(tmp_path, [])
+    assert out["published"] == 0
+    assert len(out["failures"]) == 1
+    assert "*.deb" in out["failures"][0]
+
+
+def test_the_generated_finalize_refuses_a_release_that_is_missing_one_asset(tmp_path):
+    out = _run_finalize(tmp_path, ["smtp-proxy-1.2.3-musl"])
+    assert out["published"] == 0
+    assert "*.deb" in out["failures"][0]
+
+
+def test_the_generated_finalize_publishes_when_nothing_is_expected(tmp_path):
+    # Most repositories install no asset-attaching block at all. The guard must
+    # be a no-op for them, not a release that can never be published.
+    out = _run_finalize(tmp_path, [], local=())
+    assert out["failures"] == []
+    assert out["published"] == 1
