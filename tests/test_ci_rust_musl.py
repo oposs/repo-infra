@@ -168,11 +168,18 @@ def test_every_ci_block_is_either_detected_or_declared_optional():
             "%s is neither named by detection nor marked optional" % name)
 
 
-def test_an_optional_block_declares_the_ecosystem_it_needs():
+def test_an_optional_block_names_its_ecosystem_or_none():
+    """D23 widened D22's rule. A man page has no ecosystem, so an optional
+    block may omit `requires` and then fits any. When it does name one, the
+    name must be an ecosystem detection knows, or the refusal in
+    ci_addon_blocks would fire on every repository that names the block."""
+    detection = json.loads((ASSETS / "detection.json").read_text(encoding="utf-8"))
+    known = {e["id"] for e in detection["ecosystems"]}
     for name, meta in MANIFEST["ci_blocks"].items():
-        if not meta.get("optional"):
+        if not meta.get("optional") or "requires" not in meta:
             continue
-        assert meta.get("requires"), "%s is optional but requires nothing" % name
+        assert meta["requires"] in known, "%s requires unknown ecosystem %r" % (
+            name, meta["requires"])
 
 
 # --- the block itself --------------------------------------------------------

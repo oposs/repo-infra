@@ -54,6 +54,10 @@ def ci_addon_blocks(result, addons, manifest):
     * naming a block detection already installs, which emits the same job id
       twice -- invalid YAML, so *no* job in ci.yml runs and the required check
       never reports at all.
+
+    An optional block that omits `requires` fits any ecosystem (D23): a man
+    page is built the same way in a Rust, Perl or Go repository, so `ci-man`
+    names none. The other refusals hold for it unchanged.
     """
     chosen = []
     for name in addons:
@@ -208,6 +212,11 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
     reorders the jobs a repository already has -- and they join the generated
     `needs:` list like any other block, which is what makes an add-on a
     required check rather than advisory.
+
+    An optional block may carry build assets (`"build"` in its `ci_blocks`
+    entry). Choosing the block installs them as if they had been named in
+    `build`, so a repository cannot choose `ci-man` and forget the fragment
+    its job runs.
     """
     assets_root = pathlib.Path(assets_root)
     files = {}
@@ -222,13 +231,19 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
         else:
             files[spec["target"]] = _read(source)
 
-    for name in build:
+    addons = ci_addon_blocks(result, ci, manifest)
+    # A chosen block brings the build assets its job runs (D23): ci-man runs
+    # `make man`, which is nothing without build/man.mk. Naming one of them in
+    # `build` as well is allowed and installs it once.
+    carried = [asset for name in addons
+               for asset in manifest["ci_blocks"][name].get("build", [])]
+    for name in dict.fromkeys([*build, *carried]):
         spec = manifest["build_assets"].get(name)
         if spec is None:
             raise AssemblyError(f"build asset {name} is not declared in the manifest")
         files[spec["target"]] = _read(assets_root / spec["source"])
 
-    blocks = result.blocks + ci_addon_blocks(result, ci, manifest)
+    blocks = result.blocks + addons
     files[".github/workflows/ci.yml"] = assemble_ci(assets_root, blocks, manifest)
     files[".github/workflows/release-publish.yml"] = assemble_publish(
         assets_root, publish, manifest, publish_local)
