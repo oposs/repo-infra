@@ -1,6 +1,6 @@
 ---
 name: man-pages
-description: Use when writing, restructuring or setting up a program's man page - docs/manual.md converted by pandoc to man/<name>.1 - including section order, front matter, option lists, `make man`, shipping the page in a package, and a failing ci-man job such as "table wider than line length minus indentation". The voice of the manual comes from the writing-style skill.
+description: Use when writing, restructuring or setting up a program's man page (docs/manual.md converted by pandoc to man/<name>.1), including section order, front matter, option lists, `make man`, shipping the page in a package, and a failing ci-man job such as "table wider than line length minus indentation". The voice of the manual comes from the writing-style skill.
 ---
 
 # Man pages
@@ -23,10 +23,11 @@ date: 2026-09-23
 ---
 ```
 
-`title` is the program name in capitals and `section` its manual section.
-`footer` carries no version, so a release does not change the page. `date` is
-edited by hand when the manual changes in substance. The build never sets it,
-so two builds of one source produce one page.
+`title` is the program name in capitals. The build always writes
+`man/$(MAN_NAME).1`, so `section` is `1`. `footer` carries no version, so a
+release does not change the page. `date` is edited by hand when the manual
+changes in substance. The build never sets it, so two builds of one source
+produce one page.
 
 ## Section order
 
@@ -72,11 +73,8 @@ every item opens with the term in a code span, followed directly by a colon:
 
 ```markdown
 - `--listen <ip:port>`: Address and port to listen on.
-
 - `-h, --help`: Print a usage summary and exit.
-
 - `j, Down`: Scroll down one line.
-
 - `SIGTERM`: Starts the drain.
 ```
 
@@ -94,12 +92,16 @@ warning. A table of short cells, such as a key and a one-word action, fits.
 
 ## Setting it up in a repository
 
-1. Name the page in the Makefile and include the fragment:
+1. Name the page and include the fragment:
 
    ```make
    MAN_NAME = mytool
    include build/man.mk
    ```
+
+   The two lines may go anywhere in the Makefile. The fragment saves and
+   restores `.DEFAULT_GOAL`, so a bare `make` still builds whatever the
+   Makefile already builds by default, not the man page.
 
 2. Ignore the generated page in `.gitignore`:
 
@@ -107,12 +109,17 @@ warning. A table of short cells, such as a key and a one-word action, fits.
    man/
    ```
 
-3. Add `ci-man` to the `ci` list in `.github/repo-infra.json` and run
-   `/repo-infra:apply`. It installs the `man` job and the two files `make man`
-   runs, `build/man.mk` and `build/man-deflist.lua`.
+3. Add `"ci": ["ci-man"]` next to the repository's other keys in
+   `.github/repo-infra.json` and run `/repo-infra:apply`. It installs the
+   `man` job and the two files `make man` runs, `build/man.mk` and
+   `build/man-deflist.lua`.
 
    ```json
-   { "ci": ["ci-man"] }
+   {
+     "ecosystems": ["rust"],
+     "ci": ["ci-man"],
+     "build": []
+   }
    ```
 
 4. Packaging takes the page from the working tree after `make man`. For a
