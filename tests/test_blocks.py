@@ -11,6 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 USES = re.compile(r"uses:\s*([\w.-]+/[\w.-]+)@(v\d+|\w+)")
+MAN_TOOLCHAIN_LINE = "          sudo apt-get install -y pandoc groff man-db"
 
 
 def every_asset_file():
@@ -126,10 +127,10 @@ def test_the_autotools_block_no_longer_documents_a_bare_configure_limit():
     assert "enable-pkgonly" not in text
 
 
-def test_the_selftest_block_declares_exactly_its_one_job():
+def test_the_selftest_block_declares_exactly_its_two_jobs():
     text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
     assert block_job_ids(text) == MANIFEST["ci_blocks"]["ci-repo-infra-selftest"]["jobs"]
-    assert block_job_ids(text) == ["repo-infra-selftest"]
+    assert block_job_ids(text) == ["repo-infra-selftest", "repo-infra-man"]
 
 
 def test_the_selftest_block_runs_only_the_container_marked_tests():
@@ -155,7 +156,10 @@ def test_all_three_blocks_install_a_byte_identical_host_toolchain():
         "publish/publish-source-tarball.yml",
     ):
         text = (ASSETS / name).read_text(encoding="utf-8")
-        lines = [line for line in text.split('\n') if "apt-get install" in line]
+        # The selftest block also installs the man toolchain for repo-infra-man;
+        # that line is pinned separately, against ci-man.
+        lines = [line for line in text.split('\n')
+                 if "apt-get install" in line and line != MAN_TOOLCHAIN_LINE]
         assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
         assert lines[0] == expected_line, f"{name}: expected {repr(expected_line)}, got {repr(lines[0])}"
 
@@ -176,3 +180,28 @@ def test_a_block_that_runs_pytest_installs_the_declared_test_dependencies(block)
     assert "requirements-dev.txt" in text, (
         "%s runs pytest but never installs the repository's declared test "
         "dependencies" % block)
+
+
+def test_the_man_selftest_installs_what_ci_man_installs():
+    # repo-infra-man proves the build assets ci-man runs. On a different
+    # toolchain it would prove something else, and stay green doing it.
+    for name in ("ci/ci-man.yml", "ci/ci-repo-infra-selftest.yml"):
+        text = (ASSETS / name).read_text(encoding="utf-8")
+        assert text.split("\n").count(MAN_TOOLCHAIN_LINE) == 1, name
+
+
+def test_the_man_selftest_runs_the_pandoc_marked_tests():
+    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    job = text.split("  repo-infra-man:", 1)[1]
+    assert "python3 -m pytest -m pandoc -v tests" in job
+    assert "requirements-dev.txt" in job
+
+
+def test_the_plain_pytest_run_deselects_the_pandoc_tests():
+    # ci-python runs a bare `python3 -m pytest` and installs no pandoc. With CI
+    # set, a selected pandoc test fails there, so addopts must deselect them,
+    # and `make test` must select them again for local runs.
+    ini = (ROOT / "pytest.ini").read_text(encoding="utf-8")
+    assert 'addopts = -m "not container and not pandoc"' in ini
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert 'python3 -m pytest -q -m "not container" tests' in makefile
