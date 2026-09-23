@@ -4,6 +4,7 @@ they teach."""
 import json
 import pathlib
 import re
+import subprocess
 
 import pytest
 
@@ -11,10 +12,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "skills"
 PROSE_SKILLS = ["writing-style", "man-pages"]
 TERM_EXAMPLE = "- `--listen <ip:port>`: Address and port to listen on."
+LUA = ROOT / "skills/repo-infra/assets/build/man-deflist.lua"
 
 
 def skill(name):
     return SKILLS / name / "SKILL.md"
+
+
+def term_list_blocks(path):
+    """The skill's own fenced ```markdown examples that are term lists: every
+    non-blank line starts with "- `" (the man-deflist filter's input)."""
+    text = path.read_text(encoding="utf-8")
+    found = []
+    for indent, block in re.findall(r"^([ \t]*)```markdown\n((?:.*\n)*?)\1```", text, re.M):
+        lines = [line[len(indent):] for line in block.splitlines() if line.strip()]
+        if lines and all(line.startswith("- `") for line in lines):
+            found.append("\n".join(lines))
+    return found
 
 
 def frontmatter(path):
@@ -104,6 +118,22 @@ def test_writing_style_states_the_term_list_form():
     text = skill("writing-style").read_text(encoding="utf-8")
     assert TERM_EXAMPLE in text
     assert "No em dashes" in text
+
+
+@pytest.mark.pandoc
+@pytest.mark.parametrize("name", PROSE_SKILLS)
+def test_the_skills_own_term_list_examples_convert_to_a_definition_list(name, require):
+    # A skill's example is what a reader copies. If it does not survive the
+    # filter it teaches, the skill is wrong (D23).
+    require("pandoc")
+    blocks = term_list_blocks(skill(name))
+    assert blocks, "%s has no term-list example for the filter to convert" % name
+    for block in blocks:
+        done = subprocess.run(
+            ["pandoc", "--lua-filter", str(LUA), "-t", "native"],
+            input=block, capture_output=True, text=True, timeout=60, check=True)
+        assert "DefinitionList" in done.stdout, (name, block, done.stdout)
+        assert "BulletList" not in done.stdout, (name, block, done.stdout)
 
 
 def test_writing_style_carries_the_changelog_rules_and_the_comment_example():
