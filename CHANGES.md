@@ -33,6 +33,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   conversion renames it. See `references/conventions.md`.
 
 ### Fixed
+- Re-running "Create release PR" for a version whose branch still exists no
+  longer fails with `Reference already exists`. It happened after a release PR
+  was closed without deleting its branch, and after a run that committed before
+  it could open the PR; the only way forward was deleting the branch by hand.
+  The run now moves the existing branch to its new commit.
 - A release can no longer be published with its artifacts missing. `finalize`
   flipped a release from draft to public on the strength of its `needs:` list
   alone, and that list is a generated line: a repository that had hand-added
