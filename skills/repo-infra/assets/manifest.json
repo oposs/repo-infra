@@ -55,6 +55,18 @@
       "source": "m4/repo-infra-container.m4",
       "target": "m4/repo-infra-container.m4",
       "comment": "dnl"
+    },
+    "man": {
+      "version": 1,
+      "source": "build/man.mk",
+      "target": "build/man.mk",
+      "comment": "#"
+    },
+    "man-lua": {
+      "version": 1,
+      "source": "build/man-deflist.lua",
+      "target": "build/man-deflist.lua",
+      "comment": "--"
     }
   },
   "actions": {

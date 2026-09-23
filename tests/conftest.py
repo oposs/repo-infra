@@ -1,4 +1,6 @@
 # tests/conftest.py
+import os
+import shutil
 import subprocess
 
 import pytest
@@ -32,3 +34,22 @@ def plugin_checkout(tmp_path_factory):
     run("git", "add", "-A")
     run("git", "commit", "-qm", "v3")
     return root
+
+
+@pytest.fixture
+def require():
+    """Skip a test whose tool is missing, or fail it when CI is set.
+
+    Locally a missing pandoc is a reason to skip. On a CI runner the job that
+    runs these tests exists to install the tools, so a missing one means the
+    gate would pass by testing nothing (owner ruling, 2026-09-23).
+    """
+    def check(*tools):
+        missing = [tool for tool in tools if shutil.which(tool) is None]
+        if not missing:
+            return
+        message = "not on the PATH: " + ", ".join(missing)
+        if os.environ.get("CI"):
+            pytest.fail(message + " (CI is set, so this test must run, not skip)")
+        pytest.skip(message)
+    return check
