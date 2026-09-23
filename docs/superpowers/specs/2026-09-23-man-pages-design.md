@@ -1,12 +1,12 @@
-# repo-infra — man pages, and the house writing style
+# repo-infra: man pages, and the house writing style
 
 Date: 2026-09-23
-Extends: `2026-08-17-repo-infra-design.md` (replaces its "Spec 3 — prose" outline),
+Extends: `2026-08-17-repo-infra-design.md` (replaces its "Spec 3: prose" outline),
 D22's opt-in CI seam (`2026-09-14-static-musl-ci-design.md`)
-Proved in: `oetiker/mdmost` — `docs/manual.md`, `docs/man-deflist.lua`, the `man`
+Proved in: `oetiker/mdmost` (`docs/manual.md`, `docs/man-deflist.lua`, the `man`
 target in its `Makefile`, the `docs` job in `.github/workflows/ci.yml`, and the two
 style commits `fef7f53` ("the manual reads like a man page, not an essay") and
-`8cdcddc` ("the install section is three commands, not an essay")
+`8cdcddc` ("the install section is three commands, not an essay"))
 First consumer: `oposs/smtp-proxy-rs`
 
 This document adds one decision, D23, one CI block, two build assets, two skills,
@@ -32,7 +32,7 @@ mdmost owner rejected the essay voice on 2026-08-17 and accepted `man-pages(7)` 
 The build half of the outline stands as written and is now proved: `docs/manual.md`
 is the one source, pandoc converts it, `man/` is gitignored, CI proves it converts.
 
-## D23 — a man page is a build artifact, checked on every pull request by an opt-in block that no ecosystem owns
+## D23: a man page is a build artifact, checked on every pull request by an opt-in block that no ecosystem owns
 
 ### The `ci-man` block
 
@@ -127,7 +127,7 @@ Spec 1 already placed these outside the `repo-infra` skill, because they trigger
 their own ("help me write this README") with no repository audit involved. A later
 `docs-site` skill joins them the same way, pointing to `writing-style` for its voice.
 
-### `writing-style` — the voice of all prose
+### `writing-style`: the voice of all prose
 
 Applies to READMEs, manuals, maintainer notes, changelog entries, code comments and
 commit messages. It states the rules per kind of text, because the kinds differ:
@@ -140,7 +140,7 @@ commit messages. It states the rules per kind of text, because the kinds differ:
   section is the commands, not an essay about them.
 - **Maintainer notes** (`docs/maintainer-notes.md`): the rationale the manual and the
   README do not carry. Rationale cut from either moves here and is never deleted.
-- **Changelog**: the rules in force for CHANGES entries — lead with what the reader
+- **Changelog**: the rules in force for CHANGES entries: lead with what the reader
   observed, three sentences at most, names the reader can act on, the issue tag last.
 - **Code comments and commit messages**: every explanation names the concrete thing
   that went wrong. This is the one place the outline's rule applies, and it keeps its
@@ -154,7 +154,7 @@ sentence-case subsection headings.
 The skill carries a short before/after pair for the manual taken from `fef7f53`, since
 the rules are easier to apply against an example than against a list.
 
-### `man-pages` — structure and build of a man page
+### `man-pages`: structure and build of a man page
 
 - Section order from `man-pages(7)`: NAME, SYNOPSIS, CONFIGURATION, DESCRIPTION,
   OPTIONS, EXIT STATUS, ENVIRONMENT, FILES, VERSIONS, STANDARDS, HISTORY, NOTES,
@@ -187,7 +187,7 @@ belongs to neither).
 
 ## Changes elsewhere in this repository
 
-- `docs/superpowers/specs/2026-08-17-repo-infra-design.md`: the "Spec 3 — prose"
+- `docs/superpowers/specs/2026-08-17-repo-infra-design.md`: the "Spec 3: prose"
   section is replaced by a pointer to this document. Its "Hygiene" line moves to a
   short note, since it is not part of D23.
 - `references/conventions.md`: the `ci` bullet names `ci-man`, and the `build` bullet
