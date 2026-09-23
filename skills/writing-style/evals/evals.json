@@ -1,0 +1,33 @@
+{
+  "skill_name": "writing-style",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "evals/files/essay-manual.md is the start of docs/manual.md for mdmost, a terminal Markdown pager. It reads like an essay about the program. Rewrite it so it reads like a reference page. Anything you cut that is still worth knowing goes into a maintainer-notes.md next to it.",
+      "expected_output": "The manual excerpt rewritten in present tense and third person, with ASCII term lists, and a maintainer-notes.md holding the rationale that came out.",
+      "files": ["evals/files/essay-manual.md"],
+      "expectations": [
+        "The rewritten manual has no 'you', 'your', 'we' or 'our' outside code blocks",
+        "The rewritten manual contains no em dash anywhere",
+        "The option and key lists use the form '- `--option`: description', with the term in a code span followed directly by a colon",
+        "The phrases 'so the two cannot drift apart' and 'which is what makes it usable for' no longer appear in the manual",
+        "The reasoning about rendering being a pure function of its inputs, or about why there is no --color flag, appears in maintainer-notes.md instead of being deleted",
+        "The level-1 headings NAME, SYNOPSIS, DESCRIPTION, OPTIONS and KEYS are all still present, spelled as before"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The install section of our README (evals/files/readme-install.md) has turned into an essay around a handful of commands. Cut it down to what someone installing the tool needs, and keep the explanations somewhere sensible instead of throwing them away.",
+      "expected_output": "An install section that is the commands per platform, and a maintainer-notes.md with the explanations that came out.",
+      "files": ["evals/files/readme-install.md"],
+      "expectations": [
+        "Every install route (Homebrew, Debian/Ubuntu, Fedora/RHEL/openSUSE, any Linux, Rust) is still present with its commands intact",
+        "The paragraphs about Homebrew 6.0 trust and about outdated Command Line Tools are gone from the README",
+        "The sentence about fancy-regex versus oniguruma is gone from the README",
+        "The removed explanations appear in a maintainer-notes.md",
+        "The README contains no em dash anywhere, including the route labels",
+        "The README does not praise the tool"
+      ]
+    }
+  ]
+}
