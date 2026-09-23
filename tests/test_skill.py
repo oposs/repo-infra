@@ -89,3 +89,19 @@ def test_conventions_documents_the_makefile_am_guard_against_the_automake_warnin
     # has to be written down too.
     text = (ROOT / "skills/repo-infra/references/conventions.md").read_text(encoding="utf-8")
     assert "if !CONTAINER_DRIVER" in text
+
+
+def test_the_skill_points_at_the_prose_skills():
+    text = SKILL.read_text(encoding="utf-8")
+    for name in ("writing-style", "man-pages"):
+        assert "`%s`" % name in text
+        assert (ROOT / "skills" / name / "SKILL.md").is_file()
+
+
+def test_conventions_documents_the_man_add_on_and_its_carried_assets():
+    # D23: a repository learns from conventions.md that ci-man exists and that
+    # choosing it installs build/man.mk.
+    text = (ROOT / "skills/repo-infra/references/conventions.md").read_text(encoding="utf-8")
+    assert '`["ci-man"]`' in text
+    assert "MAN_NAME" in text
+    assert "A CI block may carry build assets" in text

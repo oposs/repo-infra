@@ -125,6 +125,9 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   `m4/repo-infra-container.m4` and `build/container.mk`, which together make
   the tree a container driver (D18). Nothing installs them automatically; it is
   a decision, not a detection (see `references/teaching-the-standard.md`).
+  A CI block may carry build assets of its own (D23): choosing `ci-man`
+  installs `build/man.mk` and `build/man-deflist.lua` as if they were listed
+  here, and listing them here as well is allowed.
 - `ci` -- which **opt-in** CI blocks this repository's `ci.yml` assembles, by id
   (`manifest.json` `ci_blocks`, the entries marked `"optional": true`). Every
   other CI block arrives by detection; these are the ones detection cannot
@@ -132,7 +135,12 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   `["ci-rust-musl"]` adds a statically linked musl cross-build for
   `x86_64` and `aarch64` (D22) -- a Rust repository that ships a Linux binary
   wants it, and a library crate has no binary to link, which is why
-  `Cargo.toml` alone is not enough to decide. Once named it is **required**,
+  `Cargo.toml` alone is not enough to decide. `["ci-man"]` builds the man page
+  from `docs/manual.md` with `make man` and fails on any roff warning except
+  pandoc's two font warnings (D23). It names no ecosystem and fits any, and
+  choosing it installs the build assets `make man` runs; the repository sets
+  `MAN_NAME` and adds `include build/man.mk` to its Makefile. The `man-pages`
+  skill has the rest. Once named an add-on is **required**,
   not advisory: the job joins `ci-passed`'s generated `needs:` list like any
   other block, so a broken cross-compile blocks the pull request instead of
   surfacing at release time. Naming a block whose ecosystem this repository
@@ -277,8 +285,9 @@ conversion.
 
 ## Markers record a generation, never a content hash
 
-Every installed asset carries `# repo-infra: <asset> vN` (or `// repo-infra:
-<asset> vN` in the JS library). `check` compares that number against
+Every installed asset carries `# repo-infra: <asset> vN` (`// repo-infra:` in
+the JS library, `dnl repo-infra:` in m4, `-- repo-infra:` in the Lua filter).
+`check` compares that number against
 `assets/manifest.json`; it never hashes the file. A hash would report drift on
 every repository, forever — a project name in `ci.yml`, an extra matrix target,
 a publish job bolted onto `release-publish.yml`, are all local edits a
