@@ -183,6 +183,29 @@ def test_the_config_keeps_answers_that_are_already_recorded(tmp_path):
     assert written["ecosystems"] == ["rust"]
 
 
+def test_the_config_keeps_every_decision_it_does_not_compute(tmp_path):
+    """`ci` and `publish_local` are decisions only the repository can make, and a
+    key this function has never heard of is one too. Rewriting the file used to
+    keep a fixed list of keys, so a repository that had chosen ci-rust-musl lost
+    it -- and its required musl check -- the first time `apply` recorded an answer."""
+    from repo_infra.apply import write_config
+    from repo_infra.detect import DetectResult
+
+    target = tmp_path / ".github/repo-infra.json"
+    target.parent.mkdir(parents=True)
+    kept = {
+        "_comment": ["hand-written notes survive a rewrite"],
+        "ci": ["ci-rust-musl"],
+        "publish_local": [{"job": "publish-deb-container", "assets": ["*.deb"]}],
+    }
+    target.write_text(json.dumps({**kept, "ecosystems": ["python"]}) + "\n", encoding="utf-8")
+    write_config(tmp_path, DetectResult(ecosystems=["rust"], version_files=[{"path": "Cargo.toml"}]))
+    written = json.loads(target.read_text(encoding="utf-8"))
+    for key, value in kept.items():
+        assert written[key] == value, key
+    assert written["ecosystems"] == ["rust"]
+
+
 # --- directory assets ship more than one file ----------------------------
 
 LIB = {

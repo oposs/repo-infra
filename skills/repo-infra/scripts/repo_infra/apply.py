@@ -412,9 +412,11 @@ def write_config(repo_root, result, answers=None):
         "publish": existing.get("publish", []),
         "build": existing.get("build", []),
     }
-    for key in ("skip", "answers"):
-        if key in existing:
-            config[key] = existing[key]
+    # Every other key is a decision this function does not compute -- `ci`,
+    # `publish_local`, `skip`, `answers`, a `_comment` -- so it is kept as
+    # written. A fixed list of keys to keep dropped each new one as it was added.
+    for key, value in existing.items():
+        config.setdefault(key, value)
     if answers:
         config.setdefault("answers", {}).update(answers)
 
