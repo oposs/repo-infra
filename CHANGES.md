@@ -33,6 +33,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   conversion renames it. See `references/conventions.md`.
 
 ### Fixed
+- Rewriting `.github/repo-infra.json` kept only `publish`, `build`, `skip`
+  and `answers`, so a repository's `ci` and `publish_local` choices and any
+  `_comment` were dropped from the file. Every key the rewrite does not compute
+  is now kept as written. Nothing calls the rewrite yet, so no repository has
+  lost a setting.
 - Re-running "Create release PR" for a version whose branch still exists no
   longer fails with `Reference already exists`. It happened after a release PR
   was closed without deleting its branch, and after a run that committed before
