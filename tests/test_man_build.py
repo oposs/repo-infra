@@ -198,6 +198,26 @@ def test_two_builds_of_one_source_produce_one_page(tmp_path, require):
     assert b'.TH "FIXTURE" "1" "2026-09-23"' in first
 
 
+def test_bare_make_builds_the_makefiles_own_default_not_the_man_page(tmp_path, require):
+    # The fragment must not steal .DEFAULT_GOAL merely by being included
+    # (finding 1): a bare `make` has to build the repository's own default
+    # target, whichever side of `include build/man.mk` it is declared on.
+    require("make")
+    orders = {
+        "include-first": ("MAN_NAME = fixture\ninclude build/man.mk\n\n"
+                          ".PHONY: build\nbuild:\n\t@echo BUILD_RAN\n"),
+        "build-first": (".PHONY: build\nbuild:\n\t@echo BUILD_RAN\n\n"
+                        "MAN_NAME = fixture\ninclude build/man.mk\n"),
+    }
+    for label, makefile in orders.items():
+        root = tree(tmp_path / label, makefile=makefile)
+        done = subprocess.run(["make", "-n"], cwd=root, env=make_env(),
+                              capture_output=True, text=True, timeout=120)
+        assert done.returncode == 0, (label, done.stderr)
+        assert "echo BUILD_RAN" in done.stdout, (label, done.stdout)
+        assert "pandoc" not in done.stdout, (label, done.stdout)
+
+
 def test_an_unset_man_name_stops_make_before_anything_is_written(tmp_path, require):
     require("make")
     for index, makefile in enumerate(("include build/man.mk\n",

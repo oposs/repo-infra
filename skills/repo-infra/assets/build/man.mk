@@ -15,10 +15,16 @@
 #
 # The page's date comes from `date:` in the manual's front matter, never from
 # the build, so two builds of one source produce the same page.
+#
+# The include may go anywhere in the Makefile; it saves and restores
+# .DEFAULT_GOAL so that adding this fragment never makes `man` the target a
+# bare `make` builds.
 
 ifeq ($(strip $(MAN_NAME)),)
 $(error MAN_NAME is not set: set it before `include build/man.mk`, for example MAN_NAME = mytool)
 endif
+
+_repo_infra_man_goal := $(.DEFAULT_GOAL)
 
 .PHONY: man
 man: man/$(MAN_NAME).1
@@ -27,3 +33,5 @@ man/$(MAN_NAME).1: docs/manual.md build/man-deflist.lua
 	@mkdir -p man
 	pandoc --standalone --to man --lua-filter build/man-deflist.lua \
 	  docs/manual.md -o $@
+
+.DEFAULT_GOAL := $(_repo_infra_man_goal)
