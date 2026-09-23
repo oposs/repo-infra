@@ -9,7 +9,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "skills"
-PROSE_SKILLS = ["writing-style"]
+PROSE_SKILLS = ["writing-style", "man-pages"]
 TERM_EXAMPLE = "- `--listen <ip:port>`: Address and port to listen on."
 
 
@@ -111,3 +111,32 @@ def test_writing_style_carries_the_changelog_rules_and_the_comment_example():
     for rule in ("Three sentences at most", "round brackets", "release headers",
                  "commit message", "Cargo.lock still at 0.1.0"):
         assert rule in text, rule
+
+
+SECTION_ORDER = ["NAME", "SYNOPSIS", "CONFIGURATION", "DESCRIPTION", "OPTIONS",
+                 "EXIT STATUS", "ENVIRONMENT", "FILES", "VERSIONS", "STANDARDS",
+                 "HISTORY", "NOTES", "CAVEATS", "BUGS", "EXAMPLES", "SEE ALSO"]
+
+
+def test_man_pages_states_the_section_order_of_man_pages_7():
+    assert "\n".join(SECTION_ORDER) in skill("man-pages").read_text(encoding="utf-8")
+
+
+def test_man_pages_shows_the_term_list_form_and_names_every_setup_step():
+    text = skill("man-pages").read_text(encoding="utf-8")
+    for needle in (TERM_EXAMPLE, "MAN_NAME = ", "include build/man.mk", "man/\n",
+                   '"ci": ["ci-man"]', "make man", "usr/share/man/man1/"):
+        assert needle in text, needle
+
+
+def test_man_pages_names_the_warning_ci_man_fails_on():
+    text = skill("man-pages").read_text(encoding="utf-8")
+    assert "table wider than line length minus indentation" in text
+
+
+def test_man_pages_leaves_the_voice_to_writing_style():
+    # The voice rules live in one place. A second copy drifts from the first.
+    text = skill("man-pages").read_text(encoding="utf-8")
+    assert "writing-style" in text
+    assert "present tense" not in text.lower()
+    assert "third person" not in text.lower()

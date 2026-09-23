@@ -1,0 +1,33 @@
+{
+  "skill_name": "man-pages",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Here's my first go at docs/manual.md for mytool (evals/files/draft-manual.md). Turn it into a proper man page source for our pandoc build.",
+      "expected_output": "The manual with its sections in man-pages(7) order, options as a code-colon list, and front matter fit for a reproducible page.",
+      "files": ["evals/files/draft-manual.md"],
+      "expectations": [
+        "The level-1 headings appear in the order NAME, SYNOPSIS, DESCRIPTION, OPTIONS, EXAMPLES, all in capitals",
+        "The options are a bullet list whose every item has the shape '- `term`: description', the term in one code span followed directly by a colon; no Markdown table remains",
+        "All three options (--listen, --relay, -v/--verbose) are still documented",
+        "The file contains no em dash",
+        "The footer no longer carries a version number, and the front matter has a date: field",
+        "The example command is kept"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "evals/files/setup/ is the root of mytool, a Rust tool. It has a docs/manual.md now. Wire up the man page: the build, the CI check, and shipping it in the .deb. Show every file you change.",
+      "expected_output": "The Makefile, .gitignore, .github/repo-infra.json and Cargo.toml changed so that make man builds the page, ci-man checks it and cargo-deb ships it.",
+      "files": ["evals/files/setup/Makefile", "evals/files/setup/Cargo.toml", "evals/files/setup/.gitignore", "evals/files/setup/.github/repo-infra.json", "evals/files/setup/docs/manual.md"],
+      "expectations": [
+        "The Makefile sets MAN_NAME = mytool and has 'include build/man.mk', with no hand-written pandoc rule",
+        ".gitignore lists man/",
+        ".github/repo-infra.json has \"ci\": [\"ci-man\"] and its other keys unchanged",
+        "Cargo.toml's [package.metadata.deb] assets include man/mytool.1 installed to usr/share/man/man1/",
+        "The answer says make man must run before cargo deb",
+        "No generated man/mytool.1 is added to version control"
+      ]
+    }
+  ]
+}

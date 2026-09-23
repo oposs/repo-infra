@@ -1,0 +1,9 @@
+[package]
+name = "mytool"
+version = "0.3.1"
+edition = "2024"
+
+[package.metadata.deb]
+assets = [
+  ["target/release/mytool", "usr/bin/", "755"],
+]
