@@ -100,10 +100,13 @@ converting it is out of scope.
   `pandoc --standalone --to man --lua-filter build/man-deflist.lua`. The repository
   sets `MAN_NAME` before `include build/man.mk`; the fragment refuses with a clear
   `$(error ...)` when it is unset.
-- `build/man-deflist.lua` (`build_assets` id `man-lua`, comment `--`). mdmost's
-  filter, unchanged in behaviour: it turns bullet lists whose items open with a bold
-  term into definition lists, so GitHub renders the source as lists and the man writer
-  emits `.TP`.
+- `build/man-deflist.lua` (`build_assets` id `man-lua`, comment `--`). Ported from
+  mdmost's filter with a different input: it turns bullet lists in which every item
+  opens with an inline code span followed directly by a colon
+  (`` `--listen <ip:port>`: Address and port to listen on.``) into definition lists
+  whose term is the code span in bold, so GitHub renders the source as lists and the
+  man writer emits `.TP`. mdmost keyed on a bold term and an em dash. Owner ruling,
+  2026-09-23: no em dash anywhere, which supersedes "unchanged in behaviour".
 
 Both carry the usual `repo-infra: <asset> v1` marker. The date in the page header
 comes from `date:` in the manual's front matter, never from the build, so two builds
@@ -111,9 +114,12 @@ of one source produce one page. The footer carries no version, so a release does
 change the page.
 
 `test_every_non_yaml_asset_is_covered_by_a_test` gains `.lua`, and both assets get a
-test: the filter turns a `- **term** — text` list into a definition list (run through
-pandoc when it is on the PATH, skipped with a reason when it is not), and `man.mk`
-builds a two-section fixture manual into `man/fixture.1`.
+test: the filter turns a ``- `term`: text`` list into a definition list and leaves
+mdmost's bold-term form and a list that matches only in part as bullet lists (run
+through pandoc when it is on the PATH, skipped with a reason when it is not), and
+`man.mk` builds a two-section fixture manual into `man/fixture.1`. Owner ruling,
+2026-09-23: with `CI` set, a missing pandoc fails these tests instead of skipping
+them, and repo-infra's own CI installs pandoc so they run there.
 
 ## The two skills
 
@@ -141,8 +147,8 @@ commit messages. It states the rules per kind of text, because the kinds differ:
   example (the v0.1.1 tag with `Cargo.lock` still at 0.1.0).
 
 Across all of them: no emoji headings; no rhetorical "X, not Y" framing; no lists of
-three made for rhythm; no em dashes in prose (a code block or a table cell may keep
-one); "for example", not "e.g."; singular "they" for a person of unknown gender;
+three made for rhythm; no em dashes anywhere, and option and term lists use the
+``- `code`: text`` form (owner ruling, 2026-09-23); "for example", not "e.g."; singular "they" for a person of unknown gender;
 sentence-case subsection headings.
 
 The skill carries a short before/after pair for the manual taken from `fef7f53`, since
@@ -157,8 +163,8 @@ the rules are easier to apply against an example than against a list.
 - Semantic newlines in the source.
 - Front matter: `title`, `section`, `header`, `footer` without a version, `date` edited
   by hand on a substantive revision.
-- Options as bold-term bullet lists (the filter's input); no Markdown table with a
-  prose column.
+- Options as bullet lists of ``- `code`: text`` items (the filter's input); no
+  Markdown table with a prose column.
 - Level-1 headings are anchors other documents link to; renaming one is a breaking
   change to those links.
 - Setup in a repository: `MAN_NAME` plus `include build/man.mk` in the Makefile,
