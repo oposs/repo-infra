@@ -1,6 +1,6 @@
 ---
 name: writing-style
-description: House style for any words that go into a repo file. Load it before drafting, editing, shortening or rewriting such text, even when the request looks small or is mostly about a code fix. Typical requests are a changelog or CHANGES.md entry for a fix or feature; a bloated README or install section trimmed down to the commands; a docs/manual.md that should read like a man page instead of a sales pitch, full of "simply", "ideal for", "you can" and self-praise; rationale moved into maintainer notes; a commit message or a code comment that explains why; em dashes, rhetorical contrasts and a generic AI tone removed. Not for questions about how code, CI or regexes behave when no prose is being written.
+description: House style for prose in a repository and for the commit messages that go with it. Load it before drafting, editing, shortening or rewriting such text, even when the request looks small or is mostly about a code fix. Typical requests are a changelog or CHANGES.md entry for a fix or feature; a bloated README or install section trimmed down to the commands; a docs/manual.md full of "simply", "ideal for", "you can" and self-praise that should read like a man page; rationale moved into maintainer notes; a commit message or a code comment that explains why; em dashes, rhetorical contrasts and a generic AI tone removed. Not for questions about how code, CI or regexes behave when no prose is being written.
 ---
 
 # Writing style
@@ -12,20 +12,23 @@ apply the rules for every kind on top.
 
 ## Rules for every kind
 
-- No em dashes, anywhere: not in prose, not in lists, not in examples. Use a
-  full stop, a comma, a colon or parentheses.
-- Option and term lists put the term in a code span followed by a colon:
+- No em dashes anywhere, including lists and examples. Use a full stop, a
+  comma, a colon or parentheses.
+- Option, key and term lists put the term in a code span followed by a colon:
 
   ```markdown
   - `--listen <ip:port>`: Address and port to listen on.
   - `-h, --help`: Print help and exit.
+  - `j, Down`: Scroll down one line.
+  - `Left, Right`: Scroll wide content sideways.
   - `SIGTERM`: Starts the drain.
   ```
 
-  Several names for one thing share a single code span, as `-h, --help` does.
-  The man page build turns a list into option paragraphs only when every item
-  opens with one code span directly followed by the colon; a single item
-  written `` `-h`, `--help`: `` leaves the whole list as plain bullets.
+  Everything an item describes goes into one code span, both the aliases of
+  one option and two keys that share an entry. The man page build turns a list
+  into option paragraphs only when every item opens with one code span directly
+  followed by the colon. One item written `` `j`, `Down`: `` leaves the whole
+  list as plain bullets.
 
 - No emoji in headings.
 - No rhetorical contrast used for emphasis, such as "this is a pager, not a
@@ -77,9 +80,12 @@ Bindings are remappable; see `[keys]` under **CONFIGURATION**. The help overlay
 and the status bar name the bindings in effect rather than the defaults.
 ```
 
-"Parses a Markdown document once" describes the implementation and is gone.
-"So the two cannot drift apart" praises the build and is gone. "The keys you
-have actually bound" became a third-person statement.
+"Parses a Markdown document once" describes the implementation and left the
+manual. "So the two cannot drift apart" praises the build and left the manual.
+The reason behind it, that the help overlay is generated from the same live
+binding table as the KEYS list, moved to `docs/maintainer-notes.md`, like every
+other piece of rationale the manual drops. "The keys you have actually bound"
+became a third-person statement.
 
 ## README
 
@@ -93,8 +99,8 @@ The README keeps its own voice, and second person is fine there.
 ## Maintainer notes
 
 `docs/maintainer-notes.md` carries the rationale the manual and the README
-leave out. Rationale cut from either moves here and is never deleted, so a
-later change to a default is a decision rather than an accident. Explanation
+leave out. Rationale cut from either moves here and is never deleted, so
+whoever later changes a default can see why it was chosen. Explanation
 belongs here, and it follows the rule for code comments below.
 
 ## Changelog entries
@@ -121,7 +127,8 @@ implementation language, and implementation detail is lost on them.
 ## Code comments and commit messages
 
 Here the reader is a developer asking why. Every explanation names the concrete
-thing that went wrong: the version, the file, the symptom.
+thing that went wrong, such as the version that broke or the symptom someone
+saw.
 
 ```sh
 # And no || true. Swallowing the failure is what turned a broken step into a broken
