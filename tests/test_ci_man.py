@@ -221,3 +221,53 @@ def test_the_real_toolchain_fails_a_prose_table_and_passes_a_list(tmp_path, requ
         done = subprocess.run(["bash", "-e", "-c", check_script()], cwd=out.parent,
                               capture_output=True, text=True, timeout=60)
         assert done.returncode == expected, name + ": " + done.stdout + done.stderr
+
+
+# --- the candidate hint ---------------------------------------------------------
+
+
+def _config(root, ci):
+    (root / ".github").mkdir(exist_ok=True)
+    (root / ".github/repo-infra.json").write_text(
+        json.dumps({"ci": ci, "publish": [], "build": []}), encoding="utf-8")
+
+
+def test_the_man_pages_hint_stands_until_the_block_is_chosen(tmp_path):
+    from repo_infra import cli
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/manual.md").write_text("# NAME\n", encoding="utf-8")
+    assert cli._load(tmp_path)[1].candidates == ["man-pages"]
+    _config(tmp_path, ["ci-man"])
+    assert cli._load(tmp_path)[1].candidates == []
+
+
+def test_choosing_the_block_leaves_other_candidates_alone(tmp_path):
+    from repo_infra import cli
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/manual.md").write_text("# NAME\n", encoding="utf-8")
+    (tmp_path / "book.toml").write_text("[book]\n", encoding="utf-8")
+    _config(tmp_path, ["ci-man"])
+    assert cli._load(tmp_path)[1].candidates == ["docs-site"]
+
+
+def test_a_candidate_that_names_a_block_names_an_optional_one():
+    # A hint answered by a block detection installs would never be answered:
+    # nobody can put that block in the `ci` list.
+    detection = json.loads((ASSETS / "detection.json").read_text(encoding="utf-8"))
+    for entry in detection["candidates"]:
+        if "ci_block" in entry:
+            meta = MANIFEST["ci_blocks"].get(entry["ci_block"])
+            assert meta and meta.get("optional"), entry
+
+
+def test_the_report_no_longer_prints_an_answered_hint(tmp_path):
+    from repo_infra import cli, report
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/manual.md").write_text("# NAME\n", encoding="utf-8")
+    _config(tmp_path, ["ci-man"])
+    _, result, _ = cli._load(tmp_path)
+    assert "man-pages" not in report.render_text("o/r", result, [])
+    assert json.loads(report.render_json("o/r", result, []))["candidates"] == []

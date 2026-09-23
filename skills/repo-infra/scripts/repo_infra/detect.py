@@ -70,3 +70,16 @@ class Detection:
         result.blocks = ["ci-lib"] + sorted(blocks)
         result.ecosystems.sort()
         return result
+
+    def open_candidates(self, candidates, chosen_ci):
+        """The candidates a repository has not acted on yet (D23).
+
+        A candidate is a hint that more of the standard fits this repository.
+        Once the repository has chosen the CI block that answers it -- `ci-man`
+        for `man-pages` -- the hint has been acted on, and repeating it on
+        every `check` would read as advice still open. Detection cannot see
+        the choice, so the caller passes the `ci` list in.
+        """
+        served = {entry["id"] for entry in self.data.get("candidates", [])
+                  if entry.get("ci_block") in chosen_ci}
+        return [c for c in candidates if c not in served]

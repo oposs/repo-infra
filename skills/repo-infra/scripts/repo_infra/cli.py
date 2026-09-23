@@ -58,10 +58,13 @@ def _chosen(root, key):
 
 def _load(root):
     manifest = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-    result = Detection.load(ASSETS / "detection.json").detect(root)
+    detection = Detection.load(ASSETS / "detection.json")
+    result = detection.detect(root)
+    ci = _chosen(root, "ci")
     rendered = render_all(ASSETS, result, manifest,
                           _chosen(root, "publish"), _chosen(root, "build"),
-                          _chosen(root, "ci"), _chosen(root, "publish_local"))
+                          ci, _chosen(root, "publish_local"))
+    result.candidates = detection.open_candidates(result.candidates, ci)
     return manifest, result, rendered
 
 

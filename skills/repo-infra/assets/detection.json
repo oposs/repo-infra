@@ -111,7 +111,7 @@
   ],
   "candidates": [
     {"id": "docs-site", "signals": {"any": ["book.toml"]}},
-    {"id": "man-pages", "signals": {"any": ["docs/manual.md"]}}
+    {"id": "man-pages", "signals": {"any": ["docs/manual.md"]}, "ci_block": "ci-man"}
   ],
   "ambiguities": [
     {
