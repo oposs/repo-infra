@@ -58,7 +58,7 @@
       "comment": "dnl"
     },
     "man": {
-      "version": 1,
+      "version": 2,
       "source": "build/man.mk",
       "target": "build/man.mk",
       "comment": "#"

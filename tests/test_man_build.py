@@ -83,7 +83,7 @@ def to_native(tmp_path, markdown):
 
 def test_both_assets_are_declared_in_the_manifest():
     assert MANIFEST["build_assets"]["man"] == {
-        "version": 1, "source": "build/man.mk", "target": "build/man.mk",
+        "version": 2, "source": "build/man.mk", "target": "build/man.mk",
         "comment": "#"}
     assert MANIFEST["build_assets"]["man-lua"] == {
         "version": 1, "source": "build/man-deflist.lua",
@@ -183,6 +183,22 @@ def test_make_man_builds_the_page_from_the_manual(tmp_path, require):
     # The filter ran: options are bold hanging-indent entries, not bullets.
     assert ".TP\n\\f[B]" in page
     assert "\\[bu]" not in page
+
+
+@pytest.mark.pandoc
+def test_an_option_in_running_text_keeps_its_two_hyphens(tmp_path, require):
+    # pandoc's markdown reader has `smart` on by default and turns `--` into an
+    # en dash, so **--api** in a sentence came out as `–api` in the page.
+    # Code spans are never touched, which is why the option lists looked fine.
+    require("pandoc", "make")
+    manual = FIXTURE_MANUAL + "\n# DESCRIPTION\n\nStart with **--api** to serve it.\n"
+    root = tree(tmp_path / "repo", manual=manual)
+    done = make_man(root)
+    assert done.returncode == 0, done.stderr
+    page = (root / "man/fixture.1").read_text(encoding="utf-8")
+    # pandoc 3.1 writes the hyphens bare, later releases escape them as `\-`.
+    assert ("\\f[B]--api\\f[R]" in page) or ("\\f[B]\\-\\-api\\f[R]" in page), page
+    assert "\\[en]" not in page
 
 
 @pytest.mark.pandoc

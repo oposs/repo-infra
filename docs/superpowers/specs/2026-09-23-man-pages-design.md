@@ -97,7 +97,9 @@ converting it is out of scope.
 
 - `build/man.mk` (`build_assets` id `man`, comment `#`). It defines one phony target,
   `man`, which builds `man/$(MAN_NAME).1` from `docs/manual.md` with
-  `pandoc --standalone --to man --lua-filter build/man-deflist.lua`. The repository
+  `pandoc --standalone --from markdown-smart --to man --lua-filter build/man-deflist.lua`.
+  Amended 2026-09-24 (`man` v2): without `-smart`, pandoc turns `--` in running
+  text into an en dash, so **--api** reached the page as `–api`. The repository
   sets `MAN_NAME` before `include build/man.mk`; the fragment refuses with a clear
   `$(error ...)` when it is unset.
 - `build/man-deflist.lua` (`build_assets` id `man-lua`, comment `--`). Ported from
