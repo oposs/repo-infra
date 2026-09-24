@@ -1154,39 +1154,16 @@ Cross-compilation: `Cross.toml` pinning `ghcr.io/cross-rs/*-musl` images with `R
 passthrough, and `cross` itself pinned (`--version 0.2.5 --locked`) because the static
 musl build cannot be rehearsed locally and so must not rest on a moving dependency.
 
-## Spec 3 — prose (outline)
+## Spec 3: prose
 
-Two skills plus hygiene files.
+Superseded by `2026-09-23-man-pages-design.md` (D23). mdmost built its manual
+after this outline was written and settled three points differently: no em
+dashes, a manual carries no rationale (it moves to `docs/maintainer-notes.md`),
+and a manual is present tense and third person. D23 records that, the `ci-man`
+block, the man build assets, and the `writing-style` and `man-pages` skills.
 
-**`man-pages`.** `man-pages(7)` is a real, citable standard: section order (NAME,
-SYNOPSIS, CONFIGURATION, DESCRIPTION, OPTIONS, EXIT STATUS, ENVIRONMENT, FILES, VERSIONS,
-STANDARDS, HISTORY, NOTES, CAVEATS, BUGS, EXAMPLES, SEE ALSO), semantic newlines,
-gender-neutral language with singular "they", sentence-case subsection headings,
-"for example" over "e.g.", and no implementation detail unless needed to use the
-interface. Per D10 the skill encodes the standard rather than inventing one.
-
-Build system ported from mdmost: `docs/manual.md` + `docs/man-deflist.lua` + `make man`,
-with `man/` gitignored — a generated file not in version control cannot disagree with its
-source. CI gets a "manual converts" job so a broken manual fails the PR that broke it
-rather than surfacing at release time.
-
-**`writing-style`.** Not an anti-AI checklist. The measurable machine-writing markers are
-emoji section headers, low sentence-length variance, and structural formulas ("not just X,
-but Y"; everything arriving in threes). The commonly cited ones — em dashes, "delve",
-"robust" — are weak individually.
-
-More usefully: the existing house prose breaks the popular rules and is unmistakably
-human, because it cites **specific, checkable, hard-won detail**:
-
-> `# And no || true. Swallowing the failure is what turned a broken step into a broken
-> release: v0.1.1 was tagged with Cargo.toml at 0.1.1 and Cargo.lock still at 0.1.0, and
-> the publish failed 6 minutes later.`
-
-So the skill encodes *that* house style — every explanation names the concrete thing that
-went wrong — bans emoji headers and the structural formulas, and leaves the em dashes
-alone.
-
-**Hygiene:** LICENSE, CONTRIBUTING.md, `.gitignore`, issue templates, CLAUDE.md scaffold.
+**Hygiene** is not part of D23 and has no spec yet: LICENSE, CONTRIBUTING.md,
+`.gitignore`, issue templates, CLAUDE.md scaffold.
 
 ## Spec 4 — docs sites (outline)
 

@@ -85,3 +85,6 @@ differences are gaps and which are just migration work.
   changelog deviation, the github-script injected names, the marker protocol.
 - `references/teaching-the-standard.md` — what to do when the standard has no
   answer for this repository, and which differences count.
+- The `writing-style` and `man-pages` skills in this plugin: the voice of a
+  README, manual, changelog entry or comment, and how a man page is written,
+  built and checked by `ci-man`. They trigger on their own, without a check.

@@ -12,6 +12,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- The `ci-man` add-on (D23). A repository with its manual in `docs/manual.md`
+  lists `ci-man` in the `ci` list of `.github/repo-infra.json`, and every pull
+  request then builds the man page with `make man` and fails when the manual
+  stops converting or roff reports a warning such as `table wider than line
+  length minus indentation`. Choosing it installs `build/man.mk` and
+  `build/man-deflist.lua`, which turns option lists written as
+  ``- `--option`: text`` into proper man page entries, and `check` stops
+  listing `man-pages` among its candidates.
+- Two skills in the plugin: `writing-style` gives the house voice for READMEs,
+  manuals, maintainer notes, changelog entries, code comments and commit
+  messages, and `man-pages` covers how a man page is structured, built and
+  shipped. They trigger on their own, without a repository check.
 - The `ci-rust-musl` add-on (D22), and with it the first CI block a repository
   chooses rather than one detection finds. A Rust repository names it in a new
   `ci` list in `.github/repo-infra.json` and every pull request cross-builds a

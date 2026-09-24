@@ -29,12 +29,13 @@
     "ci-python": {"version": 2, "jobs": ["ruff", "pytest"]},
     "ci-rust": {"version": 1, "jobs": ["rust-check", "rust-test"]},
     "ci-rust-musl": {"version": 1, "jobs": ["rust-musl"], "optional": true, "requires": "rust"},
+    "ci-man": {"version": 1, "jobs": ["man"], "optional": true, "build": ["man", "man-lua"]},
     "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
     "ci-perl-autotools": {"version": 2, "jobs": ["perl-autotools"]},
     "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
-    "ci-repo-infra-selftest": {"version": 2, "jobs": ["repo-infra-selftest"]},
+    "ci-repo-infra-selftest": {"version": 3, "jobs": ["repo-infra-selftest", "repo-infra-man"]},
     "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
     "ci-github-action": {"version": 1, "jobs": ["action-manifest", "action-test"]}
   },
@@ -55,6 +56,18 @@
       "source": "m4/repo-infra-container.m4",
       "target": "m4/repo-infra-container.m4",
       "comment": "dnl"
+    },
+    "man": {
+      "version": 1,
+      "source": "build/man.mk",
+      "target": "build/man.mk",
+      "comment": "#"
+    },
+    "man-lua": {
+      "version": 1,
+      "source": "build/man-deflist.lua",
+      "target": "build/man-deflist.lua",
+      "comment": "--"
     }
   },
   "actions": {

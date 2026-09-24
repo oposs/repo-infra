@@ -88,3 +88,19 @@ def test_dnl_needs_a_word_boundary():
 
 def test_marker_line_renders_the_dnl_comment():
     assert marker_line("container-m4", 1, comment="dnl") == "dnl repo-infra: container-m4 v1"
+
+
+def test_a_double_dash_is_a_marker_comment():
+    # Lua comments with `--`, and build/man-deflist.lua carries its marker that
+    # way (D23). Without this the filter has no readable marker: check never
+    # reports it, and apply refuses with "no rendered file carries that asset".
+    found = parse_markers("-- repo-infra: man-lua v1\nfunction BulletList(el) end\n")
+    assert [(m.asset, m.version, m.line) for m in found] == [("man-lua", 1, 1)]
+    line = marker_line("man-lua", 1, comment="--")
+    assert line == "-- repo-infra: man-lua v1"
+    assert parse_markers(line + "\n") == [Marker(asset="man-lua", version=1, line=1)]
+
+
+def test_a_lua_doc_comment_is_not_a_marker():
+    # `---` opens a LuaDoc comment. The marker is exactly `--`.
+    assert parse_markers("--- repo-infra: man-lua v1\n") == []
