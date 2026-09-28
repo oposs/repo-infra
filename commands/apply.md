@@ -73,8 +73,12 @@ item pending, and a bare `apply` followed by push and PR is enough.
 The file it names carries local edits. Read the three files it wrote under
 `.git/repo-infra/merge/` (`{name}.base`, `{name}.new`, `{name}.current`), merge
 the new asset into the local edits by hand, save the result anywhere, and hand
-it back: `apply --item <name> --from <path to your merge>`. Never overwrite the
-local edits outright. They are there for a reason, and the reason is usually
+it back: `apply --item <name> --from <path to your merge>`. The merged file must
+carry the new marker version. For an asset that ships several files, such as
+`workflow-lib`, the merge covers the one file the error names (`{name}.path`
+holds its path), and nothing else is written until it is back. Run `apply`
+again afterwards: it upgrades the remaining files, or names the next edited
+one. Never overwrite the local edits outright. They are there for a reason, and the reason is usually
 not visible in the diff.
 
 ## If it refuses an administration item

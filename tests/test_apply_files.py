@@ -226,29 +226,126 @@ def test_a_missing_directory_asset_installs_every_file(tmp_path):
         assert (tmp_path / path).read_text(encoding="utf-8") == text
 
 
-def test_an_outdated_directory_asset_refuses_instead_of_guessing(tmp_path):
-    """`_asset_source` finds an asset by its marker, which for a directory
-    resolves to whichever file sorts first -- so every later file would be
-    compared against the wrong history. D12: the tool never guesses."""
-    for path, text in LIB.items():
-        target = tmp_path / path
+# A plugin whose history holds workflow-lib v1 (two files) and v2, which
+# changes both and adds a third. Each file's base is looked up under its own
+# path, so no file is ever compared against a sibling's history.
+LIB_V1 = {
+    "bump.js": "// repo-infra: workflow-lib v1\nconst bump = 1;\n",
+    "version.js": "// repo-infra: workflow-lib v1\nconst version = 1;\n",
+}
+LIB_V2 = {
+    "assets.js": "// repo-infra: workflow-lib v2\nconst assets = 2;\n",
+    "bump.js": "// repo-infra: workflow-lib v2\nconst bump = 2;\n",
+    "version.js": "// repo-infra: workflow-lib v2\nconst version = 2;\n",
+}
+LIB_TARGET = ".github/workflows/lib/"
+RENDERED_V2 = {LIB_TARGET + name: text for name, text in LIB_V2.items()}
+
+
+@pytest.fixture(scope="module")
+def lib_plugin(tmp_path_factory):
+    root = tmp_path_factory.mktemp("lib-plugin")
+    lib = root / "assets/workflows/lib"
+    lib.mkdir(parents=True)
+
+    def run(*args):
+        subprocess.run(args, cwd=root, check=True, capture_output=True)
+
+    run("git", "init", "-q")
+    run("git", "config", "user.email", "test@example.com")
+    run("git", "config", "user.name", "Test")
+    for generation in (LIB_V1, LIB_V2):
+        for name, text in generation.items():
+            (lib / name).write_text(text, encoding="utf-8")
+        run("git", "add", "-A")
+        run("git", "commit", "-qm", "generation")
+    return root
+
+
+def install(tmp_path, files):
+    for name, text in files.items():
+        target = tmp_path / LIB_TARGET / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
-    with pytest.raises(ApplyError) as raised:
-        apply_file_item(tmp_path, "workflow-lib", LIB,
-                        [Item("workflow-lib", "outdated", "")], tmp_path)
-    assert "3 files" in str(raised.value)
-    for path in LIB:
-        assert path in str(raised.value)
 
 
-def test_a_merge_is_refused_for_a_directory_asset(tmp_path):
+def on_disk(tmp_path, name):
+    return (tmp_path / LIB_TARGET / name).read_text(encoding="utf-8")
+
+
+def upgrade(tmp_path, plugin, merged=None):
+    return apply_file_item(tmp_path, "workflow-lib", RENDERED_V2,
+                           [Item("workflow-lib", "outdated", "")], plugin, merged=merged)
+
+
+def test_an_unedited_directory_asset_is_upgraded_file_by_file(tmp_path, lib_plugin):
+    install(tmp_path, LIB_V1)
+    written = upgrade(tmp_path, lib_plugin)
+    assert written == sorted(RENDERED_V2)
+    for name, text in LIB_V2.items():
+        assert on_disk(tmp_path, name) == text
+
+
+def test_a_file_already_at_the_new_generation_keeps_its_local_edits(tmp_path, lib_plugin):
+    # A local edit at the current version is healthy (conventions.md), so a
+    # file that was merged by hand earlier must survive the rest of the upgrade.
+    edited = LIB_V2["bump.js"] + "// local\n"
+    install(tmp_path, {"bump.js": edited, "version.js": LIB_V1["version.js"]})
+    written = upgrade(tmp_path, lib_plugin)
+    assert written == [LIB_TARGET + "assets.js", LIB_TARGET + "version.js"]
+    assert on_disk(tmp_path, "bump.js") == edited
+
+
+def test_an_edited_old_file_stops_the_upgrade_before_anything_is_written(tmp_path, lib_plugin):
+    (tmp_path / ".git").mkdir()
+    edited = LIB_V1["version.js"] + "// local\n"
+    install(tmp_path, {"bump.js": LIB_V1["bump.js"], "version.js": edited})
+    with pytest.raises(NeedsMerge) as raised:
+        upgrade(tmp_path, lib_plugin)
+    # Writing the unedited files first would leave a half-upgraded directory
+    # behind a refusal; nothing moves until the merge is in.
+    assert on_disk(tmp_path, "bump.js") == LIB_V1["bump.js"]
+    assert not (tmp_path / LIB_TARGET / "assets.js").exists()
+    scratch = tmp_path / MERGE_DIR
+    assert (scratch / "workflow-lib.base").read_text(encoding="utf-8") == LIB_V1["version.js"]
+    assert (scratch / "workflow-lib.new").read_text(encoding="utf-8") == LIB_V2["version.js"]
+    assert (scratch / "workflow-lib.current").read_text(encoding="utf-8") == edited
+    assert str(raised.value.current).endswith(LIB_TARGET + "version.js")
+
+
+def test_a_merged_file_goes_back_to_the_file_the_merge_was_prepared_for(tmp_path, lib_plugin):
+    (tmp_path / ".git").mkdir()
+    install(tmp_path, {"bump.js": LIB_V1["bump.js"],
+                       "version.js": LIB_V1["version.js"] + "// local\n"})
+    with pytest.raises(NeedsMerge):
+        upgrade(tmp_path, lib_plugin)
     merged = tmp_path / "merged.js"
-    merged.write_text("// repo-infra: workflow-lib v1\n", encoding="utf-8")
+    merged.write_text(LIB_V2["version.js"] + "// local\n", encoding="utf-8")
+    assert upgrade(tmp_path, lib_plugin, merged=str(merged)) == [LIB_TARGET + "version.js"]
+    assert on_disk(tmp_path, "version.js").endswith("// local\n")
+    assert list((tmp_path / MERGE_DIR).iterdir()) == []
+    # The next run finishes the directory and leaves the merged file alone.
+    assert upgrade(tmp_path, lib_plugin) == [LIB_TARGET + "assets.js", LIB_TARGET + "bump.js"]
+    assert on_disk(tmp_path, "version.js").endswith("// local\n")
+
+
+def test_a_merge_for_a_directory_asset_needs_a_prepared_merge(tmp_path, lib_plugin):
+    install(tmp_path, LIB_V1)
+    merged = tmp_path / "merged.js"
+    merged.write_text(LIB_V2["bump.js"], encoding="utf-8")
     with pytest.raises(ApplyError) as raised:
-        apply_file_item(tmp_path, "workflow-lib", LIB,
-                        [Item("workflow-lib", "missing", "")], tmp_path, merged=str(merged))
-    assert "single-file asset" in str(raised.value)
+        upgrade(tmp_path, lib_plugin, merged=str(merged))
+    assert "no merge is in progress" in str(raised.value)
+
+
+def test_without_the_plugin_history_an_old_file_counts_as_edited(tmp_path):
+    # No history means no proof the file is unedited. Overwriting it anyway
+    # would be the guess D12 forbids.
+    (tmp_path / ".git").mkdir()
+    install(tmp_path, LIB_V1)
+    with pytest.raises(NeedsMerge):
+        upgrade(tmp_path, tmp_path / "not-a-plugin")
+    assert on_disk(tmp_path, "bump.js") == LIB_V1["bump.js"]
 
 
 def test_a_single_file_asset_still_reports_exactly_one_written_path(tmp_path):

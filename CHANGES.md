@@ -47,8 +47,67 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Converting a crate that already publishes needs a new Trusted Publisher
   registered on crates.io first -- the pin names the workflow filename, and
   conversion renames it. See `references/conventions.md`.
+- Repositories whose product is a GitHub Action are recognised. `action.yml`
+  selects a `github-action` ecosystem, which validates the action manifest
+  against every workflow that calls it and runs the project's own action test.
+- A Python repository can declare test dependencies. `ci.yml`'s pytest job now
+  installs `requirements-dev.txt` when the repository has one, the same way the
+  Checkmk plugin job already did.
+- repo-infra's own CI builds a real container and runs the autotools driver it
+  ships against it, as a required check. The assets are the product, so a
+  regression in them no longer merges.
+- Autotools repositories can now build in a container end to end. `configure`
+  and `make` outside the container drive podman; inside, they are plain
+  autotools. A CI runner no longer probes a project's system dependencies.
+  repo-infra ships the *shape* of the build environment (`build/container.mk`);
+  the project keeps its Containerfile and what goes in it.
+- `make test-dev TARGET=t/foo.t` runs one test file against the live working
+  tree, without rebuilding the image.
+- The plugin documents what to do when the standard has no answer for a
+  repository's shape: question, prove, upstream, with a report that says so
+  instead of a false "N items need attention" count.
+- A publish add-on that attaches the `make dist` source tarball to a release. It is the first of spec 2's add-ons, and any autotools repository needs it before it can be converted without losing the tarball it publishes today.
+- A CI block for Checkmk plugins: lint, tests and a throwaway package build. The Checkmk API a plugin imports is declared by the plugin, not by this block.
+- The plugin reads a repository's ruleset, labels and workflow permissions.
+- The plugin ships the release workflows as versioned, installable assets.
+- The plugin can read and write asset version markers.
+- The plugin detects a repository's ecosystems from file signals.
+- The plugin assembles a repository's ci.yml from a frame plus one block per ecosystem.
+- This repository's own .github/ is generated from the plugin's assets, and CI fails if the two differ.
+- The plugin reports how far a repository has drifted, per asset and per CI block, and honours deliberate skips.
+- /repo-infra:check reports drift as text or JSON.
+- /repo-infra:apply installs missing assets on a branch, one commit per item.
+- /repo-infra:apply creates the no-changelog label, sets workflow permissions and enables the ruleset, in that order.
+- The plugin ships the repo-infra skill and the /repo-infra:check and /repo-infra:apply commands.
+- CI blocks for rust and go.
+- CI blocks for node, one for pnpm and one for bun.
+- CI blocks for perl, one for autotools projects and one for Makefile.PL projects.
+
+### Changed
+- `check` reports `release-pr` and `changelog` as outdated until `apply`
+  installs the new generation, whose only change is wording without em dashes.
+  In the Actions log the first step of **Create release PR** is now called
+  `Guard (right branch, green checks)`, and the report's first line reads
+  `repo-infra check: <repo>`.
+- The autotools CI block installs one fixed host toolchain and calls `make test`, rather than building natively against whatever the runner image happens to ship. A project that needs more than the toolchain declares it in its own Containerfile.
+- The autotools release writes `VERSION` instead of rewriting `configure.ac`, which is where every autotools repository examined keeps its version.
+- `check` now says when the standard does not recognise a repository at all, instead of reporting a count of missing items drawn from a repository kind it never identified.
+- The release system is proven end to end: `v0.1.0` was cut by dispatching
+  **Create release PR**, merging the pull request it opened, and letting the
+  publish workflow tag and publish. The one manual step is the deliberate
+  **Approve workflows to run** click on the release pull request, which exists so
+  that no credential has to be stored; `RELEASING.md` explains why.
 
 ### Fixed
+- `apply --item workflow-lib` refused every upgrade with `ships N files, and
+  only a single-file asset can be merged or upgraded in place`, and `check`
+  reported a partly upgraded library as a conflict (`files disagree`). It is now
+  `outdated`, and `apply` upgrades the library file by file; a file with local
+  edits stops the run before anything is written and is merged by hand.
+- **Create release PR** wrote `### New` or `### Fixed` twice into the release
+  notes when the `[Unreleased]` section carried a heading twice, as after
+  merging two branches that each added the section skeleton. It now merges them
+  into one subsection each; `workflow-lib` moves to v4 for this.
 - Rewriting `.github/repo-infra.json` kept only `publish`, `build`, `skip`
   and `answers`, so a repository's `ci` and `publish_local` choices and any
   `_comment` were dropped from the file. Every key the rewrite does not compute
@@ -95,61 +154,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `apply` installs every file of a directory asset. It wrote only the first,
   so a fresh conversion installed one file of the workflow library and the
   next `check` reported `files disagree` on work that had just succeeded.
-
-### New
-- Repositories whose product is a GitHub Action are recognised. `action.yml`
-  selects a `github-action` ecosystem, which validates the action manifest
-  against every workflow that calls it and runs the project's own action test.
-- A Python repository can declare test dependencies. `ci.yml`'s pytest job now
-  installs `requirements-dev.txt` when the repository has one, the same way the
-  Checkmk plugin job already did.
-- repo-infra's own CI builds a real container and runs the autotools driver it
-  ships against it, as a required check. The assets are the product, so a
-  regression in them no longer merges.
-- Autotools repositories can now build in a container end to end. `configure`
-  and `make` outside the container drive podman; inside, they are plain
-  autotools. A CI runner no longer probes a project's system dependencies.
-  repo-infra ships the *shape* of the build environment (`build/container.mk`);
-  the project keeps its Containerfile and what goes in it.
-- `make test-dev TARGET=t/foo.t` runs one test file against the live working
-  tree, without rebuilding the image.
-- The plugin documents what to do when the standard has no answer for a
-  repository's shape: question, prove, upstream, with a report that says so
-  instead of a false "N items need attention" count.
-- A publish add-on that attaches the `make dist` source tarball to a release. It is the first of spec 2's add-ons, and any autotools repository needs it before it can be converted without losing the tarball it publishes today.
-- A CI block for Checkmk plugins: lint, tests and a throwaway package build. The Checkmk API a plugin imports is declared by the plugin, not by this block.
-- The plugin reads a repository's ruleset, labels and workflow permissions.
-- The plugin ships the release workflows as versioned, installable assets.
-- The plugin can read and write asset version markers.
-- The plugin detects a repository's ecosystems from file signals.
-- The plugin assembles a repository's ci.yml from a frame plus one block per ecosystem.
-- This repository's own .github/ is generated from the plugin's assets, and CI fails if the two differ.
-- The plugin reports how far a repository has drifted, per asset and per CI block, and honours deliberate skips.
-- /repo-infra:check reports drift as text or JSON.
-- /repo-infra:apply installs missing assets on a branch, one commit per item.
-- /repo-infra:apply creates the no-changelog label, sets workflow permissions and enables the ruleset, in that order.
-- The plugin ships the repo-infra skill and the /repo-infra:check and /repo-infra:apply commands.
-- CI blocks for rust and go.
-- CI blocks for node, one for pnpm and one for bun.
-- CI blocks for perl, one for autotools projects and one for Makefile.PL projects.
-
-### Changed
-
-- `check` reports `release-pr` and `changelog` as outdated until `apply`
-  installs the new generation, whose only change is wording without em dashes.
-  In the Actions log the first step of **Create release PR** is now called
-  `Guard (right branch, green checks)`, and the report's first line reads
-  `repo-infra check: <repo>`.
-- The autotools CI block installs one fixed host toolchain and calls `make test`, rather than building natively against whatever the runner image happens to ship. A project that needs more than the toolchain declares it in its own Containerfile.
-- The autotools release writes `VERSION` instead of rewriting `configure.ac`, which is where every autotools repository examined keeps its version.
-- `check` now says when the standard does not recognise a repository at all, instead of reporting a count of missing items drawn from a repository kind it never identified.
-- The release system is proven end to end: `v0.1.0` was cut by dispatching
-  **Create release PR**, merging the pull request it opened, and letting the
-  publish workflow tag and publish. The one manual step is the deliberate
-  **Approve workflows to run** click on the release pull request, which exists so
-  that no credential has to be stored; `RELEASING.md` explains why.
-
-### Fixed
 
 ## 0.1.0 - 2026-08-19
 ### New
