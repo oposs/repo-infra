@@ -10,16 +10,7 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-DASH = "—"
-
-# Changing a directory asset needs a version bump, and `apply` cannot upgrade a
-# directory asset in place yet, so every consumer would reconcile the whole
-# workflow library by hand for one comment. The dash goes with the next change
-# that bumps workflow-lib for a real reason.
-KNOWN = {
-    "skills/repo-infra/assets/workflows/lib/bump.js",
-    ".github/workflows/lib/bump.js",
-}
+DASH = "\u2014"
 
 
 def shipped():
@@ -28,7 +19,7 @@ def shipped():
         files += [p for p in (ROOT / top).rglob("*") if p.is_file()]
     for path in files:
         rel = path.relative_to(ROOT).as_posix()
-        if "/evals/" in rel or rel in KNOWN or path.suffix in (".pyc",):
+        if "/evals/" in rel or path.suffix in (".pyc",):
             continue
         yield rel
 
@@ -45,8 +36,3 @@ def test_the_unreleased_changelog_section_carries_no_em_dash():
     unreleased = text.split("## [Unreleased]", 1)[1].split("\n## ", 1)[0]
     assert DASH not in unreleased
 
-
-def test_the_known_exceptions_still_need_to_be_exceptions():
-    # Once workflow-lib is bumped and the dash is gone, KNOWN must shrink.
-    for rel in KNOWN:
-        assert DASH in (ROOT / rel).read_text(encoding="utf-8"), rel

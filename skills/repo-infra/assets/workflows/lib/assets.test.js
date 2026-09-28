@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v3
+// repo-infra: workflow-lib v4
 'use strict';
 
 const test = require('node:test');
