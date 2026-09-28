@@ -1,4 +1,4 @@
-.PHONY: test lint check test-container
+.PHONY: test test-js lint check test-container
 
 # `-m` here overrides pytest.ini's addopts, so the pandoc-marked tests run
 # locally. The plain `python3 -m pytest` that ci-python runs deselects them,
@@ -6,10 +6,16 @@
 test:
 	python3 -m pytest -q -m "not container" tests
 
-lint:
-	python3 -m ruff check skills/repo-infra/scripts tests
+# The workflow library's own tests, as ci.yml's lib job runs them.
+test-js:
+	node --test .github/workflows/lib/*.test.js
 
-check: lint test
+# The same command and scope as ci-python's Lint job. uvx fetches ruff, so the
+# gate does not depend on which python3 comes first on PATH.
+lint:
+	uvx ruff check .
+
+check: lint test test-js
 
 # D19: builds a real container and runs the shipped build/container.mk and
 # m4/repo-infra-container.m4 against it -- needs podman and takes minutes, so
