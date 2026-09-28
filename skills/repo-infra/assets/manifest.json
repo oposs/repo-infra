@@ -29,7 +29,7 @@
     "ci-python": {"version": 2, "jobs": ["ruff", "pytest"]},
     "ci-rust": {"version": 1, "jobs": ["rust-check", "rust-test"]},
     "ci-rust-musl": {"version": 1, "jobs": ["rust-musl"], "optional": true, "requires": "rust"},
-    "ci-man": {"version": 1, "jobs": ["man"], "optional": true, "build": ["man", "man-lua"]},
+    "ci-man": {"version": 2, "jobs": ["man"], "optional": true, "build": ["man", "man-lua"]},
     "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
     "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
     "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
@@ -58,7 +58,7 @@
       "comment": "dnl"
     },
     "man": {
-      "version": 2,
+      "version": 3,
       "source": "build/man.mk",
       "target": "build/man.mk",
       "comment": "#"

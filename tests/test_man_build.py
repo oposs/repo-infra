@@ -83,7 +83,7 @@ def to_native(tmp_path, markdown):
 
 def test_both_assets_are_declared_in_the_manifest():
     assert MANIFEST["build_assets"]["man"] == {
-        "version": 2, "source": "build/man.mk", "target": "build/man.mk",
+        "version": 3, "source": "build/man.mk", "target": "build/man.mk",
         "comment": "#"}
     assert MANIFEST["build_assets"]["man-lua"] == {
         "version": 1, "source": "build/man-deflist.lua",
@@ -183,6 +183,57 @@ def test_make_man_builds_the_page_from_the_manual(tmp_path, require):
     # The filter ran: options are bold hanging-indent entries, not bullets.
     assert ".TP\n\\f[B]" in page
     assert "\\[bu]" not in page
+
+
+@pytest.mark.pandoc
+@pytest.mark.parametrize("line", ["section: 8", 'section: "8"', "section: '8'"],
+                         ids=["bare", "double-quoted", "single-quoted"])
+def test_the_page_lands_in_the_section_its_front_matter_names(tmp_path, require, line):
+    # The manual states its section once; the Makefile has no knob to disagree.
+    require("pandoc", "make")
+    root = tree(tmp_path / "repo", manual=FIXTURE_MANUAL.replace("section: 1", line))
+    done = make_man(root)
+    assert done.returncode == 0, done.stderr
+    assert sorted(p.name for p in (root / "man").iterdir()) == ["fixture.8"]
+    assert '.TH "FIXTURE" "8"' in (root / "man/fixture.8").read_text(encoding="utf-8")
+
+
+def test_a_section_line_after_the_front_matter_is_not_read(tmp_path, require):
+    # Only the front matter names the section. A body line that happens to
+    # start with `section:` must not decide where the page goes.
+    require("make")
+    manual = FIXTURE_MANUAL.replace("section: 1\n", "") + "\nsection: 5\n"
+    root = tree(tmp_path / "repo", manual=manual)
+    done = make_man(root)
+    assert done.returncode != 0
+    assert "no section: line in its front matter" in done.stderr
+    assert not (root / "man").exists()
+
+
+@pytest.mark.parametrize("manual", [FIXTURE_MANUAL.replace("section: 1\n", ""),
+                                    FIXTURE_MANUAL.replace("section: 1", "section: eight")],
+                         ids=["missing", "not-a-section"])
+def test_make_man_refuses_a_manual_without_a_usable_section(tmp_path, require, manual):
+    require("make")
+    root = tree(tmp_path / "repo", manual=manual)
+    done = make_man(root)
+    assert done.returncode != 0
+    assert "docs/manual.md" in done.stderr
+    assert not (root / "man").exists()
+
+
+def test_other_targets_still_work_when_the_manual_is_missing(tmp_path, require):
+    # The section is read when make parses the Makefile. A missing or broken
+    # manual may stop `make man`, never a repository's own build or tests.
+    require("make")
+    makefile = (".PHONY: build\nbuild:\n\t@echo BUILD_RAN\n\n"
+                "MAN_NAME = fixture\ninclude build/man.mk\n")
+    root = tree(tmp_path / "repo", manual=None, makefile=makefile)
+    done = subprocess.run(["make", "build"], cwd=root, env=make_env(),
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert "BUILD_RAN" in done.stdout
+    assert make_man(root).returncode != 0
 
 
 @pytest.mark.pandoc

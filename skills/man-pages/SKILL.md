@@ -1,6 +1,6 @@
 ---
 name: man-pages
-description: Use when writing, restructuring or setting up a program's man page (docs/manual.md converted by pandoc to man/<name>.1), including section order, front matter, option lists, `make man`, shipping the page in a package, and a failing ci-man job such as "table wider than line length minus indentation". The voice of the manual comes from the writing-style skill.
+description: Use when writing, restructuring or setting up a program's man page (docs/manual.md converted by pandoc to man/<name>.<section>), including section order, front matter, option lists, `make man`, shipping the page in a package, and a failing ci-man job such as "table wider than line length minus indentation". The voice of the manual comes from the writing-style skill.
 ---
 
 # Man pages
@@ -23,8 +23,11 @@ date: 2026-09-23
 ---
 ```
 
-`title` is the program name in capitals. The build always writes
-`man/$(MAN_NAME).1`, so `section` is `1`. `footer` carries no version, so a
+`title` is the program name in capitals. `section` decides where the page
+goes: the build writes `man/$(MAN_NAME).<section>`, and the Makefile has no
+setting for it. Use `1` for a command a user runs and `8` for a daemon or an
+administration tool. `make man` stops when the front matter has no `section:`.
+`footer` carries no version, so a
 release does not change the page. `date` is edited by hand when the manual
 changes in substance. The build never sets it, so two builds of one source
 produce one page.
@@ -124,7 +127,9 @@ warning. A table of short cells, such as a key and a one-word action, fits.
 
 4. Packaging takes the page from the working tree after `make man`. For a
    `.deb` built by cargo-deb, the release job runs `make man` before
-   `cargo deb`, and the assets list carries the page:
+   `cargo deb`, and the assets list carries the page. The file name and the
+   directory both follow `section`; a section 8 page is `man/mytool.8` in
+   `usr/share/man/man8/`:
 
    ```toml
    [package.metadata.deb]

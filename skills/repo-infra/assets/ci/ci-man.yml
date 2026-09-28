@@ -26,7 +26,7 @@
       - name: Render every page and fail on a roff warning
         run: |
           shopt -s nullglob
-          pages=(man/*.1)
+          pages=(man/*.[1-9]*)
           if [ ${#pages[@]} -eq 0 ]; then
             echo "::error::make man produced no page under man/"
             exit 1

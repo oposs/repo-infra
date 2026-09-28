@@ -20,6 +20,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `build/man-deflist.lua`, which turns option lists written as
   ``- `--option`: text`` into proper man page entries, and `check` stops
   listing `man-pages` among its candidates.
+- `make man` puts the page in the man section that `section:` in the manual's
+  front matter names, so a daemon's manual with `section: 8` builds
+  `man/<name>.8`, and `ci-man` checks pages of every section. A manual without
+  a `section:` line stops `make man` with a message naming `docs/manual.md`.
 - Two skills in the plugin: `writing-style` gives the house voice for READMEs,
   manuals, maintainer notes, changelog entries, code comments and commit
   messages, and `man-pages` covers how a man page is structured, built and
