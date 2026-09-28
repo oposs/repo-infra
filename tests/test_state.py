@@ -102,17 +102,37 @@ def test_a_locally_edited_file_in_a_directory_asset_still_collapses_to_ok(tmp_pa
     assert "local edits" in items["workflow-lib"].detail
 
 
-def test_a_directory_asset_where_files_disagree_is_one_conflict_row_naming_them(tmp_path):
-    """One file at the old version while its siblings are current is drift a
-    single averaged verdict would hide -- name the offending file."""
+def test_a_directory_asset_with_an_older_file_is_outdated_and_names_it(tmp_path):
+    """One file at the old version while its siblings are current is an upgrade
+    `apply` can finish (a hand merge landed first, or a run stopped half way).
+    Reporting it as a conflict made `apply` refuse the very step the report
+    asked for. The row still names the file an averaged verdict would hide."""
     rendered = dir_rendered(version=2)
     installed = dict(rendered)
     installed[".github/workflows/lib/version.js"] = "// repo-infra: workflow-lib v1\n"
     write_dir(tmp_path, installed)
     items = {item.name: item for item in classify_files(tmp_path, rendered, DIR_MANIFEST)}
-    assert items["workflow-lib"].state == "conflict"
+    assert items["workflow-lib"].state == "outdated"
     assert "version.js" in items["workflow-lib"].detail
     assert "v1" in items["workflow-lib"].detail and "v2" in items["workflow-lib"].detail
+
+
+def test_a_file_a_newer_generation_adds_makes_the_directory_outdated(tmp_path):
+    rendered = dir_rendered(files=DIR_FILES + ["assets.js"], version=2)
+    write_dir(tmp_path, dir_rendered(version=1))
+    items = {item.name: item for item in classify_files(tmp_path, rendered, DIR_MANIFEST)}
+    assert items["workflow-lib"].state == "outdated"
+    assert "assets.js" in items["workflow-lib"].detail
+
+
+def test_an_unmanaged_file_in_a_directory_asset_is_still_a_conflict(tmp_path):
+    rendered = dir_rendered(version=2)
+    installed = dict(rendered)
+    installed[".github/workflows/lib/version.js"] = "module.exports = {};\n"
+    write_dir(tmp_path, installed)
+    items = {item.name: item for item in classify_files(tmp_path, rendered, DIR_MANIFEST)}
+    assert items["workflow-lib"].state == "conflict"
+    assert "version.js" in items["workflow-lib"].detail
 
 
 def test_single_file_assets_are_unaffected_by_directory_collapsing(tmp_path):

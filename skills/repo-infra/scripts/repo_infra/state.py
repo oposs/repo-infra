@@ -72,10 +72,10 @@ def _collapse_dir_asset(name, entries):
 
     The manifest versions a directory asset as a single unit -- one marker, one
     version, copied into every file it ships -- so a directory where every file
-    agrees is one row, not one per file. A directory where files disagree (a
+    agrees is one row, not one per file. A directory where files differ (a
     stray older version, one file missing while the rest are installed) is real
-    drift that an averaged single verdict would hide, so it is named by file
-    instead of picked for.
+    drift that an averaged single verdict would hide, so the row names the
+    files instead of picking one state for them.
     """
     states = {item.state for _, item in entries}
 
@@ -100,7 +100,13 @@ def _collapse_dir_asset(name, entries):
         groups.setdefault(label, []).append(pathlib.Path(path).name)
     summary = "; ".join(f"{label} in {', '.join(sorted(files))}"
                         for label, files in sorted(groups.items()))
-    return Item(name, "conflict", f"files disagree: {summary} -- re-apply this asset")
+    # Files at older generations, files a newer generation adds, and files
+    # already current are an upgrade that stopped half way or has not started;
+    # `apply` finishes it file by file. Anything else in the mix (an unmanaged
+    # file, one newer than the plugin) needs a human first.
+    if states <= {"ok", "outdated", "missing"}:
+        return Item(name, "outdated", f"files differ: {summary}")
+    return Item(name, "conflict", f"files disagree: {summary}")
 
 
 def classify_files(repo_root, rendered, manifest):
