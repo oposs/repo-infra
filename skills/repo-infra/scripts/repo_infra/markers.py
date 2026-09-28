@@ -16,7 +16,7 @@ from collections import namedtuple
 Marker = namedtuple("Marker", "asset version line")
 
 # Asset identifiers: start with alphanumeric, then alphanumeric or hyphen.
-# This pattern is the single source of truth — Task 2 (manifest.json validation)
+# This pattern is the single source of truth. Task 2 (manifest.json validation)
 # and later modules must validate against exactly this.
 ASSET_ID = r"[a-z0-9][a-z0-9-]*"
 

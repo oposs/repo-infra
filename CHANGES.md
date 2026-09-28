@@ -135,6 +135,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `check` reports `release-pr` and `changelog` as outdated until `apply`
+  installs the new generation, whose only change is wording without em dashes.
+  In the Actions log the first step of **Create release PR** is now called
+  `Guard (right branch, green checks)`, and the report's first line reads
+  `repo-infra check: <repo>`.
 - The autotools CI block installs one fixed host toolchain and calls `make test`, rather than building natively against whatever the runner image happens to ship. A project that needs more than the toolchain declares it in its own Containerfile.
 - The autotools release writes `VERSION` instead of rewriting `configure.ac`, which is where every autotools repository examined keeps its version.
 - `check` now says when the standard does not recognise a repository at all, instead of reporting a count of missing items drawn from a repository kind it never identified.

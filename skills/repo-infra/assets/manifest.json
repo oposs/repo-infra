@@ -1,12 +1,12 @@
 {
   "assets": {
     "release-pr": {
-      "version": 2,
+      "version": 3,
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
     },
     "changelog": {
-      "version": 1,
+      "version": 2,
       "source": "workflows/changelog.yml",
       "target": ".github/workflows/changelog.yml"
     },
