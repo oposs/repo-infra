@@ -31,4 +31,10 @@ def test_container_tests_are_deselected_by_default():
     # locking the whole addopts string against ever gaining an unrelated
     # option (e.g. --strict-markers, see the test above).
     args = shlex.split(_pytest_ini().get("addopts", ""))
-    assert ("-m", "not container") in zip(args, args[1:], strict=False)
+    # D23 adds the pandoc marker to the same deselect: ci-python's bare pytest
+    # run installs no pandoc, and with CI set a selected pandoc test fails.
+    assert ("-m", "not container and not pandoc") in zip(args, args[1:], strict=False)
+
+
+def test_the_pandoc_marker_is_registered():
+    assert "pandoc:" in _pytest_ini().get("markers", "")

@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v1
+// repo-infra: workflow-lib v4
 'use strict';
 
 const test = require('node:test');
@@ -133,5 +133,115 @@ test('a commit whose only check is the ignored job counts as no checks', async (
   ]]);
   const state = await checks.checkState(github, PARAMS, { ignoreCheckRunIds: [2] });
   assert.equal(state.total, 0);
+  assert.equal(state.ok, false);
+});
+
+// --- retrying after a failed attempt --------------------------------------
+// The bug these cover, seen on oetiker/smalti's first ever release: the guard
+// excluded only the CURRENT run's jobs. Attempt 1 died on a permissions 403
+// and left a failed check run on the commit; attempt 2 saw that corpse,
+// reported "Failing checks on this commit: Prepare the release pull request"
+// and refused. Every later attempt saw one more corpse. Check runs cannot be
+// deleted, so the commit was permanently un-releasable and deleting the
+// release branch did not help -- the block is attached to the commit.
+
+// A fake Octokit that answers by route rather than by call order, because
+// these tests interleave three different endpoints.
+function routedGithub(routes) {
+  return {
+    rest: {
+      checks: { listForRef: 'listForRef' },
+      actions: {
+        listWorkflowRuns: 'listWorkflowRuns',
+        listJobsForWorkflowRun: 'listJobsForWorkflowRun',
+      },
+    },
+    paginate: async (route, params) => {
+      const fn = routes[route];
+      if (!fn) throw new Error(`unexpected route ${route}`);
+      return fn(params);
+    },
+  };
+}
+
+const WF_REF = 'oposs/repo-infra/.github/workflows/release-pr.yml@refs/heads/main';
+
+test('guardIgnoreIds covers EVERY earlier attempt, not just this run', async () => {
+  const github = routedGithub({
+    listWorkflowRuns: ({ workflow_id: wf, head_sha: sha }) => {
+      assert.equal(wf, 'release-pr.yml');
+      assert.equal(sha, 'abc123');
+      return [{ id: 100 }, { id: 200 }];   // a dead attempt, and this one
+    },
+    listJobsForWorkflowRun: ({ run_id: id }) => (
+      id === 100 ? [{ id: 11 }] : [{ id: 22 }]
+    ),
+  });
+  const ids = await checks.guardIgnoreIds(github, {
+    ...PARAMS, workflowRef: WF_REF, runId: 200,
+  });
+  assert.deepEqual([...ids].sort((a, b) => a - b), [11, 22]);
+});
+
+test('guardIgnoreIds includes this run even if the listing lags behind it', async () => {
+  // A run that has only just started can be missing from listWorkflowRuns for
+  // a moment. Losing our own job id there is the original deadlock.
+  const github = routedGithub({
+    listWorkflowRuns: () => [],
+    listJobsForWorkflowRun: ({ run_id: id }) => (id === 200 ? [{ id: 22 }] : []),
+  });
+  const ids = await checks.guardIgnoreIds(github, {
+    ...PARAMS, workflowRef: WF_REF, runId: 200,
+  });
+  assert.deepEqual([...ids], [22]);
+});
+
+test('guardIgnoreIds falls back to this run when the workflow ref is unusable', async () => {
+  const github = routedGithub({
+    listJobsForWorkflowRun: () => [{ id: 22 }],
+  });
+  const ids = await checks.guardIgnoreIds(github, {
+    ...PARAMS, workflowRef: undefined, runId: 200,
+  });
+  assert.deepEqual([...ids], [22]);
+});
+
+test('a failed earlier attempt no longer blocks the retry', async () => {
+  // The regression test for the whole bug, end to end through checkState.
+  const github = routedGithub({
+    listWorkflowRuns: () => [{ id: 100 }, { id: 200 }],
+    listJobsForWorkflowRun: ({ run_id: id }) => (
+      id === 100 ? [{ id: 11 }] : [{ id: 22 }]
+    ),
+    listForRef: () => [
+      withId(1, 'CI', 'completed', 'success'),
+      withId(11, 'Prepare the release pull request', 'completed', 'failure'),
+      withId(22, 'Prepare the release pull request', 'in_progress', null),
+    ],
+  });
+  const ignoreCheckRunIds = await checks.guardIgnoreIds(github, {
+    ...PARAMS, workflowRef: WF_REF, runId: 200,
+  });
+  const state = await checks.checkState(github, PARAMS, { ignoreCheckRunIds });
+  assert.deepEqual(state.failed.map((c) => c.name), []);
+  assert.equal(state.total, 1);
+  assert.equal(state.ok, true);
+});
+
+test('a genuinely failing check still blocks the retry', async () => {
+  // The other direction, or the fix would be a guard that guards nothing.
+  const github = routedGithub({
+    listWorkflowRuns: () => [{ id: 200 }],
+    listJobsForWorkflowRun: () => [{ id: 22 }],
+    listForRef: () => [
+      withId(1, 'CI', 'completed', 'failure'),
+      withId(22, 'Prepare the release pull request', 'in_progress', null),
+    ],
+  });
+  const ignoreCheckRunIds = await checks.guardIgnoreIds(github, {
+    ...PARAMS, workflowRef: WF_REF, runId: 200,
+  });
+  const state = await checks.checkState(github, PARAMS, { ignoreCheckRunIds });
+  assert.deepEqual(state.failed.map((c) => c.name), ['CI']);
   assert.equal(state.ok, false);
 });

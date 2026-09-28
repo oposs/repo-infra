@@ -29,13 +29,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply
 changelog gate, the dependabot config) gets one commit there; an administration
 item (the label, workflow permissions, the ruleset) writes straight to the live
 repository through the GitHub API instead, with no commit and no branch. `apply`
-does not push the branch or open the pull request itself — that is the next
+does not push the branch or open the pull request itself. That is the next
 step, and `/repo-infra:apply` walks through it.
 
 ## When the standard has no answer
 
 `check` and `apply` assume the standard knows what this repository is. Sometimes
-it does not — the report says `the standard does not recognise this repository`,
+it does not. The report says `the standard does not recognise this repository`,
 or you read the repository and find the standard silent about something it needs,
 or in conflict with something that already works.
 
@@ -50,7 +50,7 @@ differences are gaps and which are just migration work.
 ## The four things that will surprise you
 
 1. **A `conflict` is not a bigger `missing`.** It means adopting the item breaks
-   something that already works — a release that pushes to `main`, a default
+   something that already works: a release that pushes to `main`, a default
    branch that is not `main`, a required workflow behind a `paths` filter.
    Applying it is a migration. Read `references/release-flow.md` before touching
    one.
@@ -65,7 +65,7 @@ differences are gaps and which are just migration work.
 
 3. **The ruleset precondition asks GitHub, not your checkout.** `apply` won't
    enable the ruleset until `ci.yml`/`changelog.yml` are confirmed on the
-   default branch itself — committing them locally isn't enough, and neither is
+   default branch itself. Committing them locally isn't enough, and neither is
    pushing a branch that hasn't merged yet; either state refuses with "not on
    main yet." If the confirmation call itself fails (network, permissions), it
    refuses too, with a different message, rather than guessing which way to
@@ -79,9 +79,12 @@ differences are gaps and which are just migration work.
 
 ## Reading further
 
-- `references/release-flow.md` — how a release actually happens, what the guard
+- `references/release-flow.md`: how a release actually happens, what the guard
   is for, and how to recover a half-finished one.
-- `references/conventions.md` — the house rules that are not derivable: the
+- `references/conventions.md`: the house rules that are not derivable: the
   changelog deviation, the github-script injected names, the marker protocol.
-- `references/teaching-the-standard.md` — what to do when the standard has no
+- `references/teaching-the-standard.md`: what to do when the standard has no
   answer for this repository, and which differences count.
+- The `writing-style` and `man-pages` skills in this plugin: the voice of a
+  README, manual, changelog entry or comment, and how a man page is written,
+  built and checked by `ci-man`. They trigger on their own, without a check.

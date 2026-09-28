@@ -19,22 +19,22 @@ re-reads the version out of `CHANGES.md`, tags, and publishes the release.
 The reason it is two steps and not `git push` from a workflow: `main` is
 protected by a ruleset whose `bypass_actors` is empty, and the bypass list only
 accepts `User`, `Team`, `Integration`, `OrganizationAdmin`, `RepositoryRole` and
-`DeployKey` — `GITHUB_TOKEN` is none of those, so it cannot be added. A pull
+`DeployKey`. `GITHUB_TOKEN` is none of those, so it cannot be added. A pull
 request needs no such bypass; it is reviewed and merged by whoever has write
 access, the same as any other change. This is a property of the ruleset, not a
-missing feature — do not try to route around it by adding an `on: push` trigger
+missing feature. Do not try to route around it by adding an `on: push` trigger
 on the release branch; a push made with `GITHUB_TOKEN` does not fire workflow
 triggers either.
 
 ## The "Approve workflows to run" click is expected
 
 A pull request opened by `GITHUB_TOKEN` does not skip its `pull_request`
-workflow runs — it parks them in an **approval-required** state, shown as a
+workflow runs. It parks them in an **approval-required** state, shown as a
 banner in the merge box. Anyone with write access clicks **Approve workflows to
 run** once, and both `ci-passed` and `changelog-updated` then report for real.
 Seeing that banner on a release PR is the system working, not a stuck release.
-The alternative — opening the PR with a stored PAT or GitHub App so the runs
-start unattended — was rejected: it is a credential to create, store and
+The alternative (opening the PR with a stored PAT or GitHub App so the runs
+start unattended) was rejected: it is a credential to create, store and
 rotate, to save one click that already happens on a PR someone reviews anyway.
 
 ## The guard fails fast, and is not redundant with the required checks
@@ -42,32 +42,51 @@ rotate, to save one click that already happens on a PR someone reviews anyway.
 `Create release PR`'s `guard` job reads every check run on the current `main`
 commit (`checks.listForRef`) and refuses if any failed, any is still running
 past its timeout, or none ran at all. This is not standing in for the ruleset's
-required checks — it runs *before* a branch, a commit, a pull request or an
+required checks. It runs *before* a branch, a commit, a pull request or an
 approval click exists. Without it, a release dispatched against a red `main`
 still rolls the changelog, bumps every version file, pushes a branch and opens
-a PR — and only then parks on a check someone has to approve in order to watch
+a PR, and only then parks on a check someone has to approve in order to watch
 it fail. The guard turns that into an immediate refusal with nothing to clean
-up. Do not remove it because "the ruleset already requires checks" — the
+up. Do not remove it because "the ruleset already requires checks": the
 ruleset gates the merge; the guard gates the dispatch.
 
 ## `ignoreCheckRunIds`: a job that waits on its own commit's checks waits for itself
 
 The guard's own job run is one of the check runs on the commit it is
 inspecting. Without excluding its own run, it polls for every check to
-complete — including the one that is currently doing the polling — and times
-out. A check run's id is its Actions job id, so the guard reads its own job ids
-from the current run and passes them as `ignoreCheckRunIds` before it starts
+complete, including the one that is currently doing the polling, and times
+out. A check run's id is its Actions job id, so the guard reads the job ids off
+this workflow's runs and passes them as `ignoreCheckRunIds` before it starts
 waiting. Any new job added to `release-pr.yml` needs no special handling for
 this; only the guard job itself, because only it waits on checks at all.
 
+**Every earlier attempt counts, not just the current run.** This is the half
+that was missing, and the failure it caused is permanent. A release attempt that
+dies for any reason leaves a *failed* check run on that `main` commit. Check
+runs cannot be deleted. So a guard that ignored only its own run saw the corpse
+of the previous attempt, reported `Failing checks on this commit: Prepare the
+release pull request`, and refused, and would refuse every later attempt on
+that commit for as long as the repository exists. Deleting the release branch
+does not help; the block is attached to the commit. `oetiker/smalti` lost its
+entire first release, 0.1.0, to exactly this, and had to push an empty commit to
+escape.
+
+`checks.js:guardIgnoreIds` therefore lists **every run of this workflow on this
+commit** (through `GITHUB_WORKFLOW_REF`, which needs the `actions: read`
+permission) and ignores the jobs of all of them, plus the current run's jobs
+unconditionally, because a run that has only just started can be missing from
+the listing for a moment. The logic lives in the library rather than inline in
+the `script:` block for one reason: inline, nothing could test it, and the
+one-run-only rule shipped and stayed shipped.
+
 ## GitHub keeps only the latest check run per context
 
-A second check run on the same context replaces the first for merge purposes —
+A second check run on the same context replaces the first for merge purposes:
 a later run that skips (and so reports Success) clears an earlier failure on
 that same context. This is convenient for re-running a fixed check, and a trap
 for labelling: adding the `no-changelog` label to a pull request *after* the
 changelog check has already failed produces a new, skipped, green run for that
-context, and the pull request becomes mergeable — with no changelog entry and
+context, and the pull request becomes mergeable, with no changelog entry and
 no second look. Apply the label at creation
 (`gh pr create --label no-changelog`), not as a fix-up after the fact.
 
@@ -75,13 +94,13 @@ no second look. Apply the label at creation
 
 A failed publish run is re-run from the Actions UI (Actions → the failed run →
 **Re-run failed jobs**). There is deliberately no `workflow_dispatch` on
-`release-publish.yml` — publishing is a consequence of merging a release PR,
-not something started from a dropdown — and none is needed for recovery: the
+`release-publish.yml` (publishing is a consequence of merging a release PR,
+not something started from a dropdown), and none is needed for recovery: the
 version comes from `CHANGES.md` in the repository, not from run inputs, so a
 re-run reads the same version and does exactly what the original attempt would
 have done. The one case this does not cover: if a failed run got as far as
 creating the tag before dying, the tag-exists check at the top of the job
-returns early on the re-run, before tagging *or* creating the release — so a
+returns early on the re-run, before tagging *or* creating the release, so a
 failure between those two steps needs the tag removed by hand
 (`git push origin --delete vX.Y.Z`, confirmed with the user first) before a
 re-run can finish the job.
@@ -89,7 +108,7 @@ re-run can finish the job.
 ## Check these still hold
 
 The prose above has no automatic test; if GitHub changes one of these
-behaviours, nothing fails loudly — the workflow just stops doing what this file
+behaviours, nothing fails loudly. The workflow just stops doing what this file
 says it does.
 
 - **`GITHUB_TOKEN`-opened pull requests park runs rather than skip them.**

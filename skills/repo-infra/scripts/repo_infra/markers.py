@@ -16,15 +16,15 @@ from collections import namedtuple
 Marker = namedtuple("Marker", "asset version line")
 
 # Asset identifiers: start with alphanumeric, then alphanumeric or hyphen.
-# This pattern is the single source of truth — Task 2 (manifest.json validation)
+# This pattern is the single source of truth. Task 2 (manifest.json validation)
 # and later modules must validate against exactly this.
 ASSET_ID = r"[a-z0-9][a-z0-9-]*"
 
-# `#` for YAML and make, `//` for the JavaScript workflow library, `dnl` for m4.
-# Trailing prose after the version is allowed so a marker can carry
-# "do not delete this line".
+# `#` for YAML and make, `//` for the JavaScript workflow library, `dnl` for m4,
+# `--` for the Lua filter the man page build runs (D23). Trailing prose after
+# the version is allowed so a marker can carry "do not delete this line".
 _MARKER = re.compile(
-    r"^\s*(?:#|//|dnl\b)\s*repo-infra:\s+(" + ASSET_ID + r")\s+v(\d+)(?:\s.*)?$")
+    r"^\s*(?:#|//|--|dnl\b)\s*repo-infra:\s+(" + ASSET_ID + r")\s+v(\d+)(?:\s.*)?$")
 
 
 def parse_markers(text):

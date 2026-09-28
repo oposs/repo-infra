@@ -12,6 +12,31 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- The `ci-man` add-on (D23). A repository with its manual in `docs/manual.md`
+  lists `ci-man` in the `ci` list of `.github/repo-infra.json`, and every pull
+  request then builds the man page with `make man` and fails when the manual
+  stops converting or roff reports a warning such as `table wider than line
+  length minus indentation`. Choosing it installs `build/man.mk` and
+  `build/man-deflist.lua`, which turns option lists written as
+  ``- `--option`: text`` into proper man page entries, and `check` stops
+  listing `man-pages` among its candidates.
+- `make man` puts the page in the man section that `section:` in the manual's
+  front matter names, so a daemon's manual with `section: 8` builds
+  `man/<name>.8`, and `ci-man` checks pages of every section. A manual without
+  a `section:` line stops `make man` with a message naming `docs/manual.md`.
+- Two skills in the plugin: `writing-style` gives the house voice for READMEs,
+  manuals, maintainer notes, changelog entries, code comments and commit
+  messages, and `man-pages` covers how a man page is structured, built and
+  shipped. They trigger on their own, without a repository check.
+- The `ci-rust-musl` add-on (D22), and with it the first CI block a repository
+  chooses rather than one detection finds. A Rust repository names it in a new
+  `ci` list in `.github/repo-infra.json` and every pull request cross-builds a
+  statically linked musl binary for `x86_64` and `aarch64`, then **asserts** the
+  linkage -- `crt-static` is a hint the linker may ignore, and a binary that
+  only runs on the machine that built it fails at the far end, on a host nobody
+  is watching. It is opt-in because `Cargo.toml` does not say whether a
+  repository ships a binary: a library crate has none to link. Once named it is
+  a required check, joining `ci-passed`. See `references/conventions.md`.
 - The `publish-crates-io` add-on (D21). A repository names it in its `publish`
   list and its releases go to crates.io with **no stored credential**: the job
   exchanges its GitHub OIDC identity for a short-lived token via
@@ -22,17 +47,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Converting a crate that already publishes needs a new Trusted Publisher
   registered on crates.io first -- the pin names the workflow filename, and
   conversion renames it. See `references/conventions.md`.
-
-### Fixed
-- `apply` can enable required checks on a repository that already has a `main`
-  ruleset. It could only create one, and GitHub rejects a duplicate name with
-  422 -- so the repositories most likely to be converted, the protected ones,
-  were the ones it could not finish.
-- `apply` installs every file of a directory asset. It wrote only the first,
-  so a fresh conversion installed one file of the workflow library and the
-  next `check` reported `files disagree` on work that had just succeeded.
-
-### New
 - Repositories whose product is a GitHub Action are recognised. `action.yml`
   selects a `github-action` ecosystem, which validates the action manifest
   against every workflow that calls it and runs the project's own action test.
@@ -70,7 +84,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - CI blocks for perl, one for autotools projects and one for Makefile.PL projects.
 
 ### Changed
-
+- `check` reports `release-pr` and `changelog` as outdated until `apply`
+  installs the new generation, whose only change is wording without em dashes.
+  In the Actions log the first step of **Create release PR** is now called
+  `Guard (right branch, green checks)`, and the report's first line reads
+  `repo-infra check: <repo>`.
 - The autotools CI block installs one fixed host toolchain and calls `make test`, rather than building natively against whatever the runner image happens to ship. A project that needs more than the toolchain declares it in its own Containerfile.
 - The autotools release writes `VERSION` instead of rewriting `configure.ac`, which is where every autotools repository examined keeps its version.
 - `check` now says when the standard does not recognise a repository at all, instead of reporting a count of missing items drawn from a repository kind it never identified.
@@ -81,6 +99,61 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   that no credential has to be stored; `RELEASING.md` explains why.
 
 ### Fixed
+- `apply --item workflow-lib` refused every upgrade with `ships N files, and
+  only a single-file asset can be merged or upgraded in place`, and `check`
+  reported a partly upgraded library as a conflict (`files disagree`). It is now
+  `outdated`, and `apply` upgrades the library file by file; a file with local
+  edits stops the run before anything is written and is merged by hand.
+- **Create release PR** wrote `### New` or `### Fixed` twice into the release
+  notes when the `[Unreleased]` section carried a heading twice, as after
+  merging two branches that each added the section skeleton. It now merges them
+  into one subsection each; `workflow-lib` moves to v4 for this.
+- Rewriting `.github/repo-infra.json` kept only `publish`, `build`, `skip`
+  and `answers`, so a repository's `ci` and `publish_local` choices and any
+  `_comment` were dropped from the file. Every key the rewrite does not compute
+  is now kept as written. Nothing calls the rewrite yet, so no repository has
+  lost a setting.
+- Re-running "Create release PR" for a version whose branch still exists no
+  longer fails with `Reference already exists`. It happened after a release PR
+  was closed without deleting its branch, and after a run that committed before
+  it could open the PR; the only way forward was deleting the branch by hand.
+  The run now moves the existing branch to its new commit.
+- A release can no longer be published with its artifacts missing. `finalize`
+  flipped a release from draft to public on the strength of its `needs:` list
+  alone, and that list is a generated line: a repository that had hand-added
+  its own publish job to it -- the only way there was -- lost the edit at the
+  next `apply`, and the revert did not fail. It simply stopped waiting. The
+  release went public while the `.deb` was still building, or after that job
+  had failed, and nothing anywhere went red; the first anyone knew was an
+  operator downloading a release that had no package on it. Two changes, and
+  both are needed. A repository's own publish job is now **declared**, in a new
+  `publish_local` list in `.github/repo-infra.json`, so the `needs:` entry is
+  generated and `apply` restores it instead of removing it. And `finalize` no
+  longer trusts ordering at all: it lists the release's assets and asserts the
+  ones the installed publish blocks say they attach, before it publishes
+  anything. Ordering cannot report its own absence; an assertion cannot pass
+  while being wrong. Missing assets now fail the job and leave the release a
+  draft, which is the recoverable state. The matching logic is the new
+  `assets.js` in the workflow library rather than text inside the `script:`
+  block, so it is tested. `release-publish` is v3 and `workflow-lib` is v3:
+  re-apply both, and if your repository hand-edits `finalize`'s `needs:`, move
+  that job into `publish_local` and take the generated line.
+- A failed release attempt no longer makes its commit permanently
+  unreleasable. The release guard ignored only the current run's check runs,
+  so the failed check run an aborted attempt leaves behind was read as a
+  failing check by every later attempt -- and check runs cannot be deleted, so
+  no retry on that commit could ever succeed. `oetiker/smalti` lost its whole
+  first release to this. `release-pr` v2 gathers the ids through the new
+  `checks.js:guardIgnoreIds`, which covers every run of the workflow on the
+  commit; the logic moved out of the `script:` block because inline, nothing
+  could test it.
+- `apply` can enable required checks on a repository that already has a `main`
+  ruleset. It could only create one, and GitHub rejects a duplicate name with
+  422 -- so the repositories most likely to be converted, the protected ones,
+  were the ones it could not finish.
+- `apply` installs every file of a directory asset. It wrote only the first,
+  so a fresh conversion installed one file of the workflow library and the
+  next `check` reported `files disagree` on work that had just succeeded.
 
 ## 0.1.0 - 2026-08-19
 ### New

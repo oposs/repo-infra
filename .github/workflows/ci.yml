@@ -96,7 +96,7 @@ jobs:
       # is the same in every python repository the standard installs into.
       - run: python3 -m pytest -q
 
-  # repo-infra: ci-repo-infra-selftest v2
+  # repo-infra: ci-repo-infra-selftest v3
   repo-infra-selftest:
     name: Container self-test
     runs-on: ubuntu-latest
@@ -135,6 +135,39 @@ jobs:
       # everything else in under a second, and it did not need podman to do it.
       - run: python3 -m pytest -m container -v tests
 
+  repo-infra-man:
+    name: Man page toolchain tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest
+
+      # pytest imports every module under tests/ before it selects any, so
+      # this job needs the declared test dependencies like the one above.
+      - name: Install the test dependencies the project declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+
+      # The packages ci-man installs, deliberately the same list (D23): these
+      # tests prove the build assets that block runs. A test pins the two equal.
+      - name: Install pandoc and the man toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc groff man-db
+
+      # Only the pandoc-marked tests. The ordinary pytest job deselects them,
+      # since ci-python installs no pandoc. CI is set on the runner, so a
+      # missing tool fails these tests instead of skipping them.
+      - run: python3 -m pytest -m pandoc -v tests
+
   # The single context the ruleset requires (spec D2). It exists so branch
   # protection can name one check that means "this repository's CI passed",
   # whatever this repository's jobs happen to be. The needs list is generated
@@ -146,7 +179,7 @@ jobs:
   # like it is working.
   ci-passed:
     if: always()
-    needs: [lib, plugin-manifest, ruff, pytest, repo-infra-selftest]
+    needs: [lib, plugin-manifest, ruff, pytest, repo-infra-selftest, repo-infra-man]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

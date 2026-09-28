@@ -1,7 +1,7 @@
 # Conventions
 
 House rules that are not derivable from the repository you are standing in.
-Facts with values — action majors, the ruleset payload, the detection table —
+Facts with values (action majors, the ruleset payload, the detection table)
 live in `assets/manifest.json`, `assets/gh/ruleset-main.json` and
 `assets/detection.json`. This file carries only the reasoning that made those
 values the way they are, and the traps a model reaches for by default instead.
@@ -11,7 +11,7 @@ values the way they are, and the traps a model reaches for by default instead.
 Keep a Changelog calls the section `### Added`. This project's roller matches
 literally on `### New`. A model told only "use Keep a Changelog" writes
 `### Added` with full confidence, and the roller finds nothing under
-`[Unreleased]` to move — not an error, just an empty release notes section, on
+`[Unreleased]` to move. There is no error, just an empty release notes section, on
 a release that has content. Nothing fails; the section is just gone.
 
 ## `actions/github-script` injects ten names into every `script:` block
@@ -24,13 +24,13 @@ single line of your script runs.
 `io` is the one that actually happened here: the release workflows named their
 file-access object `io`, and the step died with
 `SyntaxError: Identifier 'io' has already been declared` before executing
-anything — an entire release attempt, gone with no useful log. It is `fileIO`
+anything: an entire release attempt, gone with no useful log. It is `fileIO`
 now, in every workflow that touches files through github-script.
 
 ## A required job carries no `name:`
 
 A workflow's `name:` is what a human reads in the Actions UI. A job's **check
-context** — what the ruleset actually matches against — is its job id, unless
+context** (what the ruleset actually matches against) is its job id, unless
 the job also sets `name:`, in which case the context becomes that name instead.
 `changelog-updated` and `ci-passed` are job ids with no `name:` for exactly this
 reason: give either one a friendly `name:` later and the check context changes
@@ -48,7 +48,7 @@ Two different things can skip work, and GitHub reports them differently:
 | a **workflow**, by `paths`/`paths-ignore`/`branches` filtering | stays Pending | blocks the pull request forever |
 
 `ci.yml` and `changelog.yml` are required by the ruleset, so neither carries a
-workflow-level `paths` or `paths-ignore` filter, ever — conditional work moves
+workflow-level `paths` or `paths-ignore` filter, ever. Conditional work moves
 inside a job instead. A `branches: [main]` filter is fine on `pull_request`
 because it matches the PR's base, which is what the ruleset gates; it is not a
 license to add a `paths` filter alongside it.
@@ -56,7 +56,7 @@ license to add a `paths` filter alongside it.
 ## `dtolnay/rust-toolchain@stable` is meant to stay a branch reference
 
 It looks like a version that dependabot forgot to bump. It is not a version at
-all — `@stable` tracks the toolchain channel, not a tagged release of the
+all: `@stable` tracks the toolchain channel, not a tagged release of the
 action, and dependabot correctly leaves branch references alone. Do not "fix"
 it to a SHA or a version tag; that pins the Rust toolchain to whatever was
 current on the day of the pin, which is the opposite of what this line is for.
@@ -64,7 +64,7 @@ current on the day of the pin, which is the opposite of what this line is for.
 ## The workflow library is CommonJS, not ESM
 
 `.github/workflows/lib/*.js` uses `require()` and `module.exports`, because
-that is what `actions/github-script` provides to a `script:` block — there is
+that is what `actions/github-script` provides to a `script:` block, and there is
 no way to `import` an ES module into one. An editor with type-aware completion
 will suggest `import`/`export` the moment it sees a `.js` file; the suggestion
 is wrong for this directory specifically, not a style preference to override.
@@ -100,12 +100,53 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   per publishable crate before the first converted release, or the release
   stays a draft and the crate never ships. `check` queries GitHub, not
   crates.io, and cannot see this for you.
+- `publish_local` -- publish jobs the repository writes **itself**, which
+  `finalize` must wait for and whose assets `finalize` must find. Each entry is
+  `{"job": "<job id>", "assets": ["<name pattern>", ...]}`. This exists because
+  some repositories run a publish job the standard does not ship yet --
+  smtp-proxy-rs builds a `.deb` and a container image, and there is no add-on
+  for that pair (R32: prove it here, upstream it later). The job block itself
+  is a local edit to the assembled `release-publish.yml`, which `apply` reports
+  as a conflict and a human merges; that half is loud and survives. Its entry
+  in `finalize`'s `needs:` used to be a local edit too, and that half did not
+  survive: one generated line, silently rewritten by the next `apply`, and the
+  revert **does not fail** -- `finalize` simply stops waiting and flips a
+  release to public while the `.deb` is still building, or after it failed.
+  Naming the job here makes that line generated instead, so `apply` restores it
+  rather than removing it. `assets` are asset **name patterns**, where `*`
+  stands for any run of characters: `["*.deb"]`, not a literal name that would
+  carry the version and go red on the next release. They are what `finalize`
+  asserts against the real release before publishing it -- ordering cannot
+  report its own absence, an assertion can. Declaring a job the assembler
+  already generates is refused at assembly.
 - `build` -- which build assets this repository's Makefile and `configure.ac`
   install, by id (`manifest.json` `build_assets`). A containerized autotools
   repository names both: `["container-m4", "container"]` installs
   `m4/repo-infra-container.m4` and `build/container.mk`, which together make
   the tree a container driver (D18). Nothing installs them automatically; it is
   a decision, not a detection (see `references/teaching-the-standard.md`).
+  A CI block may carry build assets of its own (D23): choosing `ci-man`
+  installs `build/man.mk` and `build/man-deflist.lua` as if they were listed
+  here, and listing them here as well is allowed.
+- `ci` -- which **opt-in** CI blocks this repository's `ci.yml` assembles, by id
+  (`manifest.json` `ci_blocks`, the entries marked `"optional": true`). Every
+  other CI block arrives by detection; these are the ones detection cannot
+  answer, because the repository's files do not state the intent.
+  `["ci-rust-musl"]` adds a statically linked musl cross-build for
+  `x86_64` and `aarch64` (D22) -- a Rust repository that ships a Linux binary
+  wants it, and a library crate has no binary to link, which is why
+  `Cargo.toml` alone is not enough to decide. `["ci-man"]` builds the man page
+  from `docs/manual.md` with `make man` and fails on any roff warning except
+  pandoc's two font warnings (D23). It names no ecosystem and fits any, and
+  choosing it installs the build assets `make man` runs; the repository sets
+  `MAN_NAME` and adds `include build/man.mk` to its Makefile. The `man-pages`
+  skill has the rest. Once named an add-on is **required**,
+  not advisory: the job joins `ci-passed`'s generated `needs:` list like any
+  other block, so a broken cross-compile blocks the pull request instead of
+  surfacing at release time. Naming a block whose ecosystem this repository
+  does not have, or one detection already installs, is refused at assembly
+  rather than rendered -- the second would emit a duplicate job id, which makes
+  the whole of `ci.yml` invalid so that *no* job runs at all.
 - `skip` -- items a human deliberately declined, name to reason. `check` reads
   this to stop nagging about a considered "no" instead of an oversight.
 - `answers` -- resolved ambiguities, id to the answer given. Recorded so
@@ -244,14 +285,15 @@ conversion.
 
 ## Markers record a generation, never a content hash
 
-Every installed asset carries `# repo-infra: <asset> vN` (or `// repo-infra:
-<asset> vN` in the JS library). `check` compares that number against
+Every installed asset carries `# repo-infra: <asset> vN` (`// repo-infra:` in
+the JS library, `dnl repo-infra:` in m4, `-- repo-infra:` in the Lua filter).
+`check` compares that number against
 `assets/manifest.json`; it never hashes the file. A hash would report drift on
-every repository, forever — a project name in `ci.yml`, an extra matrix target,
+every repository, forever. A project name in `ci.yml`, an extra matrix target,
 a publish job bolted onto `release-publish.yml`, are all local edits a
 repository is entitled to make, and a hash cannot tell "edited" from
-"upgraded". The marker answers a narrower question — *which generation of the
-asset is this* — and a local edit that keeps the marker at the current version
+"upgraded". The marker answers a narrower question (*which generation of the
+asset is this*), and a local edit that keeps the marker at the current version
 reads as a healthy `ok`, not drift.
 
 A file assembled from several blocks carries one marker per block: `ci.yml`'s

@@ -131,25 +131,24 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         return []
     if state == "conflict":
         detail = next(i.detail for i in items if i.name == name)
-        raise ApplyError(f"{name}: conflict — {detail}. This is a migration, not an upgrade.")
+        raise ApplyError(f"{name}: conflict: {detail}. This is a migration, not an upgrade.")
 
     targets = _targets_for(name, rendered)
     path, expected = targets[0]
     wanted = next(m.version for m in parse_markers(expected) if m.asset == name)
 
-    # A directory asset upgrade cannot use the merge machinery below: the base
-    # lookup finds an asset's source by its marker, which for a directory
-    # resolves to whichever file sorts first, so every file after it would be
-    # compared against the wrong history. Refusing is the honest answer while
-    # no directory asset has ever been bumped -- guessing is what D12 forbids.
-    if len(targets) > 1 and (merged is not None or state == "outdated"):
-        raise ApplyError(
-            f"{name}: ships {len(targets)} files, and only a single-file asset can be "
-            "merged or upgraded in place. Reconcile "
-            + ", ".join(p for p, _ in targets)
-            + " by hand against the plugin's copies, then re-run `check`.")
-
     if merged is not None:
+        # A directory asset merges one file at a time; the refusal recorded
+        # which one (`{name}.path`). A single-file asset has only one choice.
+        recorded = _scratch_dir(repo_root) / f"{name}.path"
+        if recorded.is_file():
+            path = recorded.read_text(encoding="utf-8").strip()
+            if path not in dict(targets):
+                raise ApplyError(f"{name}: the prepared merge names {path}, which "
+                                 "this asset no longer ships; redo the merge")
+        elif len(targets) > 1:
+            raise ApplyError(f"{name}: no merge is in progress; run "
+                             f"`apply --item {name}` first to prepare one")
         # The refusal that raised NeedsMerge recorded what was on disk at the
         # time (`{name}.current`). Requiring that snapshot to still match
         # before writing is what stops a merge prepared against one version
@@ -176,13 +175,16 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         # leaving these behind is untidy rather than unsafe -- but a finished
         # merge has nothing left to guard, so clear this item's own scratch
         # files. Other items may still have a merge in progress, so only
-        # `name`'s three files go, never the whole directory.
-        for suffix in ("base", "new", "current"):
+        # `name`'s own files go, never the whole directory.
+        for suffix in ("base", "new", "current", "path"):
             (_scratch_dir(repo_root) / f"{name}.{suffix}").unlink(missing_ok=True)
         return written
 
+    if len(targets) > 1:
+        return _apply_dir_asset(repo_root, name, targets, wanted, plugin_root)
+
     if state == "missing":
-        return [write_asset(repo_root, p, text) for p, text in targets]
+        return [write_asset(repo_root, path, expected)]
 
     # outdated
     installed = (pathlib.Path(repo_root) / path).read_text(encoding="utf-8")
@@ -192,6 +194,10 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     if base is not None and base == installed:
         return [write_asset(repo_root, path, expected)]
 
+    _prepare_merge(repo_root, name, path, base, expected, installed)
+
+
+def _prepare_merge(repo_root, name, path, base, expected, installed):
     scratch = _scratch_dir(repo_root)
     scratch.mkdir(parents=True, exist_ok=True)
     new_path = scratch / f"{name}.new"
@@ -201,7 +207,73 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     # The snapshot of what is on disk right now, so a later --from can refuse
     # to overwrite a different edit that lands while the merge is prepared.
     (scratch / f"{name}.current").write_text(installed, encoding="utf-8")
+    # Which file the merge is for, so --from writes it back to that file even
+    # when the asset ships several.
+    (scratch / f"{name}.path").write_text(path + "\n", encoding="utf-8")
     raise NeedsMerge(name, base_path, new_path, pathlib.Path(repo_root) / path)
+
+
+def _dir_sources(plugin_root, name, targets):
+    """Each target's source inside the plugin, by its path below the asset root.
+
+    The manifest versions a directory asset as one unit, but every file has a
+    history of its own. Looking a file's base up under a sibling's path (the
+    first file carrying the marker) compares it against the wrong history.
+    """
+    assets = pathlib.Path(plugin_root) / "assets"
+    sources = []
+    if assets.is_dir():
+        sources = sorted(
+            p for p in assets.rglob("*") if p.is_file()
+            and any(m.asset == name for m in parse_markers(
+                p.read_text(encoding="utf-8", errors="ignore"))))
+    if not sources:
+        return {}
+    source_root = pathlib.Path(*_common_parts([p.parts for p in sources]))
+    target_root = pathlib.PurePosixPath(
+        *_common_parts([pathlib.PurePosixPath(t).parts for t, _ in targets]))
+    return {target: str((source_root / pathlib.PurePosixPath(target).relative_to(target_root))
+                        .relative_to(plugin_root))
+            for target, _ in targets}
+
+
+def _common_parts(all_parts):
+    common = []
+    # Paths of different depth are expected; the common prefix is the shorter.
+    for parts in zip(*[p[:-1] for p in all_parts], strict=False):
+        if len(set(parts)) != 1:
+            break
+        common.append(parts[0])
+    return common
+
+
+def _apply_dir_asset(repo_root, name, targets, wanted, plugin_root):
+    """Install or upgrade a directory asset one file at a time.
+
+    A missing file is written. A file at the current generation is left alone,
+    local edits included. A file at an older generation is overwritten only
+    when it is byte for byte that generation from the plugin's own history.
+    One edited file stops the whole run before anything is written, so a
+    refusal never leaves a half-upgraded directory behind it.
+    """
+    sources = _dir_sources(plugin_root, name, targets)
+    to_write = []
+    for path, expected in targets:
+        target = pathlib.Path(repo_root) / path
+        if not target.is_file():
+            to_write.append((path, expected))
+            continue
+        installed = target.read_text(encoding="utf-8")
+        have = next((m.version for m in parse_markers(installed) if m.asset == name), None)
+        if have == wanted:
+            continue
+        source = sources.get(path)
+        base = base_version_of(plugin_root, source, have) if source and have else None
+        if base is not None and base == installed:
+            to_write.append((path, expected))
+            continue
+        _prepare_merge(repo_root, name, path, base, expected, installed)
+    return [write_asset(repo_root, path, text) for path, text in to_write]
 
 
 def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
@@ -412,9 +484,11 @@ def write_config(repo_root, result, answers=None):
         "publish": existing.get("publish", []),
         "build": existing.get("build", []),
     }
-    for key in ("skip", "answers"):
-        if key in existing:
-            config[key] = existing[key]
+    # Every other key is a decision this function does not compute -- `ci`,
+    # `publish_local`, `skip`, `answers`, a `_comment` -- so it is kept as
+    # written. A fixed list of keys to keep dropped each new one as it was added.
+    for key, value in existing.items():
+        config.setdefault(key, value)
     if answers:
         config.setdefault("answers", {}).update(answers)
 

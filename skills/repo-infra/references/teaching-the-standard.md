@@ -2,7 +2,7 @@
 
 repo-infra carries the standard. You do the conversion. When a repository has a
 shape the standard has no answer for, the answer is never to patch the
-repository around it and never to grow a variant asset for it — it is to teach
+repository around it and never to grow a variant asset for it. The answer is to teach
 the standard, then convert.
 
 ## When this applies
@@ -19,9 +19,9 @@ answer in the repository's own `.github/repo-infra.json` (see
 and release setup and compare it to what you are about to install. A gap is one
 of two things:
 
-- the standard is **silent** — it has no rule for something this repository
+- the standard is **silent**: it has no rule for something this repository
   needs;
-- the standard **conflicts** — adopting it would break something that currently
+- the standard **conflicts**: adopting it would break something that currently
   works.
 
 A repository that merely differs from a settled decision is not a gap. D1
@@ -38,15 +38,15 @@ present it as "may I add X".
 
 **2. Prove.** Work the answer out in the repository's own tree and get it green
 in CI. Nothing is upstreamed on reasoning alone. A thing copied from a
-repository where it works is a hypothesis until it runs against a real consumer
-— this project has already paid for that lesson once.
+repository where it works is a hypothesis until it runs against a real consumer.
+This project has already paid for that lesson once.
 
 **3. Upstream.** The proven answer becomes a pull request against repo-infra,
 sized to the change:
 
 | Change | What must exist |
 |---|---|
-| A block fix — a wrong cache directory, a mistyped target | Changed asset + a test |
+| A block fix (a wrong cache directory, a mistyped target) | Changed asset + a test |
 | A new seam, a new ecosystem, a new rule | Numbered decision in the design doc + asset + test |
 
 The repository's own conversion pull request merges **after** that has shipped
@@ -57,7 +57,7 @@ does not have, and nothing is standardised that has not been shown to run.
 
 D16: a project builds natively while it needs nothing beyond the runner's
 default image plus its ecosystem toolchain. The moment it needs an extra system
-package, the standard can no longer build it — and that starts a conversation,
+package, the standard can no longer build it, and that starts a conversation,
 it does not decide the outcome. Containerizing is the expected answer, but the
 project dropping the dependency is a real alternative, and so is something
 nobody has thought of.

@@ -45,9 +45,10 @@ def read_facts(repo):
 def _chosen(root, key):
     """A list the repository recorded in its own config, or nothing.
 
-    Detection cannot answer these: whether a repository publishes a tarball or
-    builds in a container is a decision (D12, D16). An unconverted repository
-    has no config file and has chosen nothing.
+    Detection cannot answer these: whether a repository publishes a tarball,
+    builds in a container, ships a static binary, or runs a publish job of its
+    own that finalize must wait for is a decision (D12, D16, D22, A1). An
+    unconverted repository has no config file and has chosen nothing.
     """
     config = pathlib.Path(root) / ".github/repo-infra.json"
     if not config.is_file():
@@ -57,9 +58,13 @@ def _chosen(root, key):
 
 def _load(root):
     manifest = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-    result = Detection.load(ASSETS / "detection.json").detect(root)
+    detection = Detection.load(ASSETS / "detection.json")
+    result = detection.detect(root)
+    ci = _chosen(root, "ci")
     rendered = render_all(ASSETS, result, manifest,
-                          _chosen(root, "publish"), _chosen(root, "build"))
+                          _chosen(root, "publish"), _chosen(root, "build"),
+                          ci, _chosen(root, "publish_local"))
+    result.candidates = detection.open_candidates(result.candidates, ci)
     return manifest, result, rendered
 
 

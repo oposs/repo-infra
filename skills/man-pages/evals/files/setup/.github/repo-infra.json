@@ -1,0 +1,6 @@
+{
+  "ecosystems": ["rust"],
+  "moving_major_tag": false,
+  "publish": [],
+  "build": []
+}

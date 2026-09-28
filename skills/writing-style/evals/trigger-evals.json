@@ -1,0 +1,10 @@
+[
+  {"query": "can you write the CHANGES.md entry for the fix on this branch? the 'Create release PR' workflow used to die with `Reference already exists` when a closed release PR had left its branch behind", "should_trigger": true},
+  {"query": "docs/manual.md for smtp-proxy-rs sounds like marketing copy, lots of 'which makes it ideal for' and 'you can simply'. tighten it up so it reads like a man page", "should_trigger": true},
+  {"query": "write the commit message for the staged diff. it pins cross to 0.2.5 --locked because cross main broke our aarch64 musl build last tuesday", "should_trigger": true},
+  {"query": "our README install section is about 40 lines of explanation wrapped around three brew commands, please cut it down", "should_trigger": true},
+  {"query": "the _MARKER regex in skills/repo-infra/scripts/repo_infra/markers.py doesn't accept Lua `--` comments. fix it and add a case to tests/test_markers.py", "should_trigger": false},
+  {"query": "explain what the bash in the 'Verify linkage' step of .github/workflows/ci.yml does, line by line, I don't get the jq part", "should_trigger": false},
+  {"query": "the ci-man job fails with `table wider than line length minus indentation`. which part of docs/manual.md causes that and how do I restructure it?", "should_trigger": false},
+  {"query": "set up `make man` and the ci-man check for this rust repo, the manual is already in docs/manual.md", "should_trigger": false}
+]

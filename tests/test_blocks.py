@@ -11,6 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 USES = re.compile(r"uses:\s*([\w.-]+/[\w.-]+)@(v\d+|\w+)")
+MAN_TOOLCHAIN_LINE = "          sudo apt-get install -y pandoc groff man-db"
 
 
 def every_asset_file():
@@ -97,10 +98,11 @@ def test_every_asset_uses_a_manifest_pinned_major(path):
 def test_every_non_yaml_asset_is_covered_by_a_test():
     # every_asset_file() only walks YAML. Anything else under assets/ needs its
     # own test file, or it ships unchecked.
-    #   .mk -> tests/test_build_assets.py
-    #   .m4 -> tests/test_container_m4.py
+    #   .mk  -> tests/test_build_assets.py, tests/test_man_build.py
+    #   .m4  -> tests/test_container_m4.py
+    #   .lua -> tests/test_man_build.py
     others = {p.suffix for p in ASSETS.rglob("*") if p.is_file()} - {".yml", ".yaml", ".json", ".js"}
-    assert others == {".mk", ".m4"}, "a new asset kind arrived with no test: %s" % others
+    assert others == {".mk", ".m4", ".lua"}, "a new asset kind arrived with no test: %s" % others
 
 
 def test_the_autotools_block_installs_only_the_fixed_host_toolchain():
@@ -125,10 +127,10 @@ def test_the_autotools_block_no_longer_documents_a_bare_configure_limit():
     assert "enable-pkgonly" not in text
 
 
-def test_the_selftest_block_declares_exactly_its_one_job():
+def test_the_selftest_block_declares_exactly_its_two_jobs():
     text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
     assert block_job_ids(text) == MANIFEST["ci_blocks"]["ci-repo-infra-selftest"]["jobs"]
-    assert block_job_ids(text) == ["repo-infra-selftest"]
+    assert block_job_ids(text) == ["repo-infra-selftest", "repo-infra-man"]
 
 
 def test_the_selftest_block_runs_only_the_container_marked_tests():
@@ -154,7 +156,10 @@ def test_all_three_blocks_install_a_byte_identical_host_toolchain():
         "publish/publish-source-tarball.yml",
     ):
         text = (ASSETS / name).read_text(encoding="utf-8")
-        lines = [line for line in text.split('\n') if "apt-get install" in line]
+        # The selftest block also installs the man toolchain for repo-infra-man;
+        # that line is pinned separately, against ci-man.
+        lines = [line for line in text.split('\n')
+                 if "apt-get install" in line and line != MAN_TOOLCHAIN_LINE]
         assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
         assert lines[0] == expected_line, f"{name}: expected {repr(expected_line)}, got {repr(lines[0])}"
 
@@ -175,3 +180,28 @@ def test_a_block_that_runs_pytest_installs_the_declared_test_dependencies(block)
     assert "requirements-dev.txt" in text, (
         "%s runs pytest but never installs the repository's declared test "
         "dependencies" % block)
+
+
+def test_the_man_selftest_installs_what_ci_man_installs():
+    # repo-infra-man proves the build assets ci-man runs. On a different
+    # toolchain it would prove something else, and stay green doing it.
+    for name in ("ci/ci-man.yml", "ci/ci-repo-infra-selftest.yml"):
+        text = (ASSETS / name).read_text(encoding="utf-8")
+        assert text.split("\n").count(MAN_TOOLCHAIN_LINE) == 1, name
+
+
+def test_the_man_selftest_runs_the_pandoc_marked_tests():
+    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    job = text.split("  repo-infra-man:", 1)[1]
+    assert "python3 -m pytest -m pandoc -v tests" in job
+    assert "requirements-dev.txt" in job
+
+
+def test_the_plain_pytest_run_deselects_the_pandoc_tests():
+    # ci-python runs a bare `python3 -m pytest` and installs no pandoc. With CI
+    # set, a selected pandoc test fails there, so addopts must deselect them,
+    # and `make test` must select them again for local runs.
+    ini = (ROOT / "pytest.ini").read_text(encoding="utf-8")
+    assert 'addopts = -m "not container and not pandoc"' in ini
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert 'python3 -m pytest -q -m "not container" tests' in makefile

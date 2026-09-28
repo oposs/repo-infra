@@ -1,0 +1,10 @@
+[
+  {"query": "add a man page to smtp-proxy-rs, there's nothing yet. I want it written in markdown, built at release time and shipped in the .deb", "should_trigger": true},
+  {"query": "the ci-man job fails with `table wider than line length minus indentation`, fix docs/manual.md", "should_trigger": true},
+  {"query": "what order should the sections in docs/manual.md go in? I have EXAMPLES before OPTIONS and a 'Config' section somewhere in the middle", "should_trigger": true},
+  {"query": "the options in docs/manual.md are a markdown table; I want them to come out as proper .TP entries in the generated man page", "should_trigger": true},
+  {"query": "what does rsync's --delete-after actually do compared to --delete-during? the man page is confusing me", "should_trigger": false},
+  {"query": "write the CHANGES.md entry for the fix where 'Create release PR' died with `Reference already exists`", "should_trigger": false},
+  {"query": "the _MARKER regex in skills/repo-infra/scripts/repo_infra/markers.py doesn't accept Lua `--` comments. fix it and add a case to tests/test_markers.py", "should_trigger": false},
+  {"query": "our README install section is 40 lines of explanation around three brew commands, cut it down", "should_trigger": false}
+]
