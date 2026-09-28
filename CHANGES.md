@@ -12,6 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 0.2.0 - 2026-09-28
+### New
 - The `ci-man` add-on (D23). A repository with its manual in `docs/manual.md`
   lists `ci-man` in the `ci` list of `.github/repo-infra.json`, and every pull
   request then builds the man page with `make man` and fails when the manual
