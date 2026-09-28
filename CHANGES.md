@@ -20,6 +20,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `build/man-deflist.lua`, which turns option lists written as
   ``- `--option`: text`` into proper man page entries, and `check` stops
   listing `man-pages` among its candidates.
+- `make man` puts the page in the man section that `section:` in the manual's
+  front matter names, so a daemon's manual with `section: 8` builds
+  `man/<name>.8`, and `ci-man` checks pages of every section. A manual without
+  a `section:` line stops `make man` with a message naming `docs/manual.md`.
 - Two skills in the plugin: `writing-style` gives the house voice for READMEs,
   manuals, maintainer notes, changelog entries, code comments and commit
   messages, and `man-pages` covers how a man page is structured, built and
@@ -131,6 +135,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- `check` reports `release-pr` and `changelog` as outdated until `apply`
+  installs the new generation, whose only change is wording without em dashes.
+  In the Actions log the first step of **Create release PR** is now called
+  `Guard (right branch, green checks)`, and the report's first line reads
+  `repo-infra check: <repo>`.
 - The autotools CI block installs one fixed host toolchain and calls `make test`, rather than building natively against whatever the runner image happens to ship. A project that needs more than the toolchain declares it in its own Containerfile.
 - The autotools release writes `VERSION` instead of rewriting `configure.ac`, which is where every autotools repository examined keeps its version.
 - `check` now says when the standard does not recognise a repository at all, instead of reporting a count of missing items drawn from a repository kind it never identified.

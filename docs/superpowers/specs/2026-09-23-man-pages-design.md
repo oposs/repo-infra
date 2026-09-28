@@ -41,7 +41,7 @@ is the one source, pandoc converts it, `man/` is gitignored, CI proves it conver
 1. `actions/checkout`
 2. `sudo apt-get update && sudo apt-get install -y pandoc groff man-db`
 3. `make man`
-4. Render every `man/*.1` with `man --warnings -l` and fail on any warning other than
+4. Render every `man/*.[1-9]*` (amended 2026-09-28, `ci-man` v2; was `man/*.1`) with `man --warnings -l` and fail on any warning other than
    pandoc's own `cannot select font 'C'` and `cannot select font 'CB'`. mdmost met
    both on every build and they are not defects. The warning that is one, and that
    mdmost hit twice, is `table wider than line length minus indentation`: a Markdown
@@ -96,10 +96,15 @@ converting it is out of scope.
 ### The build assets
 
 - `build/man.mk` (`build_assets` id `man`, comment `#`). It defines one phony target,
-  `man`, which builds `man/$(MAN_NAME).1` from `docs/manual.md` with
+  `man`, which builds `man/$(MAN_NAME).<section>` from `docs/manual.md` with
   `pandoc --standalone --from markdown-smart --to man --lua-filter build/man-deflist.lua`.
   Amended 2026-09-24 (`man` v2): without `-smart`, pandoc turns `--` in running
-  text into an en dash, so **--api** reached the page as `–api`. The repository
+  text into an en dash, so **--api** reached the page as `–api`.
+  Amended 2026-09-28 (`man` v3): the section comes from `section:` in the manual's
+  front matter, which pandoc already reads for `.TH`, so a daemon's page is
+  `man/<name>.8`. A `MAN_SECTION` variable was rejected: it could disagree with the
+  front matter. A manual with no usable `section:` stops `make man` and no other
+  target. The repository
   sets `MAN_NAME` before `include build/man.mk`; the fragment refuses with a clear
   `$(error ...)` when it is unset.
 - `build/man-deflist.lua` (`build_assets` id `man-lua`, comment `--`). Ported from

@@ -189,6 +189,14 @@ def test_a_font_warning_other_than_c_and_cb_fails_the_job(tmp_path):
     assert "cannot select font 'CI'" in done.stdout
 
 
+def test_a_page_in_a_section_other_than_1_is_checked(tmp_path):
+    # The page's section comes from the manual's front matter, so a daemon's
+    # page is man/<name>.8, and the check must not pass it by never looking.
+    done = run_check(tmp_path, {"tool.8": TABLE})
+    assert done.returncode == 1
+    assert "man/tool.8" in done.stdout
+
+
 def test_a_build_that_produced_no_page_fails_the_job(tmp_path):
     # Otherwise a make man that wrote nothing reports success by checking nothing.
     done = run_check(tmp_path, {})

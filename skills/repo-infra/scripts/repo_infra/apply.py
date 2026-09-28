@@ -131,7 +131,7 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         return []
     if state == "conflict":
         detail = next(i.detail for i in items if i.name == name)
-        raise ApplyError(f"{name}: conflict — {detail}. This is a migration, not an upgrade.")
+        raise ApplyError(f"{name}: conflict: {detail}. This is a migration, not an upgrade.")
 
     targets = _targets_for(name, rendered)
     path, expected = targets[0]

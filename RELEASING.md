@@ -20,7 +20,7 @@ tags, and publishes the GitHub release.
 ## Why a pull request
 
 `main` is protected by a repository ruleset, and the built-in `GITHUB_TOKEN`
-cannot be given a bypass — the bypass list accepts users, teams and GitHub Apps,
+cannot be given a bypass: the bypass list accepts users, teams and GitHub Apps,
 and the Actions token is none of those. Landing the release through a pull
 request needs no stored credential and works with the protection rather than
 around it. Tagging is unaffected: the ruleset targets branches, and tags live in
@@ -34,7 +34,7 @@ merges to `main` without them, including a release.
 A pull request opened by `GITHUB_TOKEN` does not start its `pull_request`
 workflow runs automatically. They are created in an **approval-required** state:
 the merge box shows a banner, and anyone with write access starts them with
-**Approve workflows to run**. The checks are parked, not skipped — so they do
+**Approve workflows to run**. The checks are parked, not skipped, so they do
 report, and the pull request does merge.
 
 That single click is deliberate. The alternative is to open the release pull

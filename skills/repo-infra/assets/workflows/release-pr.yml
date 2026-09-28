@@ -1,8 +1,8 @@
 name: Create release PR
-# repo-infra: release-pr v2
+# repo-infra: release-pr v3
 #
 # Half one of a two-step release. main is protected and GITHUB_TOKEN cannot be
-# given a ruleset bypass — the bypass list takes users, teams and GitHub Apps,
+# given a ruleset bypass: the bypass list takes users, teams and GitHub Apps,
 # and the Actions token is none of those. So the release lands through a pull
 # request like any other change. Merging it triggers release-publish.yml.
 
@@ -27,7 +27,7 @@ permissions:
   contents: write
   pull-requests: write
   checks: read
-  # To read the job ids of this workflow's runs on this commit — this run, so
+  # To read the job ids of this workflow's runs on this commit: this run, so
   # the guard can exclude itself, and any earlier attempt, so a failed one
   # cannot block the retry.
   actions: read
@@ -44,7 +44,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Guard — right branch, green checks
+      - name: Guard (right branch, green checks)
         uses: actions/github-script@v9
         with:
           script: |

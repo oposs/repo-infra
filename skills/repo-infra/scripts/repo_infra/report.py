@@ -24,7 +24,7 @@ def _row(item):
 
 
 def render_text(repo, result, items):
-    lines = [f"repo-infra check — {repo}", ""]
+    lines = [f"repo-infra check: {repo}", ""]
     lines.append(f"detected   {' · '.join(result.ecosystems) or 'nothing'}")
     lines.append("")
     for item in items:
@@ -65,7 +65,7 @@ def render_text(repo, result, items):
         verb = "needs" if count == 1 else "need"
         lines.append(f"{count} {noun} {verb} attention.  /repo-infra:apply")
     else:
-        lines.append("Up to date with the standard — nothing to do.")
+        lines.append("Up to date with the standard; nothing to do.")
     return "\n".join(lines) + "\n"
 
 

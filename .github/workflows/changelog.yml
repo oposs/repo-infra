@@ -1,8 +1,8 @@
 name: Changelog
-# repo-infra: changelog v1
+# repo-infra: changelog v2
 #
 # Required, not advisory (spec D2). Being required is only safe because the
-# escape hatch below is a JOB-level `if:` — a job skipped by a condition
+# escape hatch below is a JOB-level `if:`. A job skipped by a condition
 # reports Success, while a WORKFLOW skipped by a paths/branches filter stays
 # Pending forever and blocks the merge. Never add paths: or paths-ignore: to
 # this workflow (spec D13).
@@ -21,12 +21,12 @@ permissions:
   pull-requests: read
 
 jobs:
-  # No `name:` — the check context is the job id, `changelog-updated`, which is
+  # No `name:`: the check context is the job id, `changelog-updated`, which is
   # what the ruleset requires. Renaming this job silently un-requires the check.
   changelog-updated:
     # release/* is exempt because the release workflow writes CHANGES.md itself.
     # The no-changelog label is the deliberate escape hatch for typo and CI-only
-    # changes — without it every weekly dependabot PR is blocked, since this
+    # changes. Without it every weekly dependabot PR is blocked, since this
     # check is required. The label must exist in the repository (Task 3): a
     # label that does not exist is silently ignored by dependabot.
     if: >-
