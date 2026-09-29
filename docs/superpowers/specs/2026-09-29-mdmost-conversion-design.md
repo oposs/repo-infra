@@ -65,8 +65,12 @@ introduces."
 - `test`: `rust-test` runs `cargo test -p <name>` for each name, as its own
   matrix leg, so a red leg names the crate that broke.
 - `tested_elsewhere`: workspace members whose tests run outside `rust-test`,
-  for example in D25's `ci-local.yml`. The standard runs nothing for them; the
-  list exists so that leaving a crate untested is a written decision.
+  for example in D25's `ci-local.yml`. The standard runs nothing for them and
+  cannot confirm that anything else does. The list is a written promise by the
+  repository, which is its whole purpose: leaving a crate out of `test` becomes
+  a decision someone wrote down.
+
+`test` is required whenever the `rust` key is present.
 
 The block stays literal. D20 settled that assets carry no substitution token,
 and the only generated text so far is the aggregator's and `finalize`'s
@@ -79,13 +83,23 @@ three cases, naming the crates involved:
 - a workspace member is in neither `test` nor `tested_elsewhere` (a newly
   vendored crate must not go untested without an error, which is the gap this
   decision exists to close);
-- `lint` or `test` is present and empty (an empty matrix is a workflow error,
-  and "no tests" is not a configuration the standard offers).
+- `lint` or `test` is present and empty, or `test` is missing (an empty
+  matrix is a workflow error, and "no tests" is not a configuration the
+  standard offers);
+- the key is absent, the root manifest carries a `[package]`, and the
+  workspace has more than one member. There a bare `cargo test` runs the root
+  package only, which is exactly the silent gap this decision closes.
 
 Otherwise it outputs the two lists. `rust-check` and `rust-test` take them as
 `strategy.matrix.package: ${{ fromJSON(needs.rust-plan.outputs.lint) }}` and
-`...outputs.test`. With the key absent, `rust-plan` outputs one empty entry,
-checks nothing, and both jobs run today's workspace-wide commands.
+`...outputs.test`. With the key absent in a single-crate repository or a
+virtual workspace (whose default members are all members), `rust-plan` outputs
+one empty entry and both jobs run today's workspace-wide commands.
+
+The last rule changes behaviour for Rust repositories already on the standard.
+It reaches one only with the `apply` that installs this version of `ci-rust`,
+so a repository that needs the key sees `ci-passed` go red on that upgrade pull
+request, with a message naming the members, and adds the key there.
 
 `rust-plan` is in the block's manifest `jobs` list beside `rust-check` and
 `rust-test`, so it is in `ci-passed`'s generated `needs:`. This matters:
@@ -146,19 +160,35 @@ files; everything is built after the merge. D26 moves building to before the
 merge, for repositories that opt in:
 
     "release_build": true,
-    "release_files": ["Formula/mdmost.rb"]
+    "release_files": ["Formula/mdmost.rb"],
+    "release_assets": ["mdmost-*-x86_64-unknown-linux-musl.tar.gz", "..."]
 
 `release_files` lists the repository paths the build may write back; see
-step 3.
+step 3. `check` refuses an entry that is `CHANGES.md`, a `version_files` path,
+`.github/repo-infra.json` or anything under `.github/`, since those would
+reopen the channel step 3 closes. `release_assets` lists, as name patterns
+where `*` stands for any run of characters, every file the release must carry.
+It is declared independently of the build on purpose: a list the build
+produced itself would shrink along with a build that drops a file.
 
 A reusable workflow can only be called as a job, never as a step, so the
 release workflow for these repositories has three jobs:
 
 1. `prepare`: the guard, then two new refusals and a clean-up, then the roll,
    the bump and the commit of the release branch as today (including the Rust
-   `cargo update` step). It refuses while a release pull request is open,
-   because a second dispatch would force-move that pull request's branch. It
-   deletes stale drafts (below). It outputs the version and the branch head.
+   `cargo update` step). It outputs the version and the branch head.
+   - It refuses while a release pull request is open, because a second
+     dispatch would force-move that pull request's branch. A release pull
+     request is an open pull request from a `release/*` branch of this same
+     repository, opened by `github-actions[bot]`; a fork naming a branch
+     `release/x` blocks nothing. The refusal names the blocking pull request.
+   - It refuses while the latest release in `CHANGES.md` on `main` has no tag:
+     `vX.Y.Z is merged but not published; use Re-run failed jobs on its
+     publish run`. Without this, a dispatch while publish is running or has
+     failed computes the same version again from the tags, and `roll`, which
+     has no check for an existing version heading, writes a second
+     `## X.Y.Z` into `CHANGES.md`.
+   - It deletes stale drafts (below).
 2. `build`: `uses: ./.github/workflows/release-build.yml` (the D20 seam again:
    project-owned, `workflow_call`, inputs `version` and `ref`), with
    `permissions: contents: read` and no secrets. Each file the project ships is
@@ -177,7 +207,9 @@ release workflow for these repositories has three jobs:
    with the `name`, `body` (the version's `CHANGES.md` section) and
    `make_latest` the publish frame sets today. It attaches every
    `release-asset-*` file and `release-build.json`, which records the new
-   branch head and the names of the attached assets. It sets the commit status
+   branch head and the names of the attached assets. Before attaching, it
+   checks the artifacts against `release_assets` (below) and refuses a build
+   that is missing a declared asset. It sets the commit status
    `release-built` on that head. Then it opens the pull request, so reviewers
    see the formula change in the diff. The commit lands before the pull
    request exists, so the one **Approve workflows to run** click still covers
@@ -197,6 +229,14 @@ gets a second asset: `release-pr-build`, source
 `release_build` is set. Each carries its own marker and version, so `check`
 compares a repository against the variant it uses. The shared logic stays in
 `workflows/lib`, so the two files differ in job structure only.
+
+A repository that turns `release_build` on or off carries the other variant's
+marker. `check` would today read that as a file not managed by repo-infra
+(`conflict`), and `apply`'s three-way merge has no base for it. So `check`
+recognises the sibling marker as `outdated (variant switch)`, and `apply`
+replaces the file whole, since there is no common base to merge from. The
+manifest's selection rule, not the order of its entries, decides which of the
+two renders to the shared target.
 
 ### Tagging the built commit
 
@@ -238,24 +278,43 @@ commit without that status. The failure says: `the release branch changed
 after it was built (the Update branch button does this); close this pull
 request and dispatch Create release PR again`. The job gains `statuses: read`,
 and its `if:` changes so that `release/*` branches run this check instead of
-being skipped. For a repository without `release_build`, `release/*` stays
-exempt as today.
+being skipped. On those branches the `no-changelog` label is ignored: adding
+it to a red release pull request is the natural reflex, and it would turn the
+check green after an **Update branch**. The gate reads `release_build` from
+the base commit, not from the pull request's merge checkout, and accepts the
+status only when `github-actions[bot]` created it. Anyone who can push can set
+a status of any name, and can equally fake `changelog-updated` itself, so this
+guards against accidents, not against people with write access. For a
+repository without `release_build`, `release/*` stays exempt as today.
 
 ### Publishing
 
-The frame's `publish` job, with `release_build` set, does all its checking
-before it creates anything, because it is idempotent by tag presence: once the
-tag exists, **Re-run failed jobs** finds it and stops, and every check placed
-after the tag would leave the release a draft for good.
+The publish workflow starts on every push to `main` that touches
+`CHANGES.md`, and most of those pushes are ordinary pull requests merged after
+a release is complete. Today the tag's presence is the whole stop condition,
+which also means a failure after the tag leaves a re-run with nothing to do.
+With `release_build` set, the frame's `publish` job decides from the tag and
+the drafts together (drafts come from `listReleases`, since `getReleaseByTag`
+answers 404 for a draft; a draft matches when its `tag_name` is `v<version>`):
 
-1. Page through `listReleases` (`getReleaseByTag` answers 404 for a draft) and
-   take the drafts whose `tag_name` is the version. None, or more than one,
-   fails the job and names the count.
-2. Download `release-build.json` through the API by asset id, since
-   `browser_download_url` does not serve drafts. It must parse and name a head.
-3. Check that the head exists and that `CHANGES.md` at the head names the
-   version as its latest release.
-4. Only then tag the head and update the draft's tag and target.
+1. The tag exists and no draft matches: the release is complete. Notice,
+   no outputs, stop. This is the ordinary pull request case.
+2. The tag exists, points at the head recorded in the one matching draft's
+   `release-build.json`, and exactly one draft matches: an earlier attempt
+   stopped after tagging. Update the draft's tag and target (idempotent), set
+   the outputs, and continue. A moving major tag, if configured, is set here
+   too, idempotently.
+3. The tag does not exist: validate, then create. Exactly one draft must
+   match (none, or more than one, fails and names the count);
+   `release-build.json` is downloaded through the API by asset id, since
+   `browser_download_url` does not serve drafts, and must name a head; the head
+   must exist and its `CHANGES.md` must name the version as its latest release.
+   Only then is the tag created and the draft updated.
+4. Anything else (the tag points elsewhere, several drafts): fail and say
+   which.
+
+Every step after validation is safe to repeat, so **Re-run failed jobs** and
+even a whole-workflow re-run finish a stopped release instead of skipping it.
 
 It outputs `version`, `tag` and `release_id` as today, plus `head` and the
 asset names from `release-build.json`. Every publish add-on checks out
@@ -267,12 +326,14 @@ would build the crate and the tarball from the merge commit, not from the
 tagged one. Both get a new version. Add-ons that download draft assets use the
 workflow's `contents: write`.
 
-`finalize` asserts the asset names from `publish`'s outputs alongside the
-assets its generated list already expects, so a build that silently drops a
-file does not publish. **Re-run failed jobs** keeps those outputs, so a
-retried `finalize` checks the same list. It makes the release public, then, as
-its last step, deletes `release-build.json` from it, treating an asset that is
-already gone as success.
+`finalize` asserts `release_assets` alongside the assets its generated list
+already expects, so a build that dropped a file does not publish; it reads the
+patterns from `.github/repo-infra.json` at the tagged head, which a re-run
+reads the same way. It deletes `release-build.json` (an asset that is already
+gone counts as success), and only then makes the release public. The values
+publish needs from the file travel as job outputs, so nothing reads it after
+this point, and the file is never public. Deleting it afterwards would also be
+impossible on a repository with GitHub's immutable releases turned on.
 
 ### Why
 
@@ -288,8 +349,10 @@ bottle legs queued on a retired runner image, and v0.3.2's
 `setup-homebrew@master` stopped resolving. With D26 a failure while building
 happens before the merge, where closing the pull request cancels the release
 cleanly. Publish uploads the files that were built and attached before the
-merge. (D27's RPMs are the one exception: Gitea signs them on upload, so the
-bytes a dnf user installs differ from the release asset by that signature.)
+merge. Two exceptions remain. D27's RPMs: Gitea signs them on upload, so the
+bytes a dnf user installs differ from the release asset by that signature. And
+`publish-crates-io` still builds after the merge, since `cargo publish`
+packages and verifies the crate itself; it builds from the tagged head.
 
 ### The Homebrew window
 
@@ -305,9 +368,11 @@ long as it stays one. This is accepted. The recovery is the one
 A closed release pull request leaves its draft behind. Drafts are not public.
 `prepare` deletes a draft only when both hold: it carries a
 `release-build.json` asset (so a person or another tool made none of the
-others), and no open pull request comes from `release/<its tag>`. The version
-does not matter: a closed pull request for 1.2.0 followed by a bugfix release
-1.1.1 would otherwise leave the 1.2.0 draft forever.
+others), and the pull request from `release/<its tag>` was closed without
+being merged. A merged one belongs to a release that publish has not finished,
+and the refusal above covers that case. The version does not matter: a closed
+pull request for 1.2.0 followed by a bugfix release 1.1.1 would otherwise
+leave the 1.2.0 draft forever.
 
 ### Scope
 
@@ -430,9 +495,11 @@ The proxy matches its `location` against the normalised path but, with a bare
 token to another package type. Forwarding the normalised `$uri` instead is
 wrong too: it is percent-decoded and nginx does not re-encode it, so `%3F`
 would reach Gitea as `?`. The proxy therefore keeps the bare `proxy_pass` and,
-on these paths, answers 400 to any request path containing `%`, a `.` or `..`
-segment, or `//`. For every request that passes, raw and normalised path are
-the same string.
+on these paths, answers 400 to any request path containing a `.` or `..`
+segment, `//`, or a percent-encoded `/`, `.`, `?`, `#`, `\` or `%`. Other
+encodings pass: apt sends `~` as `%7E`, and `~` is how cargo-deb writes a
+pre-release version (`1.0.0~rc.1`). Since nothing that changes the path's
+meaning is left encoded, raw and normalised path select the same resource.
 
 Opening the paths makes every Debian and RPM package of the owner public,
 including future ones from any repository. Something that must stay private is
@@ -463,6 +530,16 @@ RHEL, Rocky and Alma, and Fedora before 41 (dnf4):
       "release_build": true,
       "publish": ["publish-gitea-packages"],
       "release_files": ["Formula/mdmost.rb"],
+      "release_assets": [
+        "mdmost-*-x86_64-unknown-linux-musl.tar.gz",
+        "mdmost-*-aarch64-unknown-linux-musl.tar.gz",
+        "mdmost-*-x86_64-apple-darwin.tar.gz",
+        "mdmost-*-aarch64-apple-darwin.tar.gz",
+        "mdmost-*-x86_64-pc-windows-msvc.zip",
+        "mdmost_*_amd64.deb", "mdmost_*_arm64.deb",
+        "mdmost-*.x86_64.rpm", "mdmost-*.aarch64.rpm",
+        "mdmost-*.arm64_sonoma.bottle.tar.gz"
+      ],
       "rust": {"lint": ["mdmost"], "test": ["mdmost", "pulldown-latex"],
                "tested_elsewhere": ["syntect"]},
       "gitea_packages": { ...as above... }
@@ -498,8 +575,15 @@ branch:
   changelog gate red with the re-dispatch message.
 - D26: dispatching `Create release PR` while a release pull request is open is
   refused, and that pull request's draft survives.
-- D26: a publish run that fails after validation but before `finalize`
-  finishes the release on **Re-run failed jobs**.
+- D26: a publish run that fails after the tag, and one that fails before
+  `finalize`, both finish the release on **Re-run failed jobs**. An ordinary
+  pull request merged afterwards leaves publish green with a notice.
+- D26: dispatching `Create release PR` while a merged release is unpublished is
+  refused, and `CHANGES.md` is unchanged.
+- D26: turning `release_build` on in a repository at `release-pr` v3 shows
+  `outdated (variant switch)` in `check`, and `apply` replaces the file.
+- D26: a build that drops a declared `release_assets` file is refused by
+  `finish`.
 - D26: a pull request merged into `main` while a release pull request is open
   does not stop the release.
 - D27: the same release lands in the registry, and `podman` containers of
@@ -509,7 +593,8 @@ branch:
   by name, version and architecture, and stays green.
 - D27: through the proxy, an anonymous request for a path outside the owner's
   Debian and RPM registries still answers 401, and a request inside them with
-  an encoded `..` or a `%2F` answers 400.
+  an encoded `..` or a `%2F` answers 400. A test package with a `~` version
+  installs through apt, and one through dnf.
 
 ## What is not decided here
 
