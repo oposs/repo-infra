@@ -122,8 +122,9 @@ re-run can finish the job.
 Publish add-ons are safe to re-run. `publish-source-tarball` skips the upload
 when the release already has an asset of that name, and `publish-crates-io`
 asks crates.io and publishes only the workspace crates whose version is not
-there yet. **Re-run failed jobs** and a whole-workflow re-run therefore both
-finish a stopped release, including one with `release_build`.
+there yet. **Re-run failed jobs** therefore finishes a stopped release. With
+`release_build` a whole-workflow re-run does too. Without it, a whole-workflow
+re-run skips everything once the tag exists and the release stays a draft.
 
 ## Releases that build before the merge (release_build)
 

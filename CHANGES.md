@@ -22,7 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - The `changelog-updated` check now also runs on `release/*` branches. In a repository with `release_build` it fails when the release branch changed after its build, for example after **Update branch**; elsewhere it passes as before.
 - Publish add-ons check out the tagged commit explicitly. Without `release_build` this is the same commit as before.
-- Re-running the publish workflow no longer fails on a source tarball or a crate that an earlier attempt already uploaded. **Re-run failed jobs** and a whole-workflow re-run both finish a stopped release.
+- Re-running the publish workflow no longer fails on a source tarball or a crate that an earlier attempt already uploaded. **Re-run failed jobs** finishes a stopped release; with `release_build`, a whole-workflow re-run does too.
 - When a release pull request shows the "Approve workflows to run" banner,
   Claude now knows the parked runs can be approved from the terminal with
   `gh api`, and asks before doing so. The button stays the fallback.
