@@ -16,7 +16,7 @@
       "target": ".github/dependabot.yml"
     },
     "workflow-lib": {
-      "version": 4,
+      "version": 5,
       "source": "workflows/lib",
       "target": ".github/workflows/lib",
       "kind": "dir",
