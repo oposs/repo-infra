@@ -76,7 +76,7 @@ The block stays literal. D20 settled that assets carry no substitution token,
 and the only generated text so far is the aggregator's and `finalize`'s
 `needs:` lists. So the lists are read at run time: a small `rust-plan` job
 reads `.github/repo-infra.json`, runs `cargo metadata --no-deps`, and fails in
-three cases, naming the crates involved:
+four cases, naming the crates involved:
 
 - a listed name is not a workspace member (a renamed crate must not become a
   leg that tests nothing);
