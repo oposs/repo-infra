@@ -9,6 +9,7 @@ local edit at the current generation is a perfectly healthy `ok`.
 
 import json
 import pathlib
+import posixpath
 import re
 from collections import namedtuple
 
@@ -43,6 +44,36 @@ def carries_a_path_filter(text):
         if _PATH_FILTER_KEY.match(stripped):
             return True
     return False
+
+
+# The JS `refusedReleaseFiles` in workflows/lib/release.js enforces the same rule; change both.
+def refused_release_files(entries, version_files):
+    """release_files entries that would reopen the channel D26 closes.
+
+    The read-only build writes the repository only through the files `finish`
+    commits. A path that is, after normalising, CHANGES.md, a version file or
+    anything under .github/ would let it rewrite the changelog, a version or a
+    workflow. `finish` checks the same rule at run time (release.js).
+    """
+    versions = {posixpath.normpath(f["path"]) for f in version_files or []}
+    refused = []
+    for entry in entries:
+        if not isinstance(entry, str) or entry == "":
+            refused.append((entry, "is empty"))
+            continue
+        if entry.startswith("/"):
+            refused.append((entry, "is an absolute path"))
+            continue
+        path = posixpath.normpath(entry)
+        if path == ".." or path.startswith("../"):
+            refused.append((entry, "points outside the repository"))
+        elif path == "CHANGES.md":
+            refused.append((entry, "is CHANGES.md, which the release pull request rolls"))
+        elif path in versions:
+            refused.append((entry, "is a version file, which the release pull request bumps"))
+        elif path == ".github" or path.startswith(".github/"):
+            refused.append((entry, "is under .github/"))
+    return refused
 
 
 def _dir_asset_names(manifest):
@@ -111,6 +142,13 @@ def _collapse_dir_asset(name, entries):
 
 def classify_files(repo_root, rendered, manifest):
     dir_assets = _dir_asset_names(manifest)
+    # A variant and its base share a target (D26). A file carrying the other
+    # one's marker is a variant switch, not an unmanaged file.
+    siblings = {}
+    for name, spec in manifest.get("assets", {}).items():
+        if spec.get("variant_of"):
+            siblings[name] = spec["variant_of"]
+            siblings[spec["variant_of"]] = name
     per_path = []
     for path, expected_text in sorted(rendered.items()):
         installed = pathlib.Path(repo_root) / path
@@ -130,6 +168,11 @@ def classify_files(repo_root, rendered, manifest):
                                   f"{path} filters on paths; required checks would leave "
                                   "every unmatched pull request pending forever. Move "
                                   "the condition into the job.")))
+            elif have is None and siblings.get(marker.asset) in found:
+                other = siblings[marker.asset]
+                per_path.append((path, Item(marker.asset, "outdated",
+                                  f"variant switch: {other} v{found[other]} installed, "
+                                  f"{marker.asset} v{marker.version} selected")))
             elif have is None:
                 per_path.append((path, Item(marker.asset, "conflict",
                                   f"{path} exists but is not managed by repo-infra")))
@@ -240,6 +283,21 @@ def classify_contracts(repo_root, result, config=None):
                 "workflow, so every check stops reporting. Write it as the "
                 "project's own jobs (references/conventions.md), or remove "
                 "\"ci_local\" from .github/repo-infra.json."))
+    if config.get("release_build"):
+        seam = pathlib.Path(repo_root) / ".github/workflows/release-build.yml"
+        if not seam.is_file():
+            items.append(Item(
+                "release-build", "conflict",
+                "release_build is set and .github/workflows/release-build.yml does "
+                "not exist; the release workflow calls it and GitHub rejects the "
+                "whole workflow. Write it (references/release-flow.md)."))
+    refused = refused_release_files(config.get("release_files", []),
+                                    config.get("version_files", []))
+    if refused:
+        items.append(Item(
+            "release-files", "conflict",
+            "release_files in .github/repo-infra.json: "
+            + "; ".join(f"{path} {reason}" for path, reason in refused)))
     return items
 
 

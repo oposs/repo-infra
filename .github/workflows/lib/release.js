@@ -59,8 +59,8 @@ function normalise(entry) {
 // The build job is read-only. Its one way to write the repository is the
 // release-files artifact, which `finish` commits. These paths would turn that
 // channel into a way to rewrite the changelog, a version or a workflow.
-// The Python `check` (repo_infra release_files check, added in Task 7) enforces the
-// same rule; both must change together.
+// `repo_infra.state.refused_release_files` (used by `check`) enforces the same
+// rule; both must change together.
 function refusedReleaseFiles(entries, versionFiles) {
   const versions = new Set((versionFiles || []).map((f) => normalise(f.path)));
   const refused = [];

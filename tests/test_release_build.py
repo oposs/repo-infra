@@ -9,6 +9,7 @@ import yaml
 from repo_infra.assemble import AssemblyError, render_all
 from repo_infra.detect import Detection
 from repo_infra.markers import parse_markers
+from repo_infra.state import classify_contracts, refused_release_files
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
@@ -108,3 +109,29 @@ def test_finish_downloads_both_artifact_kinds():
 def test_the_rust_lockfile_note_survives_in_the_variant():
     # Its absence is what shipped mdmost v0.1.1 with a stale Cargo.lock.
     assert "cargo update --workspace" in VARIANT.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("entry", [
+    "CHANGES.md", "./CHANGES.md", "Formula/../CHANGES.md", "Cargo.toml",
+    ".github/repo-infra.json", ".github//workflows/ci.yml", "/etc/passwd", "../x", "",
+])
+def test_check_refuses_a_release_file_that_reopens_the_channel(entry):
+    assert [p for p, _ in refused_release_files([entry], [{"path": "Cargo.toml"}])] == [entry]
+
+
+def test_check_accepts_the_formula():
+    assert refused_release_files(["Formula/mdmost.rb"], [{"path": "Cargo.toml"}]) == []
+
+
+def test_release_build_without_the_project_build_is_a_conflict(tmp_path):
+    items = classify_contracts(tmp_path, result(tmp_path), {"release_build": True})
+    assert [(i.name, i.state) for i in items] == [("release-build", "conflict")]
+
+
+def test_a_refused_release_file_is_a_conflict(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    (tmp_path / ".github/workflows/release-build.yml").write_text("on: [workflow_call]\n")
+    config = {"release_build": True, "release_files": ["./CHANGES.md"], "version_files": []}
+    items = classify_contracts(tmp_path, result(tmp_path), config)
+    assert [(i.name, i.state) for i in items] == [("release-files", "conflict")]
+    assert "./CHANGES.md" in items[0].detail
