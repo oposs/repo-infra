@@ -5,6 +5,13 @@
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
     },
+    "release-pr-build": {
+      "version": 1,
+      "source": "workflows/release-pr-build.yml",
+      "target": ".github/workflows/release-pr.yml",
+      "variant_of": "release-pr",
+      "when": "release_build"
+    },
     "changelog": {
       "version": 2,
       "source": "workflows/changelog.yml",
@@ -75,6 +82,7 @@
     "actions/checkout": "v7",
     "actions/setup-node": "v7",
     "actions/github-script": "v9",
+    "actions/download-artifact": "v8",
     "actions/setup-python": "v7",
     "actions/cache": "v6",
     "actions/setup-go": "v7",

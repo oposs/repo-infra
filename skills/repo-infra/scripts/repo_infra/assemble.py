@@ -227,8 +227,25 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
     selects the `release-pr-build` variant (D26).
     """
     assets_root = pathlib.Path(assets_root)
+    # Two assets may share a target (D26): a variant carries `variant_of`
+    # (the asset it replaces) and `when` (the config flag that selects it).
+    # The selection rule decides, never the order of the manifest's entries.
+    options = {"release_build": release_build}
+    chosen = set()
+    for name, spec in manifest["assets"].items():
+        when = spec.get("when")
+        if when is None:
+            continue
+        if when not in options:
+            raise AssemblyError(f"asset {name}: unknown selector {when!r}")
+        if options[when]:
+            chosen.add(name)
+    replaced = {manifest["assets"][name]["variant_of"] for name in chosen}
+
     files = {}
     for name, spec in manifest["assets"].items():
+        if name in replaced or (spec.get("when") and name not in chosen):
+            continue
         source = assets_root / spec["source"]
         if spec.get("kind") == "dir":
             if not source.is_dir():
