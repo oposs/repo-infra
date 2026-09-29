@@ -17,7 +17,9 @@ name: Publish release (automatic)
 # stays a draft. Use **Re-run failed jobs**, which keeps the successful job's
 # outputs. With release_build (D26), `publish` decides from the tag and the
 # releases together (lib/publish.js), and both kinds of re-run finish a
-# stopped release.
+# stopped release: a whole-workflow re-run also repeats the add-ons that
+# already succeeded, and each standard add-on skips what an earlier attempt
+# uploaded. A `publish_local` job must do the same.
 
 on:
   push:
@@ -162,6 +164,7 @@ jobs:
             // release_build (D26): the release pull request built the release
             // into a draft. Tag the commit that was built, not this merge.
             const publishLib = require(`${lib}/publish.js`);
+            const releaseLib = require(`${lib}/release.js`);
             let tagCommit = null;
             try {
               const { data: ref } = await github.rest.git.getRef({
@@ -208,6 +211,16 @@ jobs:
                 );
               } catch (error) {
                 if (error.status !== 404 && error.status !== 422) throw error;
+                // A 404 is either no such commit or no CHANGES.md at it.
+                try {
+                  await github.rest.git.getCommit({ owner, repo, commit_sha: record.head });
+                } catch (missing) {
+                  if (missing.status !== 404 && missing.status !== 422) throw missing;
+                  core.setFailed(`${tag}: ${releaseLib.BUILD_RECORD} names `
+                    + `${record.head}, which does not exist in this repository. `
+                    + 'Nothing was tagged.');
+                  return;
+                }
               }
               const problem = publishLib.validateBuildRecord(record, version, latestAtHead);
               if (problem) {

@@ -63,11 +63,25 @@
               core.setFailed('no tarball to upload');
               return;
             }
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const release_id = Number('${{ needs.publish.outputs.release_id }}');
+            // A whole-workflow re-run repeats this job after it succeeded, and
+            // a second upload of the same name fails. The tagged head is fixed,
+            // so the tarball already there came from the same source.
+            const attached = await github.paginate(
+              github.rest.repos.listReleaseAssets,
+              { owner, repo, release_id, per_page: 100 },
+            );
+            if (attached.some((a) => a.name === name)) {
+              core.notice(`${name} is already attached - not uploading it again.`);
+              return;
+            }
             const data = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/${name}`);
             const { data: asset } = await github.rest.repos.uploadReleaseAsset({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: Number('${{ needs.publish.outputs.release_id }}'),
+              owner,
+              repo,
+              release_id,
               name,
               data,
               headers: {

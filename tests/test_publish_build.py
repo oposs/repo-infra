@@ -37,7 +37,7 @@ def draft(record=True, rid=5, published=False):
 
 
 def run(tmp_path, *, release_build=True, tag=None, releases=(), record=None,
-        changes_at_head=CHANGES, compare="ahead", lightweight=False):
+        changes_at_head=CHANGES, compare="ahead", lightweight=False, head_exists=True):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -48,7 +48,7 @@ def run(tmp_path, *, release_build=True, tag=None, releases=(), record=None,
         {"version_files": [], "release_build": release_build}))
     state = {"tag": tag, "releases": list(releases), "record": record,
              "changesAtHead": changes_at_head, "compare": compare,
-             "lightweight": lightweight}
+             "lightweight": lightweight, "headExists": head_exists}
     harness = """
 const state = %s;
 const calls = [];
@@ -69,6 +69,7 @@ const github = {
       createTag: async (a) => { calls.push(['createTag', a]); return { data: { sha: `obj-${a.tag}` } }; },
       createRef: async (a) => { calls.push(['createRef', a]); return { data: {} }; },
       updateRef: async (a) => { calls.push(['updateRef', a]); return { data: {} }; },
+      getCommit: async () => { if (!state.headExists) throw notFound(); return { data: {} }; },
     },
     repos: {
       listReleases: 'listReleases',
@@ -132,8 +133,18 @@ def test_case_3_refuses_a_head_whose_changes_name_another_version(tmp_path):
 
 
 def test_case_3_refuses_a_head_that_does_not_exist(tmp_path):
+    out = run(tmp_path, releases=[draft()], record={"head": HEAD}, changes_at_head=None,
+              head_exists=False)
+    assert out["failures"] == [
+        f"v1.2.0: release-build.json names {HEAD}, which does not exist in this "
+        "repository. Nothing was tagged."]
+    assert called(out, "createTag") == []
+
+
+def test_case_3_refuses_a_head_without_changes(tmp_path):
     out = run(tmp_path, releases=[draft()], record={"head": HEAD}, changes_at_head=None)
-    assert len(out["failures"]) == 1 and called(out, "createTag") == []
+    assert len(out["failures"]) == 1 and "has no released version" in out["failures"][0]
+    assert called(out, "createTag") == []
 
 
 def test_case_2_resumes_at_the_tag_commit_without_retagging(tmp_path):

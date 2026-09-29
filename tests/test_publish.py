@@ -220,7 +220,6 @@ def test_the_reconcile_step_actually_leaves_the_tree_clean():
     crates and then die on the dirty Cargo.lock.
     """
     import re
-    import shutil
     import subprocess
     import tempfile
 
@@ -379,10 +378,8 @@ def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT):
     this repository's own installed copy, which test_self_render.py pins to
     the asset.
     """
-    import json as _json
     import os
     import re
-    import shutil
     import subprocess
 
     node = shutil.which("node")
@@ -418,7 +415,7 @@ const context = { repo: { owner: 'o', repo: 'r' } };
 })().then(() => {
   console.log(JSON.stringify({ published: published.length, failures, deleted, order }));
 });
-""" % (_json.dumps(list(attached)), script)
+""" % (json.dumps(list(attached)), script)
 
     path = tmp_path / "finalize.js"
     path.write_text(harness, encoding="utf-8")
@@ -426,7 +423,7 @@ const context = { repo: { owner: 'o', repo: 'r' } };
         [node, str(path)], capture_output=True, text=True, cwd=workspace,
         env={"GITHUB_WORKSPACE": str(workspace), "PATH": os.environ.get("PATH", "")})
     assert proc.returncode == 0, proc.stderr
-    return _json.loads(proc.stdout)
+    return json.loads(proc.stdout)
 
 
 def test_the_generated_finalize_publishes_a_complete_release(tmp_path):
@@ -481,3 +478,149 @@ def test_finalize_deletes_the_build_record_before_it_publishes(tmp_path):
     assert out["failures"] == [] and out["published"] == 1
     assert out["deleted"] == [2]
     assert out["order"] == ["delete", "publish"]
+
+
+# --- a whole-workflow re-run repeats the add-ons that succeeded (D26) ---------
+#
+# With release_build, `publish` resumes a stopped release on a whole-workflow
+# re-run, which also runs every add-on again. An add-on that fails on its own
+# earlier upload would leave the release a draft, so each one skips what is
+# already there.
+
+
+def _run_tarball_upload(tmp_path, attached):
+    import os
+    import re
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    job = yaml.safe_load(assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST))[
+        "jobs"]["publish-source-tarball"]
+    script = next(s["with"]["script"] for s in job["steps"]
+                  if "github-script" in s.get("uses", ""))
+    values = {"steps.tarball.outputs.name": "x-1.2.3.tar.gz",
+              "needs.publish.outputs.release_id": "5"}
+    script = re.sub(r"\$\{\{\s*([^}]*?)\s*\}\}", lambda m: values[m.group(1)], script)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "x-1.2.3.tar.gz").write_bytes(b"tarball")
+    harness = """
+const attached = %s;
+const uploads = [];
+const notices = [];
+const github = {
+  paginate: async (fn, a) => { if (a.release_id !== 5) throw new Error('release_id');
+    return attached.map((name, i) => ({ name, id: i + 1 })); },
+  rest: { repos: { listReleaseAssets: 'listReleaseAssets',
+    uploadReleaseAsset: async (a) => { uploads.push(a.name);
+      return { data: { name: a.name, size: a.data.length } }; } } },
+};
+const core = { setFailed: (m) => { throw new Error(m); }, notice: (m) => notices.push(m) };
+const context = { repo: { owner: 'o', repo: 'r' } };
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ uploads, notices })));
+""" % (json.dumps(list(attached)), script)
+    path = tmp_path / "upload.js"
+    path.write_text(harness, encoding="utf-8")
+    proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ws,
+                          env={"GITHUB_WORKSPACE": str(ws), "PATH": os.environ["PATH"]})
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def test_the_tarball_addon_uploads_a_tarball_the_release_lacks(tmp_path):
+    out = _run_tarball_upload(tmp_path, ["other.deb"])
+    assert out["uploads"] == ["x-1.2.3.tar.gz"]
+
+
+def test_the_tarball_addon_skips_a_tarball_an_earlier_attempt_attached(tmp_path):
+    out = _run_tarball_upload(tmp_path, ["x-1.2.3.tar.gz"])
+    assert out["uploads"] == []
+    assert any("x-1.2.3.tar.gz is already attached" in n for n in out["notices"])
+
+
+CRATES = {"packages": [
+    {"name": "core-a", "version": "1.2.3", "publish": None},
+    {"name": "app-b", "version": "1.2.3", "publish": None},
+    {"name": "helper", "version": "0.0.0", "publish": []},
+]}
+
+
+def _run_crates_publish(tmp_path, on_crates_io, status_other="404"):
+    """Run the block's own shell for the crates.io check and the publish.
+
+    A fake cargo prints metadata and records `cargo publish` arguments; a fake
+    curl answers 200 for every name/version in `on_crates_io`.
+    """
+    import os
+    import subprocess
+
+    if shutil.which("jq") is None:
+        pytest.skip("jq is not installed")
+    steps = _crates_io_job()["steps"]
+    pending = next(s for s in steps if s.get("id") == "pending")["run"]
+    publish = next(s for s in steps if "cargo publish" in s.get("run", ""))["run"]
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "log"
+    (tmp_path / "metadata.json").write_text(json.dumps(CRATES), encoding="utf-8")
+    (bin_dir / "cargo").write_text(
+        '#!/bin/sh\n'
+        f'if [ "$1" = metadata ]; then cat {tmp_path}/metadata.json; exit 0; fi\n'
+        f'echo "cargo $*" >> {log}\n', encoding="utf-8")
+    (bin_dir / "curl").write_text(
+        '#!/bin/bash\n'
+        'url="${@: -1}"\n'
+        f'echo "curl $url" >> {log}\n'
+        'case " $ON_CRATES_IO " in *" ${url#https://crates.io/api/v1/crates/} "*) '
+        'printf 200;; *) printf "$STATUS_OTHER";; esac\n', encoding="utf-8")
+    for tool in ("cargo", "curl"):
+        (bin_dir / tool).chmod(0o755)
+    output = tmp_path / "github_output"
+    output.write_text("")
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "GITHUB_OUTPUT": str(output),
+           "ON_CRATES_IO": " ".join(on_crates_io), "STATUS_OTHER": status_other}
+
+    first = subprocess.run(["bash", "-c", pending], cwd=tmp_path, env=env,
+                           capture_output=True, text=True)
+    result = {"pending_rc": first.returncode, "stdout": first.stdout, "stderr": first.stderr}
+    if first.returncode == 0:
+        outputs = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        second = subprocess.run(
+            ["bash", "-c", publish], cwd=tmp_path, capture_output=True, text=True,
+            env={**env, "PENDING": outputs["pending"], "EXCLUDE": outputs["exclude"]})
+        result.update(publish_rc=second.returncode, publish_stdout=second.stdout)
+    result["log"] = log.read_text().splitlines() if log.exists() else []
+    return result
+
+
+def test_the_crates_io_addon_publishes_every_crate_on_a_first_run(tmp_path):
+    out = _run_crates_publish(tmp_path, [])
+    assert out["publish_rc"] == 0
+    assert "cargo publish --workspace --locked" in out["log"]
+
+
+def test_the_crates_io_addon_excludes_a_crate_an_earlier_attempt_published(tmp_path):
+    out = _run_crates_publish(tmp_path, ["core-a/1.2.3"])
+    assert out["publish_rc"] == 0
+    assert "cargo publish --workspace --locked --exclude core-a" in out["log"]
+    assert "core-a 1.2.3 is already on crates.io" in out["stdout"]
+    # publish = false is cargo's to skip; crates.io is never asked about it.
+    assert not any("helper" in line for line in out["log"])
+
+
+def test_the_crates_io_addon_skips_the_publish_when_every_crate_is_there(tmp_path):
+    out = _run_crates_publish(tmp_path, ["core-a/1.2.3", "app-b/1.2.3"])
+    assert out["publish_rc"] == 0
+    assert not any(line.startswith("cargo publish") for line in out["log"])
+    assert "already on crates.io" in out["publish_stdout"]
+
+
+def test_the_crates_io_addon_fails_when_crates_io_does_not_answer(tmp_path):
+    out = _run_crates_publish(tmp_path, [], status_other="503")
+    assert out["pending_rc"] != 0
+    assert "HTTP 503" in out["stderr"]
