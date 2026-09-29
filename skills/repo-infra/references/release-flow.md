@@ -26,16 +26,30 @@ missing feature. Do not try to route around it by adding an `on: push` trigger
 on the release branch; a push made with `GITHUB_TOKEN` does not fire workflow
 triggers either.
 
-## The "Approve workflows to run" click is expected
+## The approval-required banner is expected
 
 A pull request opened by `GITHUB_TOKEN` does not skip its `pull_request`
 workflow runs. It parks them in an **approval-required** state, shown as a
-banner in the merge box. Anyone with write access clicks **Approve workflows to
-run** once, and both `ci-passed` and `changelog-updated` then report for real.
-Seeing that banner on a release PR is the system working, not a stuck release.
+banner in the merge box. Anyone with write access approves them once, and both
+`ci-passed` and `changelog-updated` then report for real. Seeing that banner on
+a release PR is the system working, not a stuck release.
+
+The runs can be approved without the browser. List the runs of the release
+branch, then approve each parked one by its ID (`gh` fills in `{owner}/{repo}`
+from the current repository):
+
+```sh
+gh run list --branch release/vX.Y.Z
+gh api --method POST repos/{owner}/{repo}/actions/runs/<id>/approve
+```
+
+Approving is a write to GitHub; ask before doing it. The **Approve workflows to
+run** button in the merge box stays the fallback.
+
 The alternative (opening the PR with a stored PAT or GitHub App so the runs
 start unattended) was rejected: it is a credential to create, store and
-rotate, to save one click that already happens on a PR someone reviews anyway.
+rotate, to save one approval that already happens on a PR someone reviews
+anyway.
 
 ## The guard fails fast, and is not redundant with the required checks
 
@@ -43,7 +57,7 @@ rotate, to save one click that already happens on a PR someone reviews anyway.
 commit (`checks.listForRef`) and refuses if any failed, any is still running
 past its timeout, or none ran at all. This is not standing in for the ruleset's
 required checks. It runs *before* a branch, a commit, a pull request or an
-approval click exists. Without it, a release dispatched against a red `main`
+approval exists. Without it, a release dispatched against a red `main`
 still rolls the changelog, bumps every version file, pushes a branch and opens
 a PR, and only then parks on a check someone has to approve in order to watch
 it fail. The guard turns that into an immediate refusal with nothing to clean

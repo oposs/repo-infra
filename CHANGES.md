@@ -14,6 +14,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- When a release pull request shows the "Approve workflows to run" banner,
+  Claude now knows the parked runs can be approved from the terminal with
+  `gh api`, and asks before doing so. The button stays the fallback.
 
 ### Fixed
 
