@@ -75,5 +75,17 @@ def test_a_files_listing_that_is_not_an_array_fails_with_the_status():
     assert "pkg.version" in s and "list.status" in s
 
 
+def test_a_package_name_that_does_not_parse_fails_before_any_upload():
+    s = script()
+    assert "unparsable" in s and "Expected name_version_arch.deb" in s
+    assert s.index("unparsable") < s.index("method: 'PUT'")
+
+
+def test_the_derived_basic_credential_is_masked():
+    s = script()
+    assert "core.setSecret(authorization)" in s
+    assert s.index("core.setSecret(authorization)") < s.index("method: 'PUT'")
+
+
 def test_every_job_has_a_timeout():
     assert isinstance(job()["timeout-minutes"], int)

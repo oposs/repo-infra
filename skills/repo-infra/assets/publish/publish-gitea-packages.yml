@@ -58,6 +58,17 @@
             const packages = assets
               .map((asset) => ({ asset, pkg: gitea.parsePackageFile(asset.name) }))
               .filter((entry) => entry.pkg);
+            // Every .deb and .rpm is uploaded; one that cannot be named is a
+            // failure, not a file to skip.
+            const unparsable = assets
+              .filter((a) => /\.(deb|rpm)$/.test(a.name) && !gitea.parsePackageFile(a.name))
+              .map((a) => a.name);
+            if (unparsable.length > 0) {
+              core.setFailed(`Cannot upload ${unparsable.join(', ')}: the file name does not `
+                + 'have the shape Gitea needs. Expected name_version_arch.deb (lower-case '
+                + 'name) or name-version-release.arch.rpm.');
+              return;
+            }
             if (packages.length === 0) {
               core.setFailed('The release carries no .deb or .rpm, so '
                 + 'publish-gitea-packages would upload nothing. Attached: '
@@ -68,6 +79,7 @@
             const user = process.env.GITEA_PACKAGE_USER;
             const token = process.env.GITEA_PACKAGE_TOKEN;
             const authorization = `Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
+            core.setSecret(authorization);
 
             for (const { asset, pkg } of packages) {
               // By asset id through the API: browser_download_url does not
