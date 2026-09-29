@@ -13,7 +13,7 @@
       "when": "release_build"
     },
     "changelog": {
-      "version": 2,
+      "version": 3,
       "source": "workflows/changelog.yml",
       "target": ".github/workflows/changelog.yml"
     },
