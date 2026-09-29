@@ -86,15 +86,18 @@ three cases, naming the crates involved:
 - `lint` or `test` is present and empty, or `test` is missing (an empty
   matrix is a workflow error, and "no tests" is not a configuration the
   standard offers);
-- the key is absent, the root manifest carries a `[package]`, and the
-  workspace has more than one member. There a bare `cargo test` runs the root
-  package only, which is exactly the silent gap this decision closes.
+- the key is absent and `cargo metadata` reports `workspace_default_members`
+  different from `workspace_members`. That is the case with a root `[package]`
+  (bare `cargo test` runs the root package only) and with `default-members` in
+  any workspace, and it is exactly the silent gap this decision closes. The
+  field needs cargo 1.71 or later; `rust-toolchain@stable` is newer.
 
 Otherwise it outputs the two lists. `rust-check` and `rust-test` take them as
 `strategy.matrix.package: ${{ fromJSON(needs.rust-plan.outputs.lint) }}` and
-`...outputs.test`. With the key absent in a single-crate repository or a
-virtual workspace (whose default members are all members), `rust-plan` outputs
-one empty entry and both jobs run today's workspace-wide commands.
+`...outputs.test`. With the key absent where default members and members are
+the same (a single crate, or a virtual workspace without `default-members`),
+`rust-plan` outputs one empty entry and both jobs run today's workspace-wide
+commands.
 
 The last rule changes behaviour for Rust repositories already on the standard.
 It reaches one only with the `apply` that installs this version of `ci-rust`,
@@ -164,9 +167,11 @@ merge, for repositories that opt in:
     "release_assets": ["mdmost-*-x86_64-unknown-linux-musl.tar.gz", "..."]
 
 `release_files` lists the repository paths the build may write back; see
-step 3. `check` refuses an entry that is `CHANGES.md`, a `version_files` path,
-`.github/repo-infra.json` or anything under `.github/`, since those would
-reopen the channel step 3 closes. `release_assets` lists, as name patterns
+step 3. An entry that is `CHANGES.md`, a `version_files` path,
+`.github/repo-infra.json` or anything under `.github/` would reopen the channel
+step 3 closes. `check` refuses such entries, and `finish` refuses them again at
+run time after normalising the paths, since `finish` reads the list from the
+dispatched `main`, whether or not anyone ran `check`. `release_assets` lists, as name patterns
 where `*` stands for any run of characters, every file the release must carry.
 It is declared independently of the build on purpose: a list the build
 produced itself would shrink along with a build that drops a file.
@@ -183,8 +188,11 @@ release workflow for these repositories has three jobs:
      repository, opened by `github-actions[bot]`; a fork naming a branch
      `release/x` blocks nothing. The refusal names the blocking pull request.
    - It refuses while the latest release in `CHANGES.md` on `main` has no tag:
-     `vX.Y.Z is merged but not published; use Re-run failed jobs on its
-     publish run`. Without this, a dispatch while publish is running or has
+     `vX.Y.Z is in CHANGES.md on main but has no tag`. The message names the
+     three ways out, which `RELEASING.md` repeats: **Re-run failed jobs** on its
+     publish run; for a release that is already out under another tag, push
+     `vX.Y.Z` by hand (the ruleset covers the branch, not tags); to abandon it,
+     a pull request that moves its entries back under `[Unreleased]`. Without this, a dispatch while publish is running or has
      failed computes the same version again from the tags, and `roll`, which
      has no check for an existing version heading, writes a second
      `## X.Y.Z` into `CHANGES.md`.
@@ -234,7 +242,11 @@ A repository that turns `release_build` on or off carries the other variant's
 marker. `check` would today read that as a file not managed by repo-infra
 (`conflict`), and `apply`'s three-way merge has no base for it. So `check`
 recognises the sibling marker as `outdated (variant switch)`, and `apply`
-replaces the file whole, since there is no common base to merge from. The
+merges three ways with the sibling variant's source as the base. Replacing the
+file whole would drop local edits, and a Rust repository carries one it must
+keep: the `cargo update --workspace` step `release-pr.yml` documents in a
+comment, whose absence is what shipped mdmost v0.1.1 with a stale
+`Cargo.lock`. The
 manifest's selection rule, not the order of its entries, decides which of the
 two renders to the shared target.
 
@@ -268,7 +280,10 @@ release branch after `finish`. The usual cause is the **Update branch** button,
 which strict checks being off makes tempting and harmless on every other pull
 request.
 
-The changelog gate catches it before the merge. Its token cannot see drafts
+The changelog gate catches it before the merge, on release pull requests as
+`prepare` defines them (same repository, opened by `github-actions[bot]`).
+Any other `release/*` branch, such as a person's or a fork's, gets the ordinary
+changelog rules and the label. Its token cannot see drafts
 (GitHub lists them only to tokens with push access), so it does not read
 `release-build.json`. It reads the commit status instead: on a `release/*`
 head branch of a repository with `release_build` set (read from
@@ -294,41 +309,44 @@ The publish workflow starts on every push to `main` that touches
 a release is complete. Today the tag's presence is the whole stop condition,
 which also means a failure after the tag leaves a re-run with nothing to do.
 With `release_build` set, the frame's `publish` job decides from the tag and
-the drafts together (drafts come from `listReleases`, since `getReleaseByTag`
-answers 404 for a draft; a draft matches when its `tag_name` is `v<version>`):
+the releases together. Releases come from a paginated `listReleases`, since
+`getReleaseByTag` answers 404 for a draft. A release matches when its
+`tag_name` is `v<version>`. "The tag's commit" means the peeled commit: publish
+creates annotated tags, so the ref points at a tag object, and publish follows
+it (`git.getTag(...).object.sha`) and accepts a lightweight tag as well.
 
-1. The tag exists and no draft matches: the release is complete. Notice,
-   no outputs, stop. This is the ordinary pull request case.
-2. The tag exists, points at the head recorded in the one matching draft's
-   `release-build.json`, and exactly one draft matches: an earlier attempt
-   stopped after tagging. Update the draft's tag and target (idempotent), set
-   the outputs, and continue. A moving major tag, if configured, is set here
-   too, idempotently.
+Once the tag exists, the tag is the record of what was built.
+`release-build.json` is needed only before that, in case 3.
+
+1. The tag exists, a published release matches, and it carries no
+   `release-build.json`: the release is complete. Notice, no outputs, stop.
+   This is the ordinary pull request case.
+2. The tag exists and exactly one draft matches: an earlier attempt stopped
+   after tagging. The head is the tag's commit, and the asset names come from
+   `release_assets`. Update the draft's tag and target (idempotent), set a
+   moving major tag if configured (idempotent), set the outputs, and continue.
 3. The tag does not exist: validate, then create. Exactly one draft must
    match (none, or more than one, fails and names the count);
    `release-build.json` is downloaded through the API by asset id, since
    `browser_download_url` does not serve drafts, and must name a head; the head
    must exist and its `CHANGES.md` must name the version as its latest release.
-   Only then is the tag created and the draft updated.
-4. Anything else (the tag points elsewhere, several drafts): fail and say
-   which.
+   Only then is the tag object created with `object:` set to the head (the
+   frame uses `context.sha` today) and the draft updated.
+4. Anything else fails and says which state it found: a tag with no release
+   at all (a draft deleted after tagging), a published release that still
+   carries `release-build.json` (a draft published by hand in the UI, which
+   skips every add-on), several matching drafts.
 
-Every step after validation is safe to repeat, so **Re-run failed jobs** and
-even a whole-workflow re-run finish a stopped release instead of skipping it.
-
-It outputs `version`, `tag` and `release_id` as today, plus `head` and the
-asset names from `release-build.json`. Every publish add-on checks out
-`ref: ${{ needs.publish.outputs.head }}`; for a repository without
-`release_build`, `head` is the pushed commit, so nothing changes there. This
-applies to the existing blocks too: `publish-crates-io` and
-`publish-source-tarball` check out without a `ref:` today, which under D26
-would build the crate and the tarball from the merge commit, not from the
-tagged one. Both get a new version. Add-ons that download draft assets use the
-workflow's `contents: write`.
+Every step after validation is safe to repeat, so **Re-run failed jobs** and a
+whole-workflow re-run both finish a stopped release instead of skipping it.
+`finish` creates the draft with `target_commitish` set to the head, so a draft
+published by hand at least tags the built commit; case 4 then reports the
+skipped add-ons.
 
 `finalize` asserts `release_assets` alongside the assets its generated list
 already expects, so a build that dropped a file does not publish; it reads the
-patterns from `.github/repo-infra.json` at the tagged head, which a re-run
+patterns from `.github/repo-infra.json` at the tagged head, checked out with
+an explicit `ref:` (it checks out the pushed commit today), which a re-run
 reads the same way. It deletes `release-build.json` (an asset that is already
 gone counts as success), and only then makes the release public. The values
 publish needs from the file travel as job outputs, so nothing reads it after
@@ -366,13 +384,22 @@ long as it stays one. This is accepted. The recovery is the one
 ### Stale drafts
 
 A closed release pull request leaves its draft behind. Drafts are not public.
-`prepare` deletes a draft only when both hold: it carries a
+`prepare` deletes a draft when all three hold: it carries a
 `release-build.json` asset (so a person or another tool made none of the
-others), and the pull request from `release/<its tag>` was closed without
-being merged. A merged one belongs to a release that publish has not finished,
-and the refusal above covers that case. The version does not matter: a closed
+others), its tag does not exist, and its version is not the latest release in
+`CHANGES.md` on `main` (that one belongs to a merged release that publish has
+not finished, and the refusal above covers it). Pull request state plays no
+part: `release/vX.Y.Z` is reused whenever a version is dispatched again, so
+"the pull request from that branch" can be several, and the realistic way to
+abandon a merged release, a pull request that moves its entries back under
+`[Unreleased]`, is itself merged. The version does not matter either: a closed
 pull request for 1.2.0 followed by a bugfix release 1.1.1 would otherwise
 leave the 1.2.0 draft forever.
+
+`finish` also deletes any draft for its own version that carries
+`release-build.json` before it creates its own. `prepare` has passed both
+refusals at that point, so such a draft belongs to an abandoned attempt, and
+case 3's "exactly one draft" stays true.
 
 ### Scope
 
@@ -498,7 +525,9 @@ would reach Gitea as `?`. The proxy therefore keeps the bare `proxy_pass` and,
 on these paths, answers 400 to any request path containing a `.` or `..`
 segment, `//`, or a percent-encoded `/`, `.`, `?`, `#`, `\` or `%`. Other
 encodings pass: apt sends `~` as `%7E`, and `~` is how cargo-deb writes a
-pre-release version (`1.0.0~rc.1`). Since nothing that changes the path's
+pre-release version (`1.0.0~rc.1`). The release flow never produces one
+(`version.js` accepts `X.Y.Z` only), so this matters for packages uploaded by
+hand. Since nothing that changes the path's
 meaning is left encoded, raw and normalised path select the same resource.
 
 Opening the paths makes every Debian and RPM package of the owner public,
@@ -550,7 +579,10 @@ plus the settled migrations that are not decisions: `## Unreleased` becomes
 `include build/man.mk`, and `docs/man-deflist.lua` gives way to
 `build/man-deflist.lua`. `Formula/mdmost.rb` is part of `release-files`, not
 of `version_files`: its `version` line and its `sha256` lines are written by
-`release-build.yml` in one place. mdmost's `release.yml` is removed once
+`release-build.yml` in one place. That file also checks the bottle rename
+(`brew bottle` writes `mdmost--<version>`, the URL Homebrew fetches has one
+dash); a `release_assets` pattern cannot, because `*` absorbs the extra dash.
+mdmost's `release.yml` is removed once
 `release-build.yml` and the publish blocks cover what it did.
 
 ## Proof
@@ -581,7 +613,8 @@ branch:
 - D26: dispatching `Create release PR` while a merged release is unpublished is
   refused, and `CHANGES.md` is unchanged.
 - D26: turning `release_build` on in a repository at `release-pr` v3 shows
-  `outdated (variant switch)` in `check`, and `apply` replaces the file.
+  `outdated (variant switch)` in `check`, and `apply` keeps the repository's
+  `cargo update` step.
 - D26: a build that drops a declared `release_assets` file is refused by
   `finish`.
 - D26: a pull request merged into `main` while a release pull request is open
@@ -593,8 +626,8 @@ branch:
   by name, version and architecture, and stays green.
 - D27: through the proxy, an anonymous request for a path outside the owner's
   Debian and RPM registries still answers 401, and a request inside them with
-  an encoded `..` or a `%2F` answers 400. A test package with a `~` version
-  installs through apt, and one through dnf.
+  an encoded `..` or a `%2F` answers 400. A hand-uploaded test package with a
+  `~` version installs through apt.
 
 ## What is not decided here
 
