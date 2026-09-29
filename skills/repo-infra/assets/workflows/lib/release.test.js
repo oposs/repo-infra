@@ -60,6 +60,17 @@ test('ownDrafts picks this version\'s drafts that carry a build record', () => {
   assert.deepEqual(r.ownDrafts(releases, '1.2.0').map((x) => x.id), [1]);
 });
 
+test('ownDrafts also picks a bot draft without a build record (partial finish)', () => {
+  const draft = (tag, author, id) => ({ ...release(tag, true, [], id), author });
+  const releases = [
+    draft('v1.2.0', { login: 'github-actions[bot]' }, 1),
+    draft('v1.2.0', { login: 'alice' }, 2),
+    draft('v1.3.0', { login: 'github-actions[bot]' }, 3),
+    draft('v1.2.0', null, 4),
+  ];
+  assert.deepEqual(r.ownDrafts(releases, '1.2.0').map((x) => x.id), [1]);
+});
+
 const VERSION_FILES = [{ path: 'Cargo.toml' }];
 
 test('a formula path is an acceptable release file', () => {

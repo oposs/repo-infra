@@ -42,9 +42,14 @@ function staleDrafts(releases, { tags, latestVersion }) {
     && release.tag_name !== `v${latestVersion}`);
 }
 
+// This version's drafts from an earlier attempt. A finish that failed while
+// uploading leaves a draft by the bot without the build record, so a draft
+// counts as ours when it carries the record or the bot created it. A
+// record-less draft by anyone else is left alone.
 function ownDrafts(releases, version) {
-  return releases.filter((release) => release.draft && carriesRecord(release)
-    && release.tag_name === `v${version}`);
+  return releases.filter((release) => release.draft
+    && release.tag_name === `v${version}`
+    && (carriesRecord(release) || release.author?.login === BOT));
 }
 
 function normalise(entry) {
