@@ -26,7 +26,7 @@ request needs no stored credential and works with the protection rather than
 around it. Tagging is unaffected: the ruleset targets branches, and tags live in
 a separate ref namespace.
 
-## Why the release pull request needs a click
+## Why the release pull request needs an approval
 
 The ruleset requires two status checks, `ci-passed` and `changelog-updated`. Nothing
 merges to `main` without them, including a release.
@@ -37,9 +37,19 @@ the merge box shows a banner, and anyone with write access starts them with
 **Approve workflows to run**. The checks are parked, not skipped, so they do
 report, and the pull request does merge.
 
-That single click is deliberate. The alternative is to open the release pull
+The runs can also be approved from a terminal. List the runs of the release
+branch, then approve each parked one by its ID:
+
+```sh
+gh run list --branch release/vX.Y.Z
+gh api --method POST repos/oposs/repo-infra/actions/runs/<id>/approve
+```
+
+The button in the merge box stays the fallback.
+
+That single approval is deliberate. The alternative is to open the release pull
 request with a GitHub App or personal access token so the runs start unattended,
-which means a credential to create, store and rotate. The click costs less.
+which means a credential to create, store and rotate. One approval costs less.
 
 Do not try to route around it with an `on: push` trigger on the release branch.
 The same restriction covers pushes: a push made with `GITHUB_TOKEN` does not
