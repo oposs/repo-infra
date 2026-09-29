@@ -50,7 +50,8 @@
   "publish_blocks": {
     "publish-source-tarball": {"version": 3, "jobs": ["publish-source-tarball"],
                                "assets": ["*.tar.gz"]},
-    "publish-crates-io": {"version": 2, "jobs": ["publish-crates-io"], "assets": []}
+    "publish-crates-io": {"version": 2, "jobs": ["publish-crates-io"], "assets": []},
+    "publish-gitea-packages": {"version": 1, "jobs": ["publish-gitea-packages"], "assets": []}
   },
   "build_assets": {
     "container": {
