@@ -42,6 +42,14 @@ def read_facts(repo):
     return Gh().facts(repo)
 
 
+def _config(root):
+    """The repository's recorded decisions, or {} for an unconverted one."""
+    config = pathlib.Path(root) / ".github/repo-infra.json"
+    if not config.is_file():
+        return {}
+    return json.loads(config.read_text(encoding="utf-8"))
+
+
 def _chosen(root, key):
     """A list the repository recorded in its own config, or nothing.
 
@@ -50,10 +58,7 @@ def _chosen(root, key):
     own that finalize must wait for is a decision (D12, D16, D22, A1). An
     unconverted repository has no config file and has chosen nothing.
     """
-    config = pathlib.Path(root) / ".github/repo-infra.json"
-    if not config.is_file():
-        return []
-    return json.loads(config.read_text(encoding="utf-8")).get(key, [])
+    return _config(root).get(key, [])
 
 
 def _load(root):
@@ -61,9 +66,12 @@ def _load(root):
     detection = Detection.load(ASSETS / "detection.json")
     result = detection.detect(root)
     ci = _chosen(root, "ci")
+    config = _config(root)
     rendered = render_all(ASSETS, result, manifest,
                           _chosen(root, "publish"), _chosen(root, "build"),
-                          ci, _chosen(root, "publish_local"))
+                          ci, _chosen(root, "publish_local"),
+                          ci_local=bool(config.get("ci_local")),
+                          release_build=bool(config.get("release_build")))
     result.candidates = detection.open_candidates(result.candidates, ci)
     return manifest, result, rendered
 
@@ -73,7 +81,7 @@ def check(args):
     repo = args.repo or Gh().current_repo()
     items = classify(args.root, rendered, manifest, read_facts(repo))
     items += classify_ambiguities(result)
-    items += classify_contracts(args.root, result)
+    items += classify_contracts(args.root, result, _config(args.root))
     renderer = report.render_json if args.json else report.render_text
     print(renderer(repo, result, items))
     return 1 if any(i.state in NEEDS_ATTENTION_STATES for i in items) else 0

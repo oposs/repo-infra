@@ -37,7 +37,8 @@
     "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
     "ci-repo-infra-selftest": {"version": 3, "jobs": ["repo-infra-selftest", "repo-infra-man"]},
     "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
-    "ci-github-action": {"version": 1, "jobs": ["action-manifest", "action-test"]}
+    "ci-github-action": {"version": 1, "jobs": ["action-manifest", "action-test"]},
+    "ci-local": {"version": 1, "jobs": ["ci-local"], "optional": true, "seam": "ci_local"}
   },
   "publish_blocks": {
     "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"],

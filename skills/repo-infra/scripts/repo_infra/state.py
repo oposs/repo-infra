@@ -209,7 +209,7 @@ def classify_ambiguities(result):
     return [Item(a["id"], "ambiguous", a["question"]) for a in result.ambiguities]
 
 
-def classify_contracts(repo_root, result):
+def classify_contracts(repo_root, result, config=None):
     """Project-owned files an installed block depends on but cannot ship.
 
     The counterpart of an ambiguity: not a question about this repository, but
@@ -219,6 +219,7 @@ def classify_contracts(repo_root, result):
     without it does not merely leave a gap, it makes ci.yml invalid so that no
     job in the repository runs at all.
     """
+    config = config or {}
     items = []
     if "github-action" in result.ecosystems:
         seam = pathlib.Path(repo_root) / ".github/workflows/action-test.yml"
@@ -229,6 +230,16 @@ def classify_contracts(repo_root, result):
                 "and this repository has no such file; GitHub rejects the whole "
                 "workflow, so every check stops reporting. Write it as the "
                 "project's own test (references/conventions.md)."))
+    if config.get("ci_local"):
+        seam = pathlib.Path(repo_root) / ".github/workflows/ci-local.yml"
+        if not seam.is_file():
+            items.append(Item(
+                "ci-local-workflow", "conflict",
+                "ci.yml's ci-local job calls .github/workflows/ci-local.yml "
+                "and this repository has no such file; GitHub rejects the whole "
+                "workflow, so every check stops reporting. Write it as the "
+                "project's own jobs (references/conventions.md), or remove "
+                "\"ci_local\" from .github/repo-infra.json."))
     return items
 
 

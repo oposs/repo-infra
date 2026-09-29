@@ -64,6 +64,10 @@ def ci_addon_blocks(result, addons, manifest):
         meta = manifest["ci_blocks"].get(name)
         if meta is None:
             raise AssemblyError(f"ci add-on {name} is not declared in the manifest")
+        if meta.get("seam"):
+            raise AssemblyError(
+                f"ci add-on {name} is a seam; set \"{meta['seam']}\": true in "
+                ".github/repo-infra.json instead of naming it")
         if not meta.get("optional"):
             raise AssemblyError(
                 f"ci add-on {name} is not an opt-in block; detection installs it")
@@ -198,7 +202,7 @@ def assemble_publish(assets_root, addons, manifest, local=()):
 
 
 def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
-               publish_local=()):
+               publish_local=(), ci_local=False, release_build=False):
     """Every file this repository should have, keyed by repo-relative path.
 
     `publish`, `build`, `ci` and `publish_local` are decisions the repository
@@ -217,6 +221,10 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
     entry). Choosing the block installs them as if they had been named in
     `build`, so a repository cannot choose `ci-man` and forget the fragment
     its job runs.
+
+    `ci_local` adds the `ci-local` seam after every other block (D25), so
+    the project's own jobs join the generated `needs:` list. `release_build`
+    selects the `release-pr-build` variant (D26).
     """
     assets_root = pathlib.Path(assets_root)
     files = {}
@@ -243,7 +251,7 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
             raise AssemblyError(f"build asset {name} is not declared in the manifest")
         files[spec["target"]] = _read(assets_root / spec["source"])
 
-    blocks = result.blocks + addons
+    blocks = result.blocks + addons + (["ci-local"] if ci_local else [])
     files[".github/workflows/ci.yml"] = assemble_ci(assets_root, blocks, manifest)
     files[".github/workflows/release-publish.yml"] = assemble_publish(
         assets_root, publish, manifest, publish_local)
