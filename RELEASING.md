@@ -81,3 +81,21 @@ Publishing should be a consequence of merging a release pull request, not
 something anyone starts from a dropdown. A failed run is re-run from the Actions
 UI, and because the version comes from `CHANGES.md` rather than from run inputs,
 the re-run does exactly what the original attempt would have done.
+
+## Releases that build before the merge
+
+A repository with `"release_build": true` builds the release inside the
+release pull request, so the pull request diff shows files such as a Homebrew
+formula.
+
+- Merge such a pull request with a merge commit. All three merge methods stay
+  allowed, but after a squash or rebase `git describe` on `main` no longer
+  finds the tag.
+- Do not press **Update branch** on a release pull request. It moves the branch
+  after the build, `changelog-updated` turns red, and `no-changelog` does not
+  clear it. Close the pull request and run `Create release PR` again.
+- `Create release PR` refuses with `vX.Y.Z is in CHANGES.md on main but has no
+  tag` while the last release has no tag. Either **Re-run failed jobs** on its
+  publish run; or, for a release that is already out under another tag, push
+  `vX.Y.Z` by hand (the ruleset covers the branch, not tags); or, to abandon
+  it, merge a pull request that moves its entries back under `[Unreleased]`.

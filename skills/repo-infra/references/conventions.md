@@ -239,7 +239,7 @@ correctly -- native runs the real suite, driver delegates to podman.
 `DESTDIR` refuses with a usage message rather than mounting the host's
 `$(prefix)` read-write into the container.
 
-## The action-test contract (D20)
+## Project-owned workflows behind a fixed seam (D20, D25, D26)
 
 Same shape as the Containerfile contract, one layer over: repo-infra owns the
 *seam*, the project owns the *test*. An action's real test is `uses: ./` with
@@ -282,6 +282,67 @@ that hits either one is green while testing nothing.
 The manifest is `action.yml`. GitHub also accepts `action.yaml`; the standard
 does not, and a repository spelling it the other way renames the file during
 conversion.
+
+### ci-local (D25)
+
+`"ci_local": true` in `.github/repo-infra.json` adds
+`ci-local: uses: ./.github/workflows/ci-local.yml` to `ci.yml` and `ci-local`
+to `ci-passed`'s `needs:`. The three action-test rules apply unchanged: the
+file triggers on `workflow_call` only, every job in it sets `timeout-minutes`,
+and the file exists. `check` reports a missing one as `conflict`, under the
+item `ci-local-workflow`.
+
+One more rule: conditions go inside steps, never on a job. A reusable workflow
+whose every job is skipped reports `ci-local` as skipped, and `ci-passed`
+counts a skipped need as green.
+
+### release-build (D26)
+
+`"release_build": true` makes the release pull request call
+`.github/workflows/release-build.yml`, another project-owned file at a fixed
+path. What it must do:
+
+- Trigger on `workflow_call` with the string inputs `version` and `ref`.
+- Check out `inputs.ref`.
+- Upload each file the release ships as an artifact whose name starts with
+  `release-asset-`.
+- Upload the repository files the build rewrote, for example a Homebrew
+  formula, as one artifact named `release-files`. Its paths are repository
+  paths, and each one is listed in `release_files`.
+- Run with `contents: read` and no secrets.
+
+A file named `release-build.json` is refused: that name is the build record
+the release workflow writes itself.
+
+### The `rust` key (D24)
+
+    "rust": {
+      "lint": ["mdmost"],
+      "test": ["mdmost", "pulldown-latex"],
+      "tested_elsewhere": ["syntect"]
+    }
+
+- `lint`: crates that `rust-check` runs `cargo fmt --check -p` and
+  `cargo clippy --all-targets -p <name> --no-deps -- -D warnings` on.
+- `test`: crates that `rust-test` runs `cargo test -p` on, one matrix leg per
+  crate. Required whenever the key is present.
+- `tested_elsewhere`: workspace members whose tests run outside `rust-test`,
+  for example in `ci-local.yml`. The standard runs nothing for them and cannot
+  confirm that anything else does.
+
+`rust-plan` reads the key at run time and fails, naming the crates involved,
+when:
+
+- a listed name is not a workspace member;
+- a workspace member is in neither `test` nor `tested_elsewhere`;
+- `lint` or `test` is present and empty, or `test` is missing;
+- the key is absent and the workspace's default members differ from its
+  members (a root `[package]`, or `default-members` in any workspace).
+
+Without the key, a workspace whose default members equal its members runs
+the workspace-wide commands as before. A repository whose default members
+differ from its members must set the key. `ci-rust` v2 fails on the upgrade
+pull request, with a message naming the members and the key, until it does.
 
 ## Markers record a generation, never a content hash
 

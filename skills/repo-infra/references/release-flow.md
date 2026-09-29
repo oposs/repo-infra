@@ -119,6 +119,124 @@ failure between those two steps needs the tag removed by hand
 (`git push origin --delete vX.Y.Z`, confirmed with the user first) before a
 re-run can finish the job.
 
+Publish add-ons are safe to re-run. `publish-source-tarball` skips the upload
+when the release already has an asset of that name, and `publish-crates-io`
+asks crates.io and publishes only the workspace crates whose version is not
+there yet. **Re-run failed jobs** and a whole-workflow re-run therefore both
+finish a stopped release, including one with `release_build`.
+
+## Releases that build before the merge (release_build)
+
+`"release_build": true` moves the build in front of the merge. The `Create
+release PR` workflow then has three jobs:
+
+- `prepare`: the guard, the two refusals below, the removal of stale drafts,
+  and the roll and version bump as usual.
+- `build`: calls the project's `.github/workflows/release-build.yml` with
+  `contents: read` and no secrets. It uploads the release files as
+  `release-asset-*` artifacts, and the repository files it rewrote as the
+  artifact `release-files`.
+- `finish`: commits the files listed in `release_files` onto the release
+  branch, creates a draft release with the assets and `release-build.json`,
+  sets the commit status `release-built` and opens the pull request. It
+  first removes its own earlier drafts for the same version, including a
+  bot-created draft that a failed upload left without `release-build.json`.
+
+The formula change is part of the pull request diff, so reviewers see it. The
+`finish` job refuses a `release_files` entry that reaches `CHANGES.md`, a
+version file, `.github/repo-infra.json` or anything under `.github/`, after
+normalising the path.
+
+Publish tags the head recorded in `release-build.json`, not the merge commit.
+If that commit does not exist in the repository, publish fails with
+`release-build.json names <sha>, which does not exist in this repository`.
+Repository-owned `publish_local` jobs check out
+`ref: ${{ needs.publish.outputs.head }}`, the tagged commit, like the add-ons
+do. Without `release_build` that is the merge commit, as before.
+
+Between the merge and `finalize` the Homebrew formula on `main` points at
+release URLs that answer 404, because the release is still a draft. Usually
+that lasts the few minutes publish takes. A failed add-on keeps the release a
+draft and `brew install` fails until it is public. Recovery is **Re-run failed
+jobs** on the publish run.
+
+`Create release PR` refuses in two cases:
+
+- A release pull request is already open (from a `release/*` branch of this
+  repository, opened by `github-actions[bot]`). The message names it.
+- The latest release in `CHANGES.md` on `main` has no tag:
+  `vX.Y.Z is in CHANGES.md on main but has no tag`. The ways out are
+  **Re-run failed jobs** on its publish run; for a release that is already
+  out under another tag, pushing `vX.Y.Z` by hand (the ruleset covers the
+  branch, not tags); or, to abandon it, a pull request that moves its entries
+  back under `[Unreleased]`.
+
+**Update branch** on a release pull request moves the branch after the build.
+`changelog-updated` then turns red, and adding `no-changelog` does not help.
+Close the pull request and dispatch `Create release PR` again. The next
+dispatch also deletes stale drafts: drafts with a `release-build.json` whose
+tag does not exist and whose version is not the latest release in `CHANGES.md`
+on `main`.
+
+## Gitea packages (publish-gitea-packages)
+
+The add-on uploads every `.deb` and `.rpm` release asset to a Gitea package
+registry, which signs them with its own key. No repository holds a signing
+key. The release stays a draft until the upload succeeded.
+
+    "publish": ["publish-gitea-packages"],
+    "gitea_packages": {
+      "url": "https://gitea.oetiker.ch",
+      "owner": "oposs",
+      "debian": {"distribution": "stable", "component": "main"},
+      "rpm": {"group": ""}
+    }
+
+- `url`, `owner`: the Gitea server and the organisation that owns the
+  packages.
+- `debian.distribution`, `debian.component`: the channel for `.deb` files.
+  The default is `stable` and `main`.
+- `rpm.group`: the RPM group. Empty by default.
+
+The job fails when no asset matches. It fails before the first upload when
+`GITEA_PACKAGE_TOKEN` or `GITEA_PACKAGE_USER` is empty, naming the missing
+one, and when a release carries a `.deb` or `.rpm` whose file name it cannot
+parse, naming the file. The expected shapes are `name_version_arch.deb` and
+`name-version-release.arch.rpm`.
+
+The credential is the first stored one in the standard:
+
+- A dedicated Gitea user, member of the owner organisation only, in a team
+  with package write permission and nothing else.
+- Token scope `write:package` only.
+- The GitHub organisation secret `GITEA_PACKAGE_TOKEN` and the organisation
+  variable `GITEA_PACKAGE_USER`. A repository under a personal GitHub account
+  cannot see organisation secrets and carries its own copy as a repository
+  secret and variable.
+- Gitea tokens do not expire. Rotation is manual: once for the organisation
+  secret and once per personal-account copy.
+
+Gitea answers 409 for a version that already exists, which a **Re-run failed
+jobs** meets for files that went up the first time. For a `.deb`, 409 counts
+as success only when the stored file's SHA-256 equals the asset's. For an
+`.rpm`, Gitea stores the signed file, so the hashes never match. There, 409
+counts as success when a file with the same name, version-release and
+architecture exists, and the job log says the content was not compared.
+
+What users type on Debian and Ubuntu:
+
+    sudo install -d -m 0755 /etc/apt/keyrings
+    sudo curl -o /etc/apt/keyrings/gitea-oposs.asc https://gitea.oetiker.ch/api/packages/oposs/debian/repository.key
+    echo "deb [signed-by=/etc/apt/keyrings/gitea-oposs.asc] https://gitea.oetiker.ch/api/packages/oposs/debian stable main" | sudo tee /etc/apt/sources.list.d/oposs.list
+
+On Fedora 41 and later (dnf5):
+
+    sudo dnf config-manager addrepo --from-repofile=https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
+
+On RHEL, Rocky and Alma, and Fedora before 41 (dnf4):
+
+    sudo dnf config-manager --add-repo https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
+
 ## Check these still hold
 
 The prose above has no automatic test; if GitHub changes one of these
