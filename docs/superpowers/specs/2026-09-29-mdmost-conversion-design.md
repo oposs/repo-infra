@@ -61,14 +61,20 @@ introduces."
 - `lint`: `rust-check` runs `cargo fmt --check -p <name>` and
   `cargo clippy --all-targets -p <name> --no-deps -- -D warnings` for each
   name. `--no-deps` is required, for the clippy-driver reason above.
-- `test`: `rust-test` runs `cargo test -p <name>` as one step per name, so a
-  red step names the crate that broke.
+- `test`: `rust-test` runs `cargo test -p <name>` for each name, as its own
+  matrix leg, so a red leg names the crate that broke.
 
-Absent, both jobs keep today's workspace-wide commands. Present, the lists are
-rendered into the block as literal steps; the assembler does the loop, since
-workflow YAML has none. A name that is not a workspace member is refused at
-assembly (`cargo metadata` is the authority), so a renamed crate cannot turn
-into a step that tests nothing.
+The block stays literal. D20 settled that assets carry no substitution token,
+and the only generated text so far is the aggregator's and `finalize`'s
+`needs:` lists. So the lists are read at run time, not rendered: a small
+`rust-plan` job reads `.github/repo-infra.json`, checks every name against
+`cargo metadata --no-deps` and fails naming any that is not a workspace member
+(a renamed crate must not become a leg that tests nothing), and outputs the two
+lists. `rust-check` and `rust-test` take them as
+`strategy.matrix.package: ${{ fromJSON(needs.rust-plan.outputs.lint) }}` and
+`...outputs.test`. With the key absent, `rust-plan` outputs one empty entry and
+both jobs run today's workspace-wide commands. `check` and `apply` never run
+cargo, so `repo_infra` keeps having no runtime dependencies.
 
 The key records which code is the project's own. That is a fact about the
 repository, so it lives beside `version_files` rather than among a CI block's
@@ -92,8 +98,14 @@ and adds `ci-local` to `ci-passed`'s generated `needs:` list. The job inherits
 the D20 contract unchanged: `ci-local.yml` is the project's own file (not
 shipped, not versioned, not drift-checked), triggers on `workflow_call` only,
 and sets `timeout-minutes` on each of its own jobs because the calling job
-cannot. `check` reports a missing `ci-local.yml` as its own line, as it does for
-`action-test.yml`.
+cannot. A missing `ci-local.yml` makes the whole of `ci.yml` invalid, so
+`check` reports it as `conflict`, as D20 does for `action-test.yml`.
+
+One addition to the contract: `ci-passed` counts a skipped need as green, and a
+reusable workflow whose every job is skipped by a job-level `if:` reports
+`ci-local` as skipped. `ci-local.yml` therefore keeps its conditions inside
+steps, never on a job, the same rule `conventions.md` gives for required
+workflows and `paths` filters.
 
 The alternative raised first was a `publish_local`-style list of job ids that
 the repository writes into `ci.yml` itself. It was dropped: those job blocks
@@ -115,23 +127,74 @@ merge, for repositories that opt in:
 
     "release_build": true
 
-1. `Create release PR` prepares the release branch as today (guard, roll,
-   bump, commit).
-2. It calls `.github/workflows/release-build.yml` (D20 seam again: project-owned,
-   `workflow_call`, inputs `version` and `ref`) against the release branch head.
-   The project's jobs build whatever it ships and upload each file as an
-   Actions artifact named `release-asset-*`. Files that must record the
-   artifacts, such as a Homebrew formula with `sha256` lines, are uploaded as
-   the artifact `release-files`, a tree of repository paths.
-3. The core creates a **draft** release for `vX.Y.Z` (no tag yet), attaches
-   every `release-asset-*` file, commits `release-files` onto the release
-   branch, and records the build in a `release-build.json` asset: the built
-   commit, its tree, and the list of `release-files` paths.
-4. It opens the pull request. Reviewers see the formula change in the diff.
+`release-pr.yml` becomes three jobs, because a reusable workflow can only be
+called as a job, never as a step:
 
-After the merge, `release-publish.yml` tags the merge commit, finds the draft
-by its tag name, updates its target, and hands it to the add-ons and
-`finalize` as today.
+1. `prepare`: guard, roll, bump and commit the release branch, as the single
+   job does today. It outputs the version and the branch head.
+2. `build`: `uses: ./.github/workflows/release-build.yml` (the D20 seam again:
+   project-owned, `workflow_call`, inputs `version` and `ref`), with
+   `permissions: contents: read` and no secrets. Project build code never holds
+   the token that can push branches and open pull requests. Each file the
+   project ships is uploaded as an Actions artifact named `release-asset-*`.
+   Files that must record those artifacts, such as a Homebrew formula with
+   `sha256` lines and a `version` line, are uploaded as the artifact
+   `release-files`, a tree of repository paths. The `uses:` path resolves at
+   the dispatched commit on `main`, not on the release branch.
+3. `finish`: `needs: build`. It commits `release-files` onto the release
+   branch, creates a **draft** release for `vX.Y.Z` with no tag, attaches every
+   `release-asset-*` file, and attaches `release-build.json`: the head commit
+   after the `release-files` commit, and the names of the attached assets. Then
+   it opens the pull request, so reviewers see the formula change in the diff.
+   The commit lands before the pull request exists, so the one **Approve
+   workflows to run** click still covers the pull request's checks.
+
+A called workflow's jobs belong to the caller's run, so `finish` finds the
+`release-asset-*` artifacts with `download-artifact` and a pattern.
+
+### Tagging the built commit
+
+After the merge, `release-publish.yml` does not tag the merge commit. It tags
+the head recorded in `release-build.json`. That commit is exactly what was
+built, so the tag describes the release artifacts by construction, whatever
+else reached `main` while the pull request was open. The ruleset leaves
+`strict_required_status_checks_policy` off on purpose, so `main` moving under
+an open release pull request is the normal case. A tree
+comparison against the merge commit, the first version of this section, would
+have refused on every such release, after the merge, at a point where
+`CHANGES.md` on `main` already carries the version and a new dispatch stops on
+an empty `[Unreleased]`.
+
+The tag is on `main`'s history when the pull request is merged with a merge
+commit. After a squash or rebase merge the tagged commit is not an ancestor of
+`main`. The release is still correct and the next version is still computed
+from it (`release-pr.yml` reads all `v*` tags, not `main`'s history), but
+`git describe` on `main` no longer finds it. Publish emits a notice in that
+case, and `RELEASING.md` recommends the merge commit for release pull requests.
+All three methods stay allowed.
+
+One push can still separate the pull request from its build: a push to the
+release branch after `finish`, for example a wording fix. The changelog gate
+job, on a `release/*` head branch of a `release_build` repository, reads
+`release-build.json` from the draft and fails unless the pull request head is
+the recorded head: `the release branch changed after it was built; close this
+pull request and dispatch Create release PR again`. This runs before the
+merge, where that remedy works.
+
+### Finding the draft
+
+`getReleaseByTag` answers 404 for a draft, and GitHub allows several drafts
+with one tag name. Publish pages through `listReleases` and takes the drafts
+whose `tag_name` is the version. None, or more than one, fails the job and
+names the count. Draft assets are downloaded through the API by asset id,
+because `browser_download_url` does not serve drafts. With `release_build`
+set, the frame's publish job updates that draft (tag, target) instead of
+creating a new one, as it does today for every other repository.
+
+`finalize` asserts the names listed in `release-build.json` alongside the
+assets its generated list already expects, so a build that silently drops a
+file does not publish. It deletes `release-build.json` from the release before
+making it public.
 
 ### Why
 
@@ -144,31 +207,36 @@ Publishing stops rebuilding. Converted repositories have had release pull
 requests that were green followed by a publish run that failed, and mdmost's
 own releases failed after the decision to release while building: v0.1.2's
 bottle legs queued on a retired runner image, and v0.3.2's
-`setup-homebrew@master` stopped resolving. With D26 a failure while building happens before the merge, where
-closing the pull request cancels the release cleanly, and what publishes is the
-bytes that were reviewed.
+`setup-homebrew@master` stopped resolving. With D26 a failure while building
+happens before the merge, where closing the pull request cancels the release
+cleanly. Publish uploads the files that were built and attached before the
+merge. (D27's RPMs are the one exception: Gitea signs them on upload, so the
+bytes a dnf user installs differ from the release asset by that signature.)
 
-### The tree check
+### The Homebrew window
 
-Publishing a pre-built artifact is only honest if the tagged commit is what was
-built. The merge commit can differ: `main` may have moved after the build. So
-publish compares the merge commit's tree with the built commit's tree and
-refuses unless the only differences are the paths in `release-files`, which
-were written after the build by construction. Refusing leaves the draft and no
-tag; the remedy is to close the pull request and dispatch again.
+The formula on `main` points at `releases/download/vX.Y.Z/...` from the
+moment of the merge, and those URLs answer 404 until `finalize` makes the
+release public. Normally that is the few minutes publish takes. Any publish
+add-on that fails keeps the release a draft, and `brew install` fails for as
+long as it stays one. This is accepted. The recovery is the one
+`release-flow.md` already gives: **Re-run failed jobs** on the publish run.
 
 ### Stale drafts
 
 A closed release pull request leaves its draft behind. Drafts are not public.
-The next `Create release PR` for the same version deletes an existing draft for
-that tag before creating its own.
+`prepare` deletes every draft whose tag does not exist as a git tag, not only
+one for the version it is about to build: a closed pull request for 1.2.0
+followed by a bugfix release 1.1.1 would otherwise leave the 1.2.0 draft
+forever.
 
 ### Scope
 
 `release_build` is off by default and changes nothing for a repository that
 does not set it. The existing publish blocks (`publish-source-tarball`,
 `publish-crates-io`) work either way. A repository that sets it must provide
-`release-build.yml`; `check` reports it missing as its own line.
+`release-build.yml`; a missing one breaks `release-pr.yml` outright, so `check`
+reports it as `conflict`.
 
 ## D27: the standard publishes to Gitea package registries
 
@@ -194,10 +262,14 @@ does not set it. The existing publish blocks (`publish-source-tarball`,
   `GITEA_PACKAGE_USER` is empty, naming the missing one, instead of reporting a
   bare 401.
 - Gitea answers 409 for a version that already exists. A **Re-run failed jobs**
-  after a partial upload meets that for the files that went up the first time,
-  so 409 counts as success only when the stored file's SHA-256 (from Gitea's
-  package API) equals the release asset's. A different file under the same
-  version fails.
+  after a partial upload meets that for the files that went up the first time.
+  For a `.deb`, 409 counts as success only when the stored file's SHA-256 (from
+  Gitea's package API) equals the release asset's; a different file under the
+  same version fails. For an `.rpm` that comparison cannot work: with
+  `?sign=true` Gitea stores the signed file, whose SHA-256 never equals the
+  unsigned asset's. There, 409 counts as success when a file with the same
+  package name, version and architecture exists, and the job says in its log
+  that the content was not compared.
 - It is in `finalize`'s generated `needs:`, like `publish-crates-io` (D21): a
   failed upload leaves the GitHub release a draft. A version public on GitHub
   but absent from apt and dnf is the inconsistency worth preventing.
@@ -269,10 +341,31 @@ that brings its own credentials (the upload's `PUT`), passes through unchanged.
 The reader token lives only in the proxy's configuration. The concrete proxy
 configuration is operational and is kept outside this public repository.
 
+The proxy matches its `location` against the normalised path but, with a bare
+`proxy_pass`, forwards the raw one. A request such as
+`/api/packages/oposs/debian/%2e%2e/generic/...` would then carry the reader
+token to another package type. The proxy therefore forwards the normalised
+`$uri` and refuses a request path containing `..` or an encoded dot.
+
+Opening the paths makes every Debian and RPM package of the owner public,
+including future ones from any repository. Something that must stay private is
+published under another owner.
+
 ### What users type
 
+Debian and Ubuntu (`/etc/apt/keyrings` is standard from Debian 12 and
+Ubuntu 22.04 on; the first line creates it on older releases):
+
+    sudo install -d -m 0755 /etc/apt/keyrings
     sudo curl -o /etc/apt/keyrings/gitea-oposs.asc https://gitea.oetiker.ch/api/packages/oposs/debian/repository.key
     echo "deb [signed-by=/etc/apt/keyrings/gitea-oposs.asc] https://gitea.oetiker.ch/api/packages/oposs/debian stable main" | sudo tee /etc/apt/sources.list.d/oposs.list
+
+Fedora 41 and later (dnf5):
+
+    sudo dnf config-manager addrepo --from-repofile=https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
+
+RHEL, Rocky and Alma, and Fedora before 41 (dnf4):
+
     sudo dnf config-manager --add-repo https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
 
 ## What mdmost chooses
@@ -289,7 +382,9 @@ configuration is operational and is kept outside this public repository.
 plus the settled migrations that are not decisions: `## Unreleased` becomes
 `## [Unreleased]`, the Makefile's `man` rule is replaced by
 `include build/man.mk`, and `docs/man-deflist.lua` gives way to
-`build/man-deflist.lua`. mdmost's `release.yml` is removed once
+`build/man-deflist.lua`. `Formula/mdmost.rb` is part of `release-files`, not
+of `version_files`: its `version` line and its `sha256` lines are written by
+`release-build.yml` in one place. mdmost's `release.yml` is removed once
 `release-build.yml` and the publish blocks cover what it did.
 
 ## Proof
@@ -305,11 +400,21 @@ branch:
   revised before anything else is built on it.
 - D26: a real mdmost release goes through `Create release PR`, the merge and
   publish, with no push to `main`, and `brew install oetiker/mdmost/mdmost`
-  pours the bottle.
+  pours the bottle. The release pull request needs exactly one **Approve
+  workflows to run** click, the tag is on the recorded head, and
+  `release-build.json` is gone from the public release.
+- D26: a push to a release branch after `finish` turns the changelog gate red
+  with the re-dispatch message.
+- D26: a pull request merged into `main` while a release pull request is open
+  does not stop the release.
 - D27: the same release lands in the registry, and `podman` containers of
   Debian, Ubuntu, Fedora and Rocky install mdmost anonymously with the lines
   above, `gpgcheck=1` active on dnf. A re-run of the Gitea job after success
-  reports the 409s as matching and stays green.
+  reports the `.deb` 409 as matching by SHA-256 and the `.rpm` 409 as matching
+  by name, version and architecture, and stays green.
+- D27: through the proxy, an anonymous request for a path outside the owner's
+  Debian and RPM registries, including one with an encoded `..`, still answers
+  401.
 
 ## What is not decided here
 
