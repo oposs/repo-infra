@@ -14,10 +14,12 @@
     env:
       CARGO_TERM_COLOR: always
     steps:
-      # No ref: on a push event this is the commit the `publish` job just
-      # tagged, which is the commit whose Cargo.toml the release pull request
-      # bumped.
+      # The commit `publish` tagged: the merge commit, or with release_build
+      # (D26) the commit the release pull request built. Either way its
+      # Cargo.toml carries the bumped version.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.publish.outputs.head }}
 
       # @stable, matching ci-rust. The action publishes no floating major tag;
       # `stable` is its documented channel selector.

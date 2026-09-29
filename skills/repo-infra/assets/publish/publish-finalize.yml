@@ -19,7 +19,10 @@
       contents: write
     steps:
       # For .github/workflows/lib/assets.js, below.
+      # The tagged head: a re-run reads release_assets the same way.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.publish.outputs.head }}
 
       - uses: actions/setup-node@v7
         with:
@@ -30,6 +33,10 @@
           script: |
             const lib = `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib`;
             const assetsLib = require(`${lib}/assets.js`);
+            const fs = require('fs');
+            const releaseLib = require(`${lib}/release.js`);
+            const config = JSON.parse(fs.readFileSync(
+              `${process.env.GITHUB_WORKSPACE}/.github/repo-infra.json`, 'utf8'));
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -40,6 +47,9 @@
             // assembler, from the same declarations the `needs:` list above
             // comes from. Never a literal typed a second time by hand.
             const expected = [];
+            // D26: a release the pull request built must carry every file the
+            // repository declared, read at the tagged head.
+            const declared = config.release_build ? (config.release_assets || []) : [];
 
             // The `needs:` list above is ordering, and ordering cannot report
             // its own absence: reverted, it does not fail, it stops waiting.
@@ -52,7 +62,7 @@
               { owner, repo, release_id, per_page: 100 },
             );
             const names = attached.map((a) => a.name);
-            const missing = assetsLib.missingAssets(names, expected);
+            const missing = assetsLib.missingAssets(names, [...expected, ...declared]);
             if (missing.length > 0) {
               core.setFailed(
                 `${{ needs.publish.outputs.tag }} is missing ${missing.join(', ')}`
@@ -63,6 +73,17 @@
                 + ` .github/repo-infra.json).`
               );
               return;
+            }
+
+            // The build record is never public. Deleting it after publishing
+            // would be impossible with GitHub's immutable releases on.
+            const record = attached.find((a) => a.name === releaseLib.BUILD_RECORD);
+            if (record) {
+              try {
+                await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: record.id });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
             }
 
             const { data: released } = await github.rest.repos.updateRelease({

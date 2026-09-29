@@ -1,5 +1,6 @@
 import json
 import pathlib
+import shutil
 
 import pytest
 import yaml
@@ -19,7 +20,7 @@ def test_with_no_addons_finalize_needs_only_publish():
 
 def test_the_frame_marker_survives_assembly():
     text = assemble_publish(ASSETS, [], MANIFEST)
-    assert ("release-publish", 3) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert ("release-publish", 4) in [(m.asset, m.version) for m in parse_markers(text)]
 
 
 def test_an_unknown_addon_is_an_assembly_error():
@@ -42,7 +43,7 @@ def test_the_tarball_addon_lands_between_publish_and_finalize():
 
 def test_the_tarball_addon_carries_its_marker():
     text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
-    assert ("publish-source-tarball", 2) in [
+    assert ("publish-source-tarball", 3) in [
         (m.asset, m.version) for m in parse_markers(text)]
 
 
@@ -99,7 +100,7 @@ def test_the_crates_io_addon_lands_between_publish_and_finalize():
 
 def test_the_crates_io_addon_carries_its_marker():
     text = assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST)
-    assert ("publish-crates-io", 1) in [
+    assert ("publish-crates-io", 2) in [
         (m.asset, m.version) for m in parse_markers(text)]
 
 
@@ -368,7 +369,7 @@ def test_an_asset_pattern_that_could_break_out_of_the_literal_is_refused():
                          [{"job": "x", "assets": ["'); throw new Error('"]}])
 
 
-def _run_finalize(tmp_path, attached, local=(DEB,)):
+def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT):
     """Run the generated finalize script under node against a fake release.
 
     Substring assertions cannot answer the question that matters -- does this
@@ -397,10 +398,13 @@ const assert = require('node:assert/strict');
 const attached = %s;
 const published = [];
 const failures = [];
+const deleted = [];
+const order = [];
 const github = {
-  paginate: async () => attached.map((name) => ({ name })),
+  paginate: async () => attached.map((name, i) => ({ name, id: i + 1 })),
   rest: { repos: { listReleaseAssets: 'listReleaseAssets',
-                   updateRelease: async (a) => { published.push(a); return { data: { html_url: 'u' } }; } } },
+                   deleteReleaseAsset: async (a) => { order.push('delete'); deleted.push(a.asset_id); },
+                   updateRelease: async (a) => { order.push('publish'); published.push(a); return { data: { html_url: 'u' } }; } } },
 };
 const core = {
   setFailed: (m) => failures.push(m),
@@ -412,15 +416,15 @@ const context = { repo: { owner: 'o', repo: 'r' } };
 (async () => {
 %s
 })().then(() => {
-  console.log(JSON.stringify({ published: published.length, failures }));
+  console.log(JSON.stringify({ published: published.length, failures, deleted, order }));
 });
 """ % (_json.dumps(list(attached)), script)
 
     path = tmp_path / "finalize.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run(
-        [node, str(path)], capture_output=True, text=True, cwd=ROOT,
-        env={"GITHUB_WORKSPACE": str(ROOT), "PATH": os.environ.get("PATH", "")})
+        [node, str(path)], capture_output=True, text=True, cwd=workspace,
+        env={"GITHUB_WORKSPACE": str(workspace), "PATH": os.environ.get("PATH", "")})
     assert proc.returncode == 0, proc.stderr
     return _json.loads(proc.stdout)
 
@@ -452,3 +456,28 @@ def test_the_generated_finalize_publishes_when_nothing_is_expected(tmp_path):
     out = _run_finalize(tmp_path, [], local=())
     assert out["failures"] == []
     assert out["published"] == 1
+
+
+def _build_workspace(tmp_path, release_assets):
+    ws = tmp_path / "ws"
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
+    (ws / ".github/repo-infra.json").write_text(json.dumps(
+        {"version_files": [], "release_build": True, "release_assets": release_assets}))
+    return ws
+
+
+def test_finalize_asserts_release_assets_when_the_release_was_built(tmp_path):
+    ws = _build_workspace(tmp_path, ["*.rpm"])
+    out = _run_finalize(tmp_path, ["x_1.2.3_amd64.deb", "release-build.json"],
+                        local=(), workspace=ws)
+    assert out["published"] == 0 and "*.rpm" in out["failures"][0]
+    assert out["deleted"] == []
+
+
+def test_finalize_deletes_the_build_record_before_it_publishes(tmp_path):
+    ws = _build_workspace(tmp_path, ["*.deb"])
+    out = _run_finalize(tmp_path, ["x_1.2.3_amd64.deb", "release-build.json"],
+                        local=(), workspace=ws)
+    assert out["failures"] == [] and out["published"] == 1
+    assert out["deleted"] == [2]
+    assert out["order"] == ["delete", "publish"]

@@ -8,6 +8,8 @@
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.publish.outputs.head }}
 
       # `make dist` is a container call in a repository that converted to the
       # D18 driver, and a plain automake dist in one that did not. The same two

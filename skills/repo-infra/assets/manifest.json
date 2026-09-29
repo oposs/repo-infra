@@ -48,9 +48,9 @@
     "ci-local": {"version": 1, "jobs": ["ci-local"], "optional": true, "seam": "ci_local"}
   },
   "publish_blocks": {
-    "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"],
+    "publish-source-tarball": {"version": 3, "jobs": ["publish-source-tarball"],
                                "assets": ["*.tar.gz"]},
-    "publish-crates-io": {"version": 1, "jobs": ["publish-crates-io"], "assets": []}
+    "publish-crates-io": {"version": 2, "jobs": ["publish-crates-io"], "assets": []}
   },
   "build_assets": {
     "container": {

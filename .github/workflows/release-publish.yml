@@ -1,5 +1,5 @@
 name: Publish release (automatic)
-# repo-infra: release-publish v3
+# repo-infra: release-publish v4
 #
 # Half two. Merging the release pull request lands the rolled CHANGES.md on main,
 # and that merge triggers this.
@@ -11,14 +11,13 @@ name: Publish release (automatic)
 #
 # There is deliberately no workflow_dispatch. Publishing should be a consequence
 # of merging a release pull request, never something started from a dropdown.
-# With main protected against direct pushes, that leaves exactly one route to a
-# release. Recovery still does not need a manual trigger, but it needs the right
-# button: `publish` is idempotent by tag presence, so once the tag exists a
-# whole-workflow re-run finds it, sets no outputs, and skips every add-on and
-# `finalize` -- the release stays a draft forever. Use the Actions UI's
-# **Re-run failed jobs** instead: it keeps the successful job's outputs, so the
-# jobs that failed run again against them and finish what the first attempt
-# would have.
+#
+# Recovery without release_build: `publish` is idempotent by tag presence, so a
+# whole-workflow re-run after the tag exists skips everything and the release
+# stays a draft. Use **Re-run failed jobs**, which keeps the successful job's
+# outputs. With release_build (D26), `publish` decides from the tag and the
+# releases together (lib/publish.js), and both kinds of re-run finish a
+# stopped release.
 
 on:
   push:
@@ -42,6 +41,7 @@ jobs:
       version: ${{ steps.publish.outputs.version }}
       tag: ${{ steps.publish.outputs.tag }}
       release_id: ${{ steps.publish.outputs.release_id }}
+      head: ${{ steps.publish.outputs.head }}
     steps:
       - uses: actions/checkout@v7
 
@@ -95,64 +95,153 @@ jobs:
               return;
             }
 
-            // Idempotent: an ordinary pull request that edits [Unreleased] also
-            // triggers this workflow, finds the tag already present, and stops.
-            try {
-              await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
-              core.notice(`${tag} is already tagged - nothing to do.`);
-              return;
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
-
             // Annotated, not a bare createRef. A bare ref makes a lightweight tag,
             // and `git describe` prefers annotated ones; the existing repositories
             // have annotated tags and a silent switch would change local tooling
             // behaviour for no reason.
-            const makeTag = async (name, message) => {
+            const makeTag = async (name, message, sha) => {
               const { data: object } = await github.rest.git.createTag({
-                owner, repo, tag: name, message, object: context.sha, type: 'commit',
+                owner, repo, tag: name, message, object: sha, type: 'commit',
               });
               return object.sha;
             };
-
-            await github.rest.git.createRef({
-              owner, repo, ref: `refs/tags/${tag}`,
-              sha: await makeTag(tag, `Release ${tag}`),
-            });
-            core.notice(`Tagged ${tag}.`);
-
-            if (config.moving_major_tag) {
+            const moveMajor = async (sha) => {
+              if (!config.moving_major_tag) return;
               const major = `v${version.split('.')[0]}`;
-              const sha = await makeTag(major, `Update ${major} to ${tag}`);
+              const tagSha = await makeTag(major, `Update ${major} to ${tag}`, sha);
               try {
                 await github.rest.git.updateRef({
-                  owner, repo, ref: `tags/${major}`, sha, force: true,
+                  owner, repo, ref: `tags/${major}`, sha: tagSha, force: true,
                 });
               } catch (error) {
                 if (error.status !== 422) throw error;
                 await github.rest.git.createRef({
-                  owner, repo, ref: `refs/tags/${major}`, sha,
+                  owner, repo, ref: `refs/tags/${major}`, sha: tagSha,
                 });
               }
               core.notice(`Moved ${major} to ${tag}.`);
+            };
+
+            if (!config.release_build) {
+              // Idempotent: an ordinary pull request that edits [Unreleased] also
+              // triggers this workflow, finds the tag already present, and stops.
+              try {
+                await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+                core.notice(`${tag} is already tagged - nothing to do.`);
+                return;
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+
+              await github.rest.git.createRef({
+                owner, repo, ref: `refs/tags/${tag}`,
+                sha: await makeTag(tag, `Release ${tag}`, context.sha),
+              });
+              core.notice(`Tagged ${tag}.`);
+              await moveMajor(context.sha);
+
+              // Draft, so publish add-ons can attach artifacts before anyone
+              // sees the release. The finalize job below publishes it.
+              const { data: created } = await github.rest.repos.createRelease({
+                owner, repo,
+                tag_name: tag,
+                name: tag,
+                body: changesLib.notesFor(fileIO.read('CHANGES.md'), version),
+                draft: true,
+                prerelease: false,
+                make_latest: 'true',
+              });
+
+              core.setOutput('version', version);
+              core.setOutput('tag', tag);
+              core.setOutput('release_id', String(created.id));
+              core.setOutput('head', context.sha);
+              return;
             }
 
-            // Draft, so publish add-ons (spec 2) can attach artifacts before
-            // anyone sees the release. The finalize job below publishes it.
-            const { data: created } = await github.rest.repos.createRelease({
-              owner, repo,
-              tag_name: tag,
-              name: tag,
-              body: changesLib.notesFor(fileIO.read('CHANGES.md'), version),
-              draft: true,
-              prerelease: false,
-              make_latest: 'true',
+            // release_build (D26): the release pull request built the release
+            // into a draft. Tag the commit that was built, not this merge.
+            const publishLib = require(`${lib}/publish.js`);
+            let tagCommit = null;
+            try {
+              const { data: ref } = await github.rest.git.getRef({
+                owner, repo, ref: `tags/${tag}`,
+              });
+              // publish makes annotated tags: the ref points at a tag object.
+              tagCommit = ref.object.type === 'tag'
+                ? (await github.rest.git.getTag({ owner, repo, tag_sha: ref.object.sha }))
+                  .data.object.sha
+                : ref.object.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            // getReleaseByTag answers 404 for a draft; list them instead.
+            const releases = (await github.paginate(github.rest.repos.listReleases, {
+              owner, repo, per_page: 100,
+            })).filter((r) => r.tag_name === tag);
+
+            const decision = publishLib.publishDecision({ tag, tagCommit, releases });
+            if (decision.action === 'done') {
+              core.notice(`${tag} is released - nothing to do.`);
+              return;
+            }
+            if (decision.action === 'fail') {
+              core.setFailed(decision.message);
+              return;
+            }
+
+            let head = decision.head;
+            if (decision.action === 'create') {
+              // browser_download_url does not serve drafts; the API does.
+              const { data: raw } = await github.rest.repos.getReleaseAsset({
+                owner, repo, asset_id: decision.recordAssetId,
+                headers: { accept: 'application/octet-stream' },
+              });
+              const record = JSON.parse(Buffer.from(raw).toString('utf8'));
+              let latestAtHead = null;
+              try {
+                const { data } = await github.rest.repos.getContent({
+                  owner, repo, path: 'CHANGES.md', ref: record.head,
+                });
+                latestAtHead = changesLib.latestRelease(
+                  Buffer.from(data.content, 'base64').toString('utf8'),
+                );
+              } catch (error) {
+                if (error.status !== 404 && error.status !== 422) throw error;
+              }
+              const problem = publishLib.validateBuildRecord(record, version, latestAtHead);
+              if (problem) {
+                core.setFailed(`${tag}: ${problem}. Nothing was tagged.`);
+                return;
+              }
+              head = record.head;
+              await github.rest.git.createRef({
+                owner, repo, ref: `refs/tags/${tag}`,
+                sha: await makeTag(tag, `Release ${tag}`, head),
+              });
+              core.notice(`Tagged ${tag} at the built commit ${head}.`);
+            }
+
+            // Idempotent, so a resumed run repeats it harmlessly.
+            await github.rest.repos.updateRelease({
+              owner, repo, release_id: decision.releaseId,
+              tag_name: tag, target_commitish: head,
             });
+            await moveMajor(head);
+
+            const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
+              owner, repo, basehead: `${head}...${context.sha}`,
+            });
+            if (compared.status === 'diverged') {
+              core.notice(`${tag} is not on main's history (the release pull request `
+                + 'was squashed or rebased). The release is correct; git describe on '
+                + 'main will not find it. RELEASING.md recommends a merge commit.');
+            }
 
             core.setOutput('version', version);
             core.setOutput('tag', tag);
-            core.setOutput('release_id', String(created.id));
+            core.setOutput('release_id', String(decision.releaseId));
+            core.setOutput('head', head);
 
   finalize:
     name: Publish the release
@@ -175,7 +264,10 @@ jobs:
       contents: write
     steps:
       # For .github/workflows/lib/assets.js, below.
+      # The tagged head: a re-run reads release_assets the same way.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.publish.outputs.head }}
 
       - uses: actions/setup-node@v7
         with:
@@ -186,6 +278,10 @@ jobs:
           script: |
             const lib = `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib`;
             const assetsLib = require(`${lib}/assets.js`);
+            const fs = require('fs');
+            const releaseLib = require(`${lib}/release.js`);
+            const config = JSON.parse(fs.readFileSync(
+              `${process.env.GITHUB_WORKSPACE}/.github/repo-infra.json`, 'utf8'));
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -196,6 +292,9 @@ jobs:
             // assembler, from the same declarations the `needs:` list above
             // comes from. Never a literal typed a second time by hand.
             const expected = [];
+            // D26: a release the pull request built must carry every file the
+            // repository declared, read at the tagged head.
+            const declared = config.release_build ? (config.release_assets || []) : [];
 
             // The `needs:` list above is ordering, and ordering cannot report
             // its own absence: reverted, it does not fail, it stops waiting.
@@ -208,7 +307,7 @@ jobs:
               { owner, repo, release_id, per_page: 100 },
             );
             const names = attached.map((a) => a.name);
-            const missing = assetsLib.missingAssets(names, expected);
+            const missing = assetsLib.missingAssets(names, [...expected, ...declared]);
             if (missing.length > 0) {
               core.setFailed(
                 `${{ needs.publish.outputs.tag }} is missing ${missing.join(', ')}`
@@ -219,6 +318,17 @@ jobs:
                 + ` .github/repo-infra.json).`
               );
               return;
+            }
+
+            // The build record is never public. Deleting it after publishing
+            // would be impossible with GitHub's immutable releases on.
+            const record = attached.find((a) => a.name === releaseLib.BUILD_RECORD);
+            if (record) {
+              try {
+                await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: record.id });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
             }
 
             const { data: released } = await github.rest.repos.updateRelease({
