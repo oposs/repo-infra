@@ -291,6 +291,25 @@ def classify_contracts(repo_root, result, config=None):
                 "release_build is set and .github/workflows/release-build.yml does "
                 "not exist; the release workflow calls it and GitHub rejects the "
                 "whole workflow. Write it (references/release-flow.md)."))
+    if "publish-gitea-packages" in config.get("publish", []):
+        if not config.get("release_build"):
+            items.append(Item(
+                "gitea-packages-build", "conflict",
+                "publish-gitea-packages uploads the .deb and .rpm files the release "
+                "pull request built, and without release_build nothing builds them "
+                "before it runs, so it would upload a partial set. Set "
+                "\"release_build\": true in .github/repo-infra.json, or remove "
+                "publish-gitea-packages from \"publish\"."))
+        gitea = config.get("gitea_packages")
+        gitea = gitea if isinstance(gitea, dict) else {}
+        absent = [k for k in ("url", "owner") if not gitea.get(k)]
+        if absent:
+            items.append(Item(
+                "gitea-packages-config", "conflict",
+                "publish-gitea-packages reads \"gitea_packages\" in "
+                ".github/repo-infra.json and it lacks " + " and ".join(absent)
+                + "; set \"url\" (the Gitea base URL) and \"owner\" "
+                "(references/conventions.md)."))
     refused = refused_release_files(config.get("release_files", []),
                                     config.get("version_files", []))
     if refused:

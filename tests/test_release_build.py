@@ -135,3 +135,37 @@ def test_a_refused_release_file_is_a_conflict(tmp_path):
     items = classify_contracts(tmp_path, result(tmp_path), config)
     assert [(i.name, i.state) for i in items] == [("release-files", "conflict")]
     assert "./CHANGES.md" in items[0].detail
+
+
+GITEA_OK = {"url": "https://gitea.example.org", "owner": "acme"}
+
+
+def gitea_config(tmp_path, **over):
+    (tmp_path / ".github/workflows").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".github/workflows/release-build.yml").write_text("on: [workflow_call]\n")
+    config = {"publish": ["publish-gitea-packages"], "release_build": True,
+              "gitea_packages": GITEA_OK}
+    config.update(over)
+    return classify_contracts(tmp_path, result(tmp_path), config)
+
+
+def test_gitea_packages_with_release_build_and_config_is_fine(tmp_path):
+    assert gitea_config(tmp_path) == []
+
+
+def test_gitea_packages_without_release_build_is_a_conflict(tmp_path):
+    items = gitea_config(tmp_path, release_build=False)
+    assert [(i.name, i.state) for i in items] == [("gitea-packages-build", "conflict")]
+    assert "release_build" in items[0].detail
+
+
+@pytest.mark.parametrize("packages,absent", [
+    (None, "url and owner"),
+    ({"owner": "acme"}, "url"),
+    ({"url": "https://gitea.example.org"}, "owner"),
+])
+def test_gitea_packages_without_url_or_owner_is_a_conflict(tmp_path, packages, absent):
+    config = {"gitea_packages": packages} if packages is not None else {"gitea_packages": None}
+    items = gitea_config(tmp_path, **config)
+    assert [(i.name, i.state) for i in items] == [("gitea-packages-config", "conflict")]
+    assert absent in items[0].detail
