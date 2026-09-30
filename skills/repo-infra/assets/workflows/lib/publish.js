@@ -27,11 +27,18 @@ function publishDecision({ tag, tagCommit, releases }) {
   if (tagCommit) {
     if (published.length === 1 && drafts.length === 0) return { action: 'done' };
     if (published.length === 0 && drafts.length === 1) {
-      return { action: 'resume', releaseId: drafts[0].id, head: tagCommit };
+      const carried = record(drafts[0]);
+      return {
+        action: 'resume',
+        releaseId: drafts[0].id,
+        head: tagCommit,
+        ...(carried ? { recordAssetId: carried.id } : {}),
+      };
     }
     if (releases.length === 0) {
       return fail(`${tag} exists but no release matches it (was a draft deleted after `
-        + 'tagging?). Create a draft release for the tag, then re-run this workflow.');
+        + 'tagging?). Create a draft release for the tag that carries every '
+        + 'release_assets file, then re-run this workflow.');
     }
     return fail(`${tag}: several releases match it: ${published.length} published, `
       + `${drafts.length} drafts. Delete the extra ones, then re-run.`);
@@ -48,9 +55,19 @@ function publishDecision({ tag, tagCommit, releases }) {
   const asset = record(drafts[0]);
   if (!asset) {
     return fail(`${tag}: the draft release carries no ${BUILD_RECORD}, so the built `
-      + 'commit is unknown. Dispatch Create release PR again.');
+      + `commit is unknown. Push ${tag} at the built commit and re-run this workflow, `
+      + 'or abandon the release with a pull request that moves its entries back '
+      + 'under [Unreleased].');
   }
   return { action: 'create', releaseId: drafts[0].id, recordAssetId: asset.id };
+}
+
+// A hand-pushed tag on another commit than the built one resumes anyway (the
+// tag is the record), so say so instead of doing it silently.
+function recordHeadWarning(tag, tagCommit, recordHead) {
+  if (recordHead === tagCommit) return null;
+  return `${tag} points at ${tagCommit}, but ${BUILD_RECORD} names ${recordHead}. `
+    + 'Publishing continues from the tag.';
 }
 
 function validateBuildRecord(record, version, latestAtHead) {
@@ -66,4 +83,4 @@ function validateBuildRecord(record, version, latestAtHead) {
   return null;
 }
 
-module.exports = { publishDecision, validateBuildRecord };
+module.exports = { publishDecision, recordHeadWarning, validateBuildRecord };

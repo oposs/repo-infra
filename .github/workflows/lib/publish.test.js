@@ -3,7 +3,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { publishDecision, validateBuildRecord } = require('./publish.js');
+const { publishDecision, recordHeadWarning, validateBuildRecord } = require('./publish.js');
 
 const TAG = 'v1.2.0';
 const HEAD = 'a'.repeat(40);
@@ -25,7 +25,9 @@ test('case 1: tag, one published release, no record: done', () => {
 test('case 2: tag and one draft: resume at the tag commit (record or not)', () => {
   for (const record of [true, false]) {
     const d = rel(true, record);
-    assert.deepEqual(decide(HEAD, [d]), { action: 'resume', releaseId: d.id, head: HEAD });
+    const want = { action: 'resume', releaseId: d.id, head: HEAD };
+    if (record) want.recordAssetId = 900;
+    assert.deepEqual(decide(HEAD, [d]), want);
   }
 });
 
@@ -92,4 +94,20 @@ test('a record without a commit sha is refused', () => {
 test('a head whose CHANGES.md is at another version is refused', () => {
   assert.match(validateBuildRecord({ head: HEAD }, '1.2.0', { version: '1.1.0' }), /1\.1\.0/);
   assert.match(validateBuildRecord({ head: HEAD }, '1.2.0', null), /no released version/);
+});
+
+test('recovery hints name ways out that prepare does not refuse', () => {
+  const noRelease = decide(HEAD, []).message;
+  assert.match(noRelease, /carries every release_assets file/);
+  const noRecord = decide(null, [rel(true, false)]).message;
+  assert.match(noRecord, /Push v1\.2\.0 at the built commit/);
+  assert.match(noRecord, /back under \[Unreleased\]/);
+  assert.doesNotMatch(noRecord, /Dispatch/);
+});
+
+test('recordHeadWarning: silent when the tag is at the built commit, else names both', () => {
+  assert.equal(recordHeadWarning(TAG, HEAD, HEAD), null);
+  const other = 'b'.repeat(40);
+  const w = recordHeadWarning(TAG, HEAD, other);
+  assert.ok(w.includes(HEAD) && w.includes(other));
 });

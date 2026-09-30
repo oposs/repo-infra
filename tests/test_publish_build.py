@@ -55,6 +55,7 @@ const calls = [];
 const outputs = {};
 const failures = [];
 const notices = [];
+const warnings = [];
 const notFound = () => { const e = new Error('Not Found'); e.status = 404; return e; };
 const github = {
   paginate: async (fn) => (fn === 'listReleases' ? state.releases : []),
@@ -86,12 +87,13 @@ const github = {
 };
 const core = {
   setFailed: (m) => failures.push(m), notice: (m) => notices.push(m),
+  warning: (m) => warnings.push(m),
   setOutput: (k, v) => { outputs[k] = v; },
 };
 const context = { repo: { owner: 'o', repo: 'r' }, sha: '%s' };
 (async () => {
 %s
-})().then(() => console.log(JSON.stringify({ calls, outputs, failures, notices })));
+})().then(() => console.log(JSON.stringify({ calls, outputs, failures, notices, warnings })));
 """ % (json.dumps(state), MAIN, publish_script())
     path = tmp_path / "publish.js"
     path.write_text(harness, encoding="utf-8")
@@ -160,9 +162,17 @@ def test_a_whole_workflow_rerun_after_tagging_resumes_the_draft(tmp_path):
     # the build record. A whole-workflow re-run must finish it, not strand it.
     out = run(tmp_path, tag=HEAD, releases=[draft()], record={"head": "b" * 40})
     assert out["failures"] == []
-    assert called(out, "createTag") == [] and called(out, "getReleaseAsset") == []
+    assert called(out, "createTag") == []
     assert out["outputs"] == {"version": "1.2.0", "tag": "v1.2.0", "release_id": "5",
                               "head": HEAD}
+    # The record names another commit than the tag: resume, but say so.
+    (warning,) = out["warnings"]
+    assert HEAD in warning and "b" * 40 in warning
+
+
+def test_a_resume_at_the_built_commit_warns_of_nothing(tmp_path):
+    out = run(tmp_path, tag=HEAD, releases=[draft()], record={"head": HEAD})
+    assert out["failures"] == [] and out["warnings"] == []
 
 
 def test_a_lightweight_tag_is_taken_as_the_tag_commit(tmp_path):
