@@ -3371,12 +3371,12 @@ These tasks change production servers and GitHub settings. The agent drafts each
 
 ### Task 13: Gitea bot users, tokens and the GitHub secret
 
-- [ ] **Step 1:** In the Gitea web UI (as admin): create user `oposs-package-writer` and user `oposs-package-reader` (no password login, mail to the owner). In organisation `oposs` create team `package-writers` (unit **Packages**: write, every other unit: none) with the writer as member, and team `package-readers` (Packages: read, others none) with the reader.
+- [ ] **Step 1:** In the Gitea web UI (as admin): create a writer bot user and a reader bot user (no password login, mail to the owner). In organisation `oposs` create a writer team (unit **Packages**: write, every other unit: none) with the writer as member, and a reader team (Packages: read, others none) with the reader.
 - [ ] **Step 2:** Log in as each bot (or use `sudo -u git gitea admin user generate-access-token` on the server, owner-confirmed) and create a token: writer scope `write:package`, reader scope `read:package`. Store both in the owner's password store.
 - [ ] **Step 3: Verify the writer from outside**
 
 ```bash
-curl -sS -o /dev/null -w '%{http_code}\n' -u "oposs-package-writer:$WRITER" \
+curl -sS -o /dev/null -w '%{http_code}\n' -u "<writer bot login>:$WRITER" \
   https://gitea.oetiker.ch/api/v1/packages/oposs
 ```
 
@@ -3386,9 +3386,9 @@ Expected: `200`.
 
 ```bash
 gh secret set GITEA_PACKAGE_TOKEN --org oposs --visibility all
-gh variable set GITEA_PACKAGE_USER --org oposs --visibility all --body oposs-package-writer
+gh variable set GITEA_PACKAGE_USER --org oposs --visibility all --body '<writer bot login>'
 gh secret set GITEA_PACKAGE_TOKEN -R oetiker/mdmost
-gh variable set GITEA_PACKAGE_USER -R oetiker/mdmost --body oposs-package-writer
+gh variable set GITEA_PACKAGE_USER -R oetiker/mdmost --body '<writer bot login>'
 ```
 
 Verify: `gh secret list -R oetiker/mdmost` lists `GITEA_PACKAGE_TOKEN`; `gh variable list -R oetiker/mdmost` lists `GITEA_PACKAGE_USER`.
