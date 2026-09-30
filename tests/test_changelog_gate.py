@@ -23,12 +23,13 @@ def job():
 
 
 def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), config=None,
-         statuses=(), head_changes=SAME):
+         statuses=(), head_changes=SAME, base_changes=SAME):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
     script = job()["steps"][-1]["with"]["script"]
-    contents = {"CHANGES.md@b": SAME, "CHANGES.md@h": head_changes}
+    contents = {"CHANGES.md@b": base_changes, "CHANGES.md@h": head_changes}
+    contents = {k: v for k, v in contents.items() if v is not None}
     if config is not None:
         contents[".github/repo-infra.json@b"] = json.dumps(config)
     pr = {"number": 1, "labels": [{"name": n} for n in labels], "user": {"login": login},
@@ -122,3 +123,24 @@ def test_a_forks_release_branch_gets_the_ordinary_rules(tmp_path):
 def test_an_ordinary_pull_request_is_checked_as_before(tmp_path):
     assert gate(tmp_path, head_ref="fix/x", login="oetiker", head_changes=MORE) == []
     assert len(gate(tmp_path, head_ref="fix/x", login="oetiker")) == 1
+
+
+BARE = "# Changes\n\n## Unreleased\n\n- x\n"
+
+
+def test_the_pull_request_that_introduces_the_heading_passes(tmp_path):
+    assert gate(tmp_path, head_ref="repo-infra/apply", login="oetiker",
+                base_changes=BARE, head_changes=MORE) == []
+    assert gate(tmp_path, head_ref="repo-infra/apply", login="oetiker",
+                base_changes=None, head_changes=MORE) == []
+
+
+def test_introducing_an_empty_heading_still_fails(tmp_path):
+    failures = gate(tmp_path, head_ref="repo-infra/apply", login="oetiker",
+                    base_changes=BARE, head_changes=SAME)
+    assert len(failures) == 1 and "adds nothing" in failures[0]
+
+
+def test_a_head_without_the_heading_fails_by_name(tmp_path):
+    failures = gate(tmp_path, head_ref="fix/x", login="oetiker", head_changes=BARE)
+    assert len(failures) == 1 and "no '## [Unreleased]' heading" in failures[0]

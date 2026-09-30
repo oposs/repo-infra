@@ -28,6 +28,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The changelog check no longer fails with "CHANGES.md has no '## [Unreleased]' heading" on the pull request that introduces that heading. A pull request that removes the heading fails with a message naming it.
+
 ## 0.2.0 - 2026-09-28
 ### New
 - The `ci-man` add-on (D23). A repository with its manual in `docs/manual.md`
