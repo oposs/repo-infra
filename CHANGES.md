@@ -28,6 +28,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `apply` works in a linked git worktree. It stopped there with `NotADirectoryError` when it installed the branch ruleset or prepared a merge of a locally edited file.
 - The changelog check no longer fails with "CHANGES.md has no '## [Unreleased]' heading" on the pull request that introduces that heading. A pull request that removes the heading fails with a message naming it.
 
 ## 0.2.0 - 2026-09-28

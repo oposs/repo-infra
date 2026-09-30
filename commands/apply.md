@@ -71,7 +71,8 @@ item pending, and a bare `apply` followed by push and PR is enough.
 ## If it exits with `NeedsMerge`
 
 The file it names carries local edits. Read the three files it wrote under
-`.git/repo-infra/merge/` (`{name}.base`, `{name}.new`, `{name}.current`), merge
+`repo-infra/merge/` in the git dir (`{name}.base`, `{name}.new`,
+`{name}.current`; the error prints their full paths), merge
 the new asset into the local edits by hand, save the result anywhere, and hand
 it back: `apply --item <name> --from <path to your merge>`. The merged file must
 carry the new marker version. For an asset that ships several files, such as

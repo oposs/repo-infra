@@ -1,6 +1,7 @@
 # tests/test_apply_admin.py
 import json
 import pathlib
+import subprocess
 
 import pytest
 
@@ -205,6 +206,26 @@ def test_the_ruleset_is_installed_once_the_workflows_are_confirmed_on_the_branch
     expected = json.loads((ASSETS / "gh/ruleset-main.json").read_text(encoding="utf-8"))
     assert staged == expected
     assert pathlib.Path(input_path).is_relative_to(tmp_path / ".git")
+
+
+def test_the_ruleset_payload_is_staged_in_a_worktree_too(tmp_path):
+    """In a linked worktree `.git` is a file naming the real git dir; staging
+    under `<root>/.git/...` failed there with NotADirectoryError (found
+    converting mdmost from a worktree)."""
+    def git(*args, cwd):
+        subprocess.run(("git",) + args, cwd=cwd, check=True, capture_output=True)
+    main = tmp_path / "main"
+    main.mkdir()
+    git("init", "-q", cwd=main)
+    git("-c", "user.email=t@example.com", "-c", "user.name=T",
+        "commit", "-q", "--allow-empty", "-m", "init", cwd=main)
+    tree = tmp_path / "tree"
+    git("worktree", "add", "-q", str(tree), cwd=main)
+    assert (tree / ".git").is_file()
+    recorder = Recorder({LIST: "[]", "rulesets": faithful_ruleset()})
+    apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tree)
+    input_path = next(c[c.index("--input") + 1] for c in recorder.calls if "--input" in c)
+    assert pathlib.Path(input_path).is_relative_to(main / ".git/worktrees")
 
 
 def test_the_ruleset_creation_is_refused_when_the_server_drops_a_required_context(tmp_path):

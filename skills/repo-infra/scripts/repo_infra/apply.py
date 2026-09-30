@@ -17,7 +17,9 @@ import subprocess
 from .markers import parse_markers
 from .remote import protects_default_branch
 
-MERGE_DIR = pathlib.Path(".git/repo-infra/merge")
+# Below the repository's git dir, which is `.git/` in a plain clone and
+# `.git/worktrees/<name>/` of the main checkout in a linked worktree.
+MERGE_DIR = pathlib.Path("repo-infra/merge")
 
 # Reported as `conflict` by state.py when absent; required here so the ruleset
 # is never enabled before the checks it requires can actually report.
@@ -119,8 +121,21 @@ def _targets_for(name, rendered):
     return targets
 
 
+def _git_dir(repo_root):
+    """The git dir, read without running git so a bare `.git/` in a test
+    still counts. In a linked worktree `.git` is a file saying
+    `gitdir: <path>`, and writing below it fails with NotADirectoryError."""
+    dot_git = pathlib.Path(repo_root) / ".git"
+    if dot_git.is_file():
+        line = dot_git.read_text(encoding="utf-8").strip()
+        if not line.startswith("gitdir:"):
+            raise ApplyError(f"{dot_git}: not a gitdir pointer")
+        return (pathlib.Path(repo_root) / line[len("gitdir:"):].strip()).resolve()
+    return dot_git
+
+
 def _scratch_dir(repo_root):
-    return pathlib.Path(repo_root) / MERGE_DIR
+    return _git_dir(repo_root) / MERGE_DIR
 
 
 def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
@@ -429,7 +444,7 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
 
 def _stage_ruleset_payload(repo_root, payload):
     """`gh api --input` takes a path, not a string, so the payload is staged
-    under .git/, like every other scratch file."""
+    under the git dir, like every other scratch file."""
     scratch = _scratch_dir(repo_root)
     scratch.mkdir(parents=True, exist_ok=True)
     target = scratch / "ruleset.json"
