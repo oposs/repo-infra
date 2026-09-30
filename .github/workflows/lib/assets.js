@@ -42,4 +42,11 @@ function missingAssets(names, patterns) {
   );
 }
 
-module.exports = { matches, missingAssets };
+// Names of attached assets whose upload did not finish. GitHub keeps an asset
+// in state `starter` or `open` when the upload broke half way, and it still
+// lists by name, so a name check alone lets a broken file go public.
+function unfinishedAssets(attached) {
+  return (attached || []).filter((a) => a.state !== 'uploaded').map((a) => a.name);
+}
+
+module.exports = { matches, missingAssets, unfinishedAssets };

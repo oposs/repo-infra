@@ -75,6 +75,18 @@
               return;
             }
 
+            // A name check passes an asset whose upload broke half way, so
+            // check that every attached file is complete as well.
+            const unfinished = assetsLib.unfinishedAssets(attached);
+            if (unfinished.length > 0) {
+              core.setFailed(
+                `${{ needs.publish.outputs.tag }} carries ${unfinished.join(', ')}`
+                + ` whose upload did not finish -- it stays a draft. Delete`
+                + ` the asset and re-run the job that attached it.`
+              );
+              return;
+            }
+
             // The build record is never public. Deleting it after publishing
             // would be impossible with GitHub's immutable releases on.
             const record = attached.find((a) => a.name === releaseLib.BUILD_RECORD);

@@ -194,6 +194,16 @@ jobs:
             }
 
             let head = decision.head;
+            if (decision.action === 'resume' && decision.recordAssetId) {
+              const { data: raw } = await github.rest.repos.getReleaseAsset({
+                owner, repo, asset_id: decision.recordAssetId,
+                headers: { accept: 'application/octet-stream' },
+              });
+              const warning = publishLib.recordHeadWarning(
+                tag, decision.head, JSON.parse(Buffer.from(raw).toString('utf8')).head,
+              );
+              if (warning) core.warning(warning);
+            }
             if (decision.action === 'create') {
               // browser_download_url does not serve drafts; the API does.
               const { data: raw } = await github.rest.repos.getReleaseAsset({
@@ -329,6 +339,18 @@ jobs:
                 + ` list with the jobs in this workflow) or it attached`
                 + ` something under another name (see publish_local in`
                 + ` .github/repo-infra.json).`
+              );
+              return;
+            }
+
+            // A name check passes an asset whose upload broke half way, so
+            // check that every attached file is complete as well.
+            const unfinished = assetsLib.unfinishedAssets(attached);
+            if (unfinished.length > 0) {
+              core.setFailed(
+                `${{ needs.publish.outputs.tag }} carries ${unfinished.join(', ')}`
+                + ` whose upload did not finish -- it stays a draft. Delete`
+                + ` the asset and re-run the job that attached it.`
               );
               return;
             }

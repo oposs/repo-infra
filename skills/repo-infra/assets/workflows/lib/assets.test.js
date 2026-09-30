@@ -69,6 +69,15 @@ test('missing patterns keep their declared order', () => {
   assert.deepEqual(assets.missingAssets(['x'], ['a', 'b', 'c']), ['a', 'b', 'c']);
 });
 
+test('unfinishedAssets names every asset whose state is not uploaded', () => {
+  assert.deepEqual(assets.unfinishedAssets([
+    { name: 'a.deb', state: 'uploaded' },
+    { name: 'b.deb', state: 'starter' },
+    { name: 'c.deb', state: 'open' },
+  ]), ['b.deb', 'c.deb']);
+  assert.deepEqual(assets.unfinishedAssets(undefined), []);
+});
+
 test('absent arguments are not a crash', () => {
   // finalize passes whatever the API returned. An empty release must produce a
   // failing assertion, never a TypeError that reads like an infrastructure bug.

@@ -398,7 +398,8 @@ const failures = [];
 const deleted = [];
 const order = [];
 const github = {
-  paginate: async () => attached.map((name, i) => ({ name, id: i + 1 })),
+  paginate: async () => attached.map((a, i) => (typeof a === 'string'
+    ? { name: a, id: i + 1, state: 'uploaded' } : { id: i + 1, ...a })),
   rest: { repos: { listReleaseAssets: 'listReleaseAssets',
                    deleteReleaseAsset: async (a) => { order.push('delete'); deleted.push(a.asset_id); },
                    updateRelease: async (a) => { order.push('publish'); published.push(a); return { data: { html_url: 'u' } }; } } },
@@ -624,3 +625,12 @@ def test_the_crates_io_addon_fails_when_crates_io_does_not_answer(tmp_path):
     out = _run_crates_publish(tmp_path, [], status_other="503")
     assert out["pending_rc"] != 0
     assert "HTTP 503" in out["stderr"]
+
+
+def test_the_generated_finalize_refuses_an_asset_whose_upload_did_not_finish(tmp_path):
+    # GitHub lists a half-uploaded asset by name, so the name check passes it.
+    out = _run_finalize(tmp_path, ["a.tar.gz", {"name": "x_1_amd64.deb", "state": "starter"}],
+                        local=())
+    assert out["published"] == 0
+    assert len(out["failures"]) == 1
+    assert "x_1_amd64.deb" in out["failures"][0] and "a.tar.gz" not in out["failures"][0]
