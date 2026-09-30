@@ -157,6 +157,11 @@ do. Without `release_build` that is the merge commit, as before. A
 whole-workflow re-run finishes a stopped release only when every `publish_local`
 job skips what an earlier attempt already uploaded.
 
+With `release_build`, publish also fails on every run while the tag for the newest
+released version in `CHANGES.md` exists but has no GitHub release, as after a tag
+pushed by hand. It stays red until the next release creates one; other tags are
+never looked at.
+
 Between the merge and `finalize` the Homebrew formula on `main` points at
 release URLs that answer 404, because the release is still a draft. Usually
 that lasts the few minutes publish takes. A failed add-on keeps the release a

@@ -99,3 +99,6 @@ formula.
   publish run; or, for a release that is already out under another tag, push
   `vX.Y.Z` by hand (the ruleset covers the branch, not tags); or, to abandon
   it, merge a pull request that moves its entries back under `[Unreleased]`.
+- A tag pushed by hand for the newest released version, without a GitHub
+  release, makes every publish run fail until the next release creates one.
+  Other tags are never looked at.
