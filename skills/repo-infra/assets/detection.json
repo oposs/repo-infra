@@ -30,6 +30,7 @@
       "id": "rust",
       "signals": {"all": ["Cargo.toml"]},
       "ci_block": "ci-rust",
+      "cargo_lock": true,
       "version_files": [
         {
           "path": "Cargo.toml",

@@ -83,7 +83,10 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   tags, and a floating major tag is a promise to keep it working forever.
 - `version_files` -- where the release workflow writes the version, and what
   it reads back to confirm the write took (D5/D6 and the module docstring in
-  `apply.py`).
+  `apply.py`). In a Rust repository with a `Cargo.lock`, detection adds one
+  `Cargo.lock` entry for the root package and for every workspace member with
+  `version.workspace = true`; the release PR commits only these paths, so a
+  lockfile left out keeps the old version.
 - `publish` -- which publish add-ons this repository's release workflow
   assembles, by id (`manifest.json` `publish_blocks`). This branch makes the
   key meaningful: `["publish-source-tarball"]` attaches the `make dist`

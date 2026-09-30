@@ -1,5 +1,5 @@
 name: Create release PR
-# repo-infra: release-pr v3
+# repo-infra: release-pr v4
 #
 # Half one of a two-step release. main is protected and GITHUB_TOKEN cannot be
 # given a ruleset bypass: the bypass list takes users, teams and GitHub Apps,
@@ -154,15 +154,11 @@ jobs:
             core.setOutput('date', date);
             core.notice(`Preparing ${latest} -> v${version} (${date}).`);
 
-      # Ecosystems whose lockfile can only be rewritten by their own tool run
-      # here, between the rewrite and the commit. repo-infra has none. A Rust
-      # repository gets, verbatim:
-      #
-      #   - uses: dtolnay/rust-toolchain@stable
-      #   - run: cargo update --workspace
-      #
-      # Not --offline: the resolve needs the registry. Not || true: swallowing
-      # that failure is what tagged mdmost v0.1.1 with an inconsistent lockfile.
+      # A lockfile that only its own tool can rewrite gets that tool as a step
+      # here, between the rewrite and the commit; repo-infra has none. The
+      # commit below takes exactly CHANGES.md and the version_files paths, so
+      # such a step only lands if its file is listed there. Rust needs no step:
+      # detection lists Cargo.lock in version_files, with one regex per crate.
 
       - name: Commit and open the pull request
         uses: actions/github-script@v9
@@ -181,7 +177,7 @@ jobs:
             const branch = `release/v${version}`;
 
             // A fixed list, read off disk after every step that may have touched
-            // it. This is what lets a tool step (cargo update) participate without
+            // it. This is what lets a tool step participate without
             // the commit step needing to know it ran.
             const paths = ['CHANGES.md', ...config.version_files.map((f) => f.path)];
             const files = paths.map((p) => ({

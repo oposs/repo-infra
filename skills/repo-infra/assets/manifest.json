@@ -1,7 +1,7 @@
 {
   "assets": {
     "release-pr": {
-      "version": 3,
+      "version": 4,
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
     },

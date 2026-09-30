@@ -107,8 +107,12 @@ def test_finish_downloads_both_artifact_kinds():
 
 
 def test_the_rust_lockfile_note_survives_in_the_variant():
-    # Its absence is what shipped mdmost v0.1.1 with a stale Cargo.lock.
-    assert "cargo update --workspace" in VARIANT.read_text(encoding="utf-8")
+    # Its absence is what shipped mdmost v0.1.1 with a stale Cargo.lock. The
+    # note once advised a `cargo update` step, whose Cargo.lock the commit
+    # step never took unless version_files listed it.
+    note = "detection lists Cargo.lock in version_files"
+    assert note in VARIANT.read_text(encoding="utf-8")
+    assert note in (VARIANT.parent / "release-pr.yml").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("entry", [

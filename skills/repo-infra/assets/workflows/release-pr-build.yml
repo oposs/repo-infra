@@ -221,15 +221,11 @@ jobs:
             core.setOutput('date', date);
             core.notice(`Preparing ${latest} -> v${version} (${date}).`);
 
-      # Ecosystems whose lockfile can only be rewritten by their own tool run
-      # here, between the rewrite and the commit. A Rust repository gets,
-      # verbatim:
-      #
-      #   - uses: dtolnay/rust-toolchain@stable
-      #   - run: cargo update --workspace
-      #
-      # Not --offline: the resolve needs the registry. Not || true: swallowing
-      # that failure is what tagged mdmost v0.1.1 with an inconsistent lockfile.
+      # A lockfile that only its own tool can rewrite gets that tool as a step
+      # here, between the rewrite and the commit; repo-infra has none. The
+      # commit below takes exactly CHANGES.md and the version_files paths, so
+      # such a step only lands if its file is listed there. Rust needs no step:
+      # detection lists Cargo.lock in version_files, with one regex per crate.
 
       - name: Commit the release branch
         id: commit
