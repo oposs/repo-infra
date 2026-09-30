@@ -37,7 +37,7 @@ def draft(record=True, rid=5, published=False):
 
 
 def run(tmp_path, *, release_build=True, tag=None, releases=(), record=None,
-        changes_at_head=CHANGES, compare="ahead", lightweight=False, head_exists=True):
+        changes_at_head=CHANGES, compare="ahead", lightweight=False, head_exists=True, record_throws=False):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -48,7 +48,8 @@ def run(tmp_path, *, release_build=True, tag=None, releases=(), record=None,
         {"version_files": [], "release_build": release_build}))
     state = {"tag": tag, "releases": list(releases), "record": record,
              "changesAtHead": changes_at_head, "compare": compare,
-             "lightweight": lightweight, "headExists": head_exists}
+             "lightweight": lightweight, "headExists": head_exists,
+             "recordThrows": record_throws}
     harness = """
 const state = %s;
 const calls = [];
@@ -75,6 +76,7 @@ const github = {
     repos: {
       listReleases: 'listReleases',
       getReleaseAsset: async (a) => { calls.push(['getReleaseAsset', a]);
+        if (state.recordThrows) throw new Error('503');
         return { data: Buffer.from(JSON.stringify(state.record)) }; },
       getContent: async (a) => { calls.push(['getContent', a]);
         if (state.changesAtHead === null) throw notFound();
@@ -213,3 +215,12 @@ def test_finalize_checks_out_the_tagged_head():
 
 def test_publish_exposes_the_head():
     assert workflow()["jobs"]["publish"]["outputs"]["head"] == "${{ steps.publish.outputs.head }}"
+
+
+def test_a_failed_record_download_does_not_stop_a_resume(tmp_path):
+    out = run(tmp_path, tag=HEAD, releases=[draft()], record={"head": HEAD},
+              record_throws=True)
+    assert out["failures"] == []
+    assert out["outputs"]["head"] == HEAD
+    (warning,) = out["warnings"]
+    assert "503" in warning and "release-build.json" in warning

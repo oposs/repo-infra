@@ -195,14 +195,21 @@ jobs:
 
             let head = decision.head;
             if (decision.action === 'resume' && decision.recordAssetId) {
-              const { data: raw } = await github.rest.repos.getReleaseAsset({
-                owner, repo, asset_id: decision.recordAssetId,
-                headers: { accept: 'application/octet-stream' },
-              });
-              const warning = publishLib.recordHeadWarning(
-                tag, decision.head, JSON.parse(Buffer.from(raw).toString('utf8')).head,
-              );
-              if (warning) core.warning(warning);
+              // Only a courtesy: a failed download or a corrupt record must not
+              // stop a recovery run that does not need the record.
+              try {
+                const { data: raw } = await github.rest.repos.getReleaseAsset({
+                  owner, repo, asset_id: decision.recordAssetId,
+                  headers: { accept: 'application/octet-stream' },
+                });
+                const warning = publishLib.recordHeadWarning(
+                  tag, decision.head, JSON.parse(Buffer.from(raw).toString('utf8')).head,
+                );
+                if (warning) core.warning(warning);
+              } catch (error) {
+                core.warning(`${tag}: could not compare ${releaseLib.BUILD_RECORD} `
+                  + `with the tag commit (${error.message}). Publishing continues from the tag.`);
+              }
             }
             if (decision.action === 'create') {
               // browser_download_url does not serve drafts; the API does.
