@@ -153,7 +153,9 @@ If that commit does not exist in the repository, publish fails with
 `release-build.json names <sha>, which does not exist in this repository`.
 Repository-owned `publish_local` jobs check out
 `ref: ${{ needs.publish.outputs.head }}`, the tagged commit, like the add-ons
-do. Without `release_build` that is the merge commit, as before.
+do. Without `release_build` that is the merge commit, as before. A
+whole-workflow re-run finishes a stopped release only when every `publish_local`
+job skips what an earlier attempt already uploaded.
 
 Between the merge and `finalize` the Homebrew formula on `main` points at
 release URLs that answer 404, because the release is still a draft. Usually
@@ -183,7 +185,9 @@ on `main`.
 
 The add-on uploads every `.deb` and `.rpm` release asset to a Gitea package
 registry, which signs them with its own key. No repository holds a signing
-key. The release stays a draft until the upload succeeded.
+key. The release stays a draft until the upload succeeded. The add-on uploads
+what the release pull request built, so it needs `release_build`; `check`
+reports a conflict without it, and when `gitea_packages` lacks `url` or `owner`.
 
     "publish": ["publish-gitea-packages"],
     "gitea_packages": {

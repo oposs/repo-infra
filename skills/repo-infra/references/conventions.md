@@ -311,6 +311,12 @@ path. What it must do:
   paths, and each one is listed in `release_files`.
 - Run with `contents: read` and no secrets.
 
+Upload `release-files` from a staging directory whose tree holds the repository
+paths, because `upload-artifact` strips the common parent directory: uploading
+`Formula/mdmost.rb` directly yields `mdmost.rb`, which is refused as
+undeclared. Files with the same name in several `release-asset-*` artifacts
+overwrite each other.
+
 A file named `release-build.json` is refused: that name is the build record
 the release workflow writes itself.
 
@@ -324,6 +330,7 @@ the release workflow writes itself.
 
 - `lint`: crates that `rust-check` runs `cargo fmt --check -p` and
   `cargo clippy --all-targets -p <name> --no-deps -- -D warnings` on.
+  Leaving `lint` out lints the whole workspace.
 - `test`: crates that `rust-test` runs `cargo test -p` on, one matrix leg per
   crate. Required whenever the key is present.
 - `tested_elsewhere`: workspace members whose tests run outside `rust-test`,
