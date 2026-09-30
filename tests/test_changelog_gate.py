@@ -68,9 +68,11 @@ BUILT = [{"context": "release-built", "state": "success", "creator": {"login": B
 
 
 def test_the_job_runs_on_release_branches_now():
-    condition = job()["if"]
-    assert "startsWith(github.head_ref, 'release/') ||" in condition
-    assert "no-changelog" in condition
+    # The harness never evaluates this expression, so only an exact comparison
+    # notices `&&` in place of `||` or a dropped `!`: either skips every
+    # labelled release pull request or gates none.
+    assert job()["if"] == ("startsWith(github.head_ref, 'release/') || "
+                           "!contains(github.event.pull_request.labels.*.name, 'no-changelog')")
 
 
 def test_the_job_may_read_statuses():
