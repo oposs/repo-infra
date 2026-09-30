@@ -158,7 +158,7 @@ jobs:
                 + 'Re-run the failed jobs of its Publish release run; if it is '
                 + `already out under another tag, push v${untagged} by hand; to `
                 + 'abandon it, merge a pull request that moves its entries back '
-                + 'under [Unreleased]. RELEASING.md has the details.'
+                + 'under [Unreleased].'
               );
               return;
             }
