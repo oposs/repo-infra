@@ -188,7 +188,7 @@ function treeVerdict({ tag, head, mergeSha, mergeTree, headTree }) {
 // open a parked run reads status `completed`, conclusion `action_required`.
 // Once it merges or closes, GitHub turns the same run into conclusion
 // `failure` with no jobs (seen on oetiker/repo-infra-spike, run 36740994466),
-// so the caller counts the jobs of each failed run into `jobCount`.
+// so fetchParkedRuns counts the jobs of each failed run into `jobCount`.
 const isParked = (run) => run.status === 'action_required'
   || run.conclusion === 'action_required'
   || (run.conclusion === 'failure' && run.jobCount === 0);
@@ -201,10 +201,35 @@ function parkedRuns(runs, { fullName, branch = null, keep = [] }) {
     && !keep.includes(run.head_branch));
 }
 
+// The parked runs of this repository's release branches, or of one branch.
+// Prepare deletes those of abandoned branches, publish those of the branch it
+// released; both need `actions: write` for that, and the listing here needs
+// `actions: read`. Only the failed runs of release branches have their jobs
+// counted, one request each.
+async function fetchParkedRuns(github, { owner, repo, branch = null }) {
+  const listed = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+    owner, repo, event: 'pull_request', ...(branch === null ? {} : { branch }), per_page: 100,
+  });
+  const runs = [];
+  for (const run of listed) {
+    if (!(run.head_branch || '').startsWith('release/')) continue;
+    if (run.conclusion !== 'failure') {
+      runs.push(run);
+      continue;
+    }
+    const { data } = await github.rest.actions.listJobsForWorkflowRun({
+      owner, repo, run_id: run.id, per_page: 1,
+    });
+    runs.push({ ...run, jobCount: data.total_count });
+  }
+  return parkedRuns(runs, { fullName: `${owner}/${repo}`, branch });
+}
+
 module.exports = {
   BUILD_RECORD, BOT, isReleasePr, blockingReleasePr, untaggedRelease,
   staleDrafts, ownDrafts, refusedReleaseFiles, undeclaredReleaseFiles,
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
   staleReleasePrs, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
+  fetchParkedRuns,
 };

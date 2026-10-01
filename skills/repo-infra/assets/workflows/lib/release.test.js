@@ -246,3 +246,57 @@ test('parkedRuns keeps only parked pull_request runs of this repository\'s relea
   assert.deepEqual(r.parkedRuns(runs, { fullName: REPO, keep: ['release/v1.1.0'] })
     .map((x) => x.id), [1, 2, 8]);
 });
+
+// A fake Octokit for fetchParkedRuns: paginate lists the runs, and
+// listJobsForWorkflowRun answers each run's job count from `jobs`.
+function runsGithub(runs, jobs = {}) {
+  const calls = { listed: null, counted: [] };
+  return {
+    calls,
+    rest: { actions: {
+      listWorkflowRunsForRepo: 'listWorkflowRunsForRepo',
+      listJobsForWorkflowRun: async (a) => {
+        calls.counted.push(a.run_id);
+        return { data: { total_count: jobs[a.run_id] || 0 } };
+      },
+    } },
+    paginate: async (route, params) => {
+      if (route !== 'listWorkflowRunsForRepo') throw new Error(`unexpected route ${route}`);
+      calls.listed = params;
+      return runs;
+    },
+  };
+}
+
+test('fetchParkedRuns counts the jobs of failed release runs and keeps the parked ones', async () => {
+  const github = runsGithub([
+    run(1, 'release/v1.2.0'), // parked, pull request open
+    run(2, 'release/v1.2.0', { conclusion: 'failure' }), // parked, pull request closed
+    run(3, 'release/v1.2.0', { conclusion: 'failure' }), // approved, ran, failed
+    run(4, 'feature/x', { conclusion: 'failure' }), // not a release branch: not counted
+    run(5, 'release/v1.1.0', { conclusion: 'success' }),
+  ], { 3: 2 });
+  const parked = await r.fetchParkedRuns(github, { owner: 'oetiker', repo: 'mdmost' });
+  assert.deepEqual(parked.map((x) => x.id), [1, 2]);
+  assert.deepEqual(github.calls.counted, [2, 3]);
+  assert.deepEqual(github.calls.listed,
+    { owner: 'oetiker', repo: 'mdmost', event: 'pull_request', per_page: 100 });
+});
+
+test('fetchParkedRuns for one branch lists that branch only', async () => {
+  const github = runsGithub([
+    run(1, 'release/v1.2.0', { conclusion: 'failure' }),
+    run(2, 'release/v1.1.0'),
+  ]);
+  const parked = await r.fetchParkedRuns(github, {
+    owner: 'oetiker', repo: 'mdmost', branch: 'release/v1.2.0',
+  });
+  assert.deepEqual(parked.map((x) => x.id), [1]);
+  assert.equal(github.calls.listed.branch, 'release/v1.2.0');
+});
+
+test('fetchParkedRuns does not write the job count into the listed runs', async () => {
+  const runs = [run(1, 'release/v1.2.0', { conclusion: 'failure' })];
+  await r.fetchParkedRuns(runsGithub(runs), { owner: 'oetiker', repo: 'mdmost' });
+  assert.equal('jobCount' in runs[0], false);
+});

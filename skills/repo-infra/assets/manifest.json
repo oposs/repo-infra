@@ -1,16 +1,9 @@
 {
   "assets": {
     "release-pr": {
-      "version": 4,
+      "version": 5,
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
-    },
-    "release-pr-build": {
-      "version": 1,
-      "source": "workflows/release-pr-build.yml",
-      "target": ".github/workflows/release-pr.yml",
-      "variant_of": "release-pr",
-      "when": "release_build"
     },
     "changelog": {
       "version": 4,

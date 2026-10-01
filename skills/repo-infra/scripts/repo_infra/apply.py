@@ -204,13 +204,8 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     # outdated
     installed = (pathlib.Path(repo_root) / path).read_text(encoding="utf-8")
     found = parse_markers(installed)
-    # A variant switch (D26): the file carries the sibling's marker, and the
-    # merge base is the sibling's own source at that version -- replacing the
-    # file whole would drop a local edit such as the `cargo update` step.
-    own = next((m for m in found if m.asset == name), None)
-    base_marker = own or found[0]
-    source = _asset_source(plugin_root, base_marker.asset)
-    base = base_version_of(plugin_root, source, base_marker.version) if source else None
+    source = _asset_source(plugin_root, found[0].asset)
+    base = base_version_of(plugin_root, source, found[0].version) if source else None
     if base is not None and base == installed:
         return [write_asset(repo_root, path, expected)]
 

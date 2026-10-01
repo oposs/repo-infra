@@ -24,7 +24,7 @@ def workflow():
 
 def test_the_guard_gathers_its_ignore_ids_through_the_tested_function(workflow):
     assert "checks.guardIgnoreIds(github, {" in workflow
-    assert "ignoreCheckRunIds }" in workflow, "the gathered ids must reach waitForChecks"
+    assert "{ ignoreCheckRunIds }" in workflow, "the gathered ids must reach checkState"
     assert "guardIgnoreIds" in CHECKS_JS.read_text(encoding="utf-8")
 
 
@@ -45,8 +45,7 @@ def test_the_guard_passes_the_workflow_ref_it_needs_to_find_earlier_attempts(wor
 
 
 def test_the_workflow_may_read_the_actions_api(workflow):
-    """Listing this workflow's runs and their jobs is `actions: read`. Without
-    it the guard step dies on a 403 instead of guarding.
-    """
+    """Listing this workflow's runs and their jobs is `actions: read`; prepare
+    also deletes parked runs, which is `actions: write` on that job (D28)."""
     permissions = workflow.split("permissions:", 1)[1].split("\njobs:", 1)[0]
     assert "actions: read" in permissions

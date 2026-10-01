@@ -142,13 +142,6 @@ def _collapse_dir_asset(name, entries):
 
 def classify_files(repo_root, rendered, manifest):
     dir_assets = _dir_asset_names(manifest)
-    # A variant and its base share a target (D26). A file carrying the other
-    # one's marker is a variant switch, not an unmanaged file.
-    siblings = {}
-    for name, spec in manifest.get("assets", {}).items():
-        if spec.get("variant_of"):
-            siblings[name] = spec["variant_of"]
-            siblings[spec["variant_of"]] = name
     per_path = []
     for path, expected_text in sorted(rendered.items()):
         installed = pathlib.Path(repo_root) / path
@@ -168,11 +161,6 @@ def classify_files(repo_root, rendered, manifest):
                                   f"{path} filters on paths; required checks would leave "
                                   "every unmatched pull request pending forever. Move "
                                   "the condition into the job.")))
-            elif have is None and siblings.get(marker.asset) in found:
-                other = siblings[marker.asset]
-                per_path.append((path, Item(marker.asset, "outdated",
-                                  f"variant switch: {other} v{found[other]} installed, "
-                                  f"{marker.asset} v{marker.version} selected")))
             elif have is None:
                 per_path.append((path, Item(marker.asset, "conflict",
                                   f"{path} exists but is not managed by repo-infra")))

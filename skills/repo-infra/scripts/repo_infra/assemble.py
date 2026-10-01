@@ -202,7 +202,7 @@ def assemble_publish(assets_root, addons, manifest, local=()):
 
 
 def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
-               publish_local=(), ci_local=False, release_build=False):
+               publish_local=(), ci_local=False):
     """Every file this repository should have, keyed by repo-relative path.
 
     `publish`, `build`, `ci` and `publish_local` are decisions the repository
@@ -223,29 +223,11 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
     its job runs.
 
     `ci_local` adds the `ci-local` seam after every other block (D25), so
-    the project's own jobs join the generated `needs:` list. `release_build`
-    selects the `release-pr-build` variant (D26).
+    the project's own jobs join the generated `needs:` list.
     """
     assets_root = pathlib.Path(assets_root)
-    # Two assets may share a target (D26): a variant carries `variant_of`
-    # (the asset it replaces) and `when` (the config flag that selects it).
-    # The selection rule decides, never the order of the manifest's entries.
-    options = {"release_build": release_build}
-    chosen = set()
-    for name, spec in manifest["assets"].items():
-        when = spec.get("when")
-        if when is None:
-            continue
-        if when not in options:
-            raise AssemblyError(f"asset {name}: unknown selector {when!r}")
-        if options[when]:
-            chosen.add(name)
-    replaced = {manifest["assets"][name]["variant_of"] for name in chosen}
-
     files = {}
     for name, spec in manifest["assets"].items():
-        if name in replaced or (spec.get("when") and name not in chosen):
-            continue
         source = assets_root / spec["source"]
         if spec.get("kind") == "dir":
             if not source.is_dir():
