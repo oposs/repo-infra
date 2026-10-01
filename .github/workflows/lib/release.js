@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v5
+// repo-infra: workflow-lib v6
 'use strict';
 
 // Decisions of a release pull request that builds its release (D26). Each is
@@ -102,8 +102,109 @@ function releaseBuilt(statuses) {
     && s.state === 'success' && s.creator && s.creator.login === BOT);
 }
 
+// --- D28: one release flow, tested before the merge ------------------------
+
+const CHANGED_AFTER_BUILD = 'the release branch changed after it was built (the Update '
+  + 'branch button does this); close this pull request and dispatch Create release PR again';
+
+function releaseTag(ref) {
+  return ref.replace(/^release\//, '');
+}
+
+function staleMessage(tag) {
+  return `main moved after ${tag} was built; close this pull request and dispatch `
+    + 'Create release PR again';
+}
+
+// ci-passed and changelog-updated on a release pull request. The test results
+// do not count: finish built and tested exactly the head that carries
+// release-built, and the up-to-date rule needs it not to be behind main. The
+// answer must equal finishVerdict's and staleReleasePrs', or an approved
+// parked run would turn their red check green.
+function releaseModeVerdict({ statuses, behindBy, tag }) {
+  if (!releaseBuilt(statuses)) return { ok: false, message: CHANGED_AFTER_BUILD };
+  if (behindBy > 0) return { ok: false, message: staleMessage(tag) };
+  return {
+    ok: true,
+    message: `${tag}: this head was built and tested, and main has not moved since.`,
+  };
+}
+
+// finish opens the pull request first and judges it afterwards, so a release
+// that went stale while it built is visible and says why.
+function finishVerdict({ behindBy, tag }) {
+  if (behindBy > 0) {
+    return { conclusion: 'failure', title: `main moved after ${tag} was built`,
+      summary: staleMessage(tag) };
+  }
+  return { conclusion: 'success', title: `${tag} is built and tested`,
+    summary: `Create release PR built and tested ${tag} on the current main.` };
+}
+
+// release-pr-current: every open release pull request main has moved past.
+function staleReleasePrs(entries, fullName) {
+  return entries
+    .filter(({ pr, behindBy }) => isReleasePr(pr, fullName) && behindBy > 0)
+    .map(({ pr }) => {
+      const tag = releaseTag(pr.head.ref);
+      return { number: pr.number, sha: pr.head.sha,
+        title: `main moved after ${tag} was built`, summary: staleMessage(tag) };
+    });
+}
+
+// A re-run helps only when publish failed for a reason other than the tree
+// comparison; after that one, abandoning is the way out.
+function untaggedMessage(version) {
+  return `v${version} is in CHANGES.md on main but has no tag. If its Publish release run `
+    + 'failed for another reason than the tree comparison, re-run its failed jobs; if it '
+    + `is already out under another tag, push v${version} by hand; to abandon it, merge a `
+    + 'pull request that moves its entries back under [Unreleased].';
+}
+
+// The release pull request whose merge put this version on main, found from
+// the recorded head. Not context.sha: a failed first publish followed by an
+// ordinary merge starts a new run on a later commit.
+function releasePrMergeCommit(prs, { fullName, tag }) {
+  const found = prs.find((pr) => isReleasePr(pr, fullName)
+    && pr.head.ref === `release/${tag}` && pr.merged_at);
+  return found ? found.merge_commit_sha : null;
+}
+
+// With the up-to-date rule on, the merge commit's tree is the built head's
+// tree (also after a squash or rebase). A mismatch means the rule was off.
+function treeVerdict({ tag, head, mergeSha, mergeTree, headTree }) {
+  if (!mergeSha) {
+    return `${tag}: no merged release pull request contains ${head}, so publish cannot `
+      + 'compare main with the release that was built. Nothing was tagged.';
+  }
+  if (mergeTree === headTree) return null;
+  return `main at ${mergeSha} does not match the release built from ${head}; merge a pull `
+    + `request that moves the ${tag} entries in CHANGES.md back under [Unreleased], then `
+    + 'dispatch Create release PR again';
+}
+
+// The pull_request runs of a release branch park for an approval nobody needs
+// to give. A run someone approved ran, and is kept. While the pull request is
+// open a parked run reads status `completed`, conclusion `action_required`.
+// Once it merges or closes, GitHub turns the same run into conclusion
+// `failure` with no jobs (seen on oetiker/repo-infra-spike, run 36740994466),
+// so the caller counts the jobs of each failed run into `jobCount`.
+const isParked = (run) => run.status === 'action_required'
+  || run.conclusion === 'action_required'
+  || (run.conclusion === 'failure' && run.jobCount === 0);
+
+function parkedRuns(runs, { fullName, branch = null, keep = [] }) {
+  return runs.filter((run) => run.event === 'pull_request' && isParked(run)
+    && Boolean(run.head_repository) && run.head_repository.full_name === fullName
+    && typeof run.head_branch === 'string' && run.head_branch.startsWith('release/')
+    && (branch === null || run.head_branch === branch)
+    && !keep.includes(run.head_branch));
+}
+
 module.exports = {
   BUILD_RECORD, BOT, isReleasePr, blockingReleasePr, untaggedRelease,
   staleDrafts, ownDrafts, refusedReleaseFiles, undeclaredReleaseFiles,
   decodeText, releaseBuilt,
+  CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
+  staleReleasePrs, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
 };

@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v5
+// repo-infra: workflow-lib v6
 'use strict';
 
 const test = require('node:test');
@@ -114,4 +114,135 @@ test('releaseBuilt needs a successful release-built status from the bot', () => 
   assert.equal(r.releaseBuilt([s('release-built', 'failure', r.BOT)]), false);
   assert.equal(r.releaseBuilt([s('ci-passed', 'success', r.BOT)]), false);
   assert.equal(r.releaseBuilt([]), false);
+});
+
+// --- D28 ---------------------------------------------------------------
+
+const BUILT = [{ context: 'release-built', state: 'success', creator: { login: r.BOT } }];
+const STALE = 'main moved after v1.2.0 was built; close this pull request and dispatch '
+  + 'Create release PR again';
+
+test('releaseTag reads the tag off a release branch', () => {
+  assert.equal(r.releaseTag('release/v1.2.0'), 'v1.2.0');
+});
+
+test('release mode passes a built head that main has not left behind', () => {
+  const v = r.releaseModeVerdict({ statuses: BUILT, behindBy: 0, tag: 'v1.2.0' });
+  assert.equal(v.ok, true);
+});
+
+test('release mode fails a head without the release-built status', () => {
+  assert.deepEqual(r.releaseModeVerdict({ statuses: [], behindBy: 0, tag: 'v1.2.0' }),
+    { ok: false, message: r.CHANGED_AFTER_BUILD });
+});
+
+test('release mode fails a built head that main moved past', () => {
+  assert.deepEqual(r.releaseModeVerdict({ statuses: BUILT, behindBy: 3, tag: 'v1.2.0' }),
+    { ok: false, message: STALE });
+});
+
+test('release mode names the missing status first (Update branch)', () => {
+  assert.equal(r.releaseModeVerdict({ statuses: [], behindBy: 2, tag: 'v1.2.0' }).message,
+    r.CHANGED_AFTER_BUILD);
+});
+
+test('the Update-branch text is the D26 text, unchanged', () => {
+  assert.equal(r.CHANGED_AFTER_BUILD, 'the release branch changed after it was built (the '
+    + 'Update branch button does this); close this pull request and dispatch Create release '
+    + 'PR again');
+});
+
+test('finish passes a release main has not moved past', () => {
+  const v = r.finishVerdict({ behindBy: 0, tag: 'v1.2.0' });
+  assert.equal(v.conclusion, 'success');
+});
+
+test('finish fails a release main moved past while it built, with the stale text', () => {
+  assert.deepEqual(r.finishVerdict({ behindBy: 1, tag: 'v1.2.0' }), {
+    conclusion: 'failure', title: 'main moved after v1.2.0 was built', summary: STALE,
+  });
+});
+
+test('staleReleasePrs picks the bot release pull requests that are behind', () => {
+  const p = (number, ref, sha, opts) => ({ ...pr(ref, opts), number, head: {
+    ...pr(ref, opts).head, sha } });
+  const entries = [
+    { pr: p(1, 'release/v1.2.0', 'aaa'), behindBy: 2 }, // stale
+    { pr: p(2, 'release/v1.3.0', 'bbb'), behindBy: 0 }, // current
+    { pr: p(3, 'release/x', 'ccc', { login: 'oetiker' }), behindBy: 5 }, // a person's
+    { pr: p(4, 'release/y', 'ddd', { repo: 'fork/mdmost' }), behindBy: 5 }, // a fork's
+  ];
+  assert.deepEqual(r.staleReleasePrs(entries, REPO), [{
+    number: 1, sha: 'aaa', title: 'main moved after v1.2.0 was built', summary: STALE,
+  }]);
+});
+
+test('the untagged refusal no longer starts with re-run and names the tree comparison', () => {
+  const m = r.untaggedMessage('1.2.0');
+  assert.ok(m.startsWith('v1.2.0 is in CHANGES.md on main but has no tag. '));
+  assert.match(m, /failed for another reason than the tree comparison/);
+  assert.match(m, /push v1\.2\.0 by hand/);
+  assert.match(m, /back under \[Unreleased\]/);
+  assert.doesNotMatch(m, /^v1\.2\.0[^.]*\. Re-run/);
+});
+
+const merged = (ref, sha, opts = {}) => ({ ...pr(ref, opts), merged_at: opts.mergedAt
+  === undefined ? '2026-10-01T10:00:00Z' : opts.mergedAt, merge_commit_sha: sha });
+
+test('releasePrMergeCommit finds the merged release pull request of this version', () => {
+  const prs = [
+    merged('release/v1.2.0', 'closed1', { mergedAt: null }), // an abandoned attempt
+    merged('release/v1.1.0', 'old'), // another version
+    merged('release/v1.2.0', 'person', { login: 'oetiker' }),
+    merged('release/v1.2.0', 'mmm'),
+  ];
+  assert.equal(r.releasePrMergeCommit(prs, { fullName: REPO, tag: 'v1.2.0' }), 'mmm');
+  assert.equal(r.releasePrMergeCommit([], { fullName: REPO, tag: 'v1.2.0' }), null);
+});
+
+test('treeVerdict passes equal trees, also after a squash merge', () => {
+  assert.equal(r.treeVerdict({ tag: 'v1.2.0', head: 'h', mergeSha: 'squash', mergeTree: 't',
+    headTree: 't' }), null);
+});
+
+test('treeVerdict names main, the head and the way out when the trees differ', () => {
+  assert.equal(r.treeVerdict({ tag: 'v1.2.0', head: 'h', mergeSha: 'm', mergeTree: 't1',
+    headTree: 't2' }), 'main at m does not match the release built from h; merge a pull '
+    + 'request that moves the v1.2.0 entries in CHANGES.md back under [Unreleased], then '
+    + 'dispatch Create release PR again');
+});
+
+test('treeVerdict refuses when no merged release pull request contains the head', () => {
+  const m = r.treeVerdict({ tag: 'v1.2.0', head: 'h', mergeSha: null, mergeTree: null,
+    headTree: 't' });
+  assert.match(m, /no merged release pull request contains h/);
+  assert.match(m, /Nothing was tagged/);
+});
+
+const run = (id, branch, opts = {}) => ({
+  id, event: opts.event || 'pull_request', head_branch: branch,
+  status: opts.status || 'completed', conclusion: opts.conclusion === undefined
+    ? 'action_required' : opts.conclusion,
+  head_repository: opts.repo === null ? null : { full_name: opts.repo || REPO },
+  ...(opts.jobCount === undefined ? {} : { jobCount: opts.jobCount }),
+});
+
+test('parkedRuns keeps only parked pull_request runs of this repository\'s release branches', () => {
+  const runs = [
+    run(1, 'release/v1.2.0'), // parked
+    run(2, 'release/v1.2.0', { status: 'action_required', conclusion: null }), // parked, other spelling
+    run(3, 'release/v1.2.0', { conclusion: 'success' }), // someone approved it; it ran
+    run(4, 'feature/x'), // not a release branch
+    run(5, 'release/v1.2.0', { repo: 'fork/mdmost' }), // a fork's
+    run(6, 'release/v1.2.0', { event: 'push' }),
+    run(7, 'release/v1.1.0'),
+    run(8, 'release/v1.2.0', { conclusion: 'failure', jobCount: 0 }), // parked, PR merged
+    run(9, 'release/v1.2.0', { conclusion: 'failure', jobCount: 2 }), // approved, ran, failed
+    run(10, 'release/v1.2.0', { conclusion: 'failure' }), // jobs not counted: kept
+  ];
+  assert.deepEqual(r.parkedRuns(runs, { fullName: REPO }).map((x) => x.id), [1, 2, 7, 8]);
+  assert.deepEqual(r.parkedRuns(runs, { fullName: REPO, branch: 'release/v1.2.0' })
+    .map((x) => x.id), [1, 2, 8]);
+  assert.deepEqual(r.parkedRuns(runs, { fullName: REPO, keep: ['release/v1.1.0'] })
+    .map((x) => x.id), [1, 2, 8]);
 });
