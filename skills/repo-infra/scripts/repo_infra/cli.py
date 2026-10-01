@@ -5,7 +5,14 @@ import json
 import pathlib
 
 from . import migrate, report
-from .apply import ApplyError, apply_admin_item, apply_file_item, commit_item, ensure_branch
+from .apply import (
+    ApplyError,
+    apply_admin_item,
+    apply_file_item,
+    commit_item,
+    ensure_branch,
+    installed_with,
+)
 from .assemble import render_all
 from .detect import Detection
 from .remote import Facts, Gh
@@ -157,13 +164,21 @@ def apply_command(args):
         items = classify(args.root, rendered, manifest, facts)
 
     names = [args.item] if args.item else _ordered_names(items)
+    # The states in `items` were read before anything was written; a block
+    # whose file an earlier item already wrote whole is reported, not redone.
+    written_by = {}
     for name in names:
         if name in ADMIN:
             print(apply_admin_item(Gh(), repo, name, facts, ASSETS, args.root))
             continue
+        writer = installed_with(args.root, name, rendered, written_by)
+        if writer:
+            print(f"{name}: installed with {writer}")
+            continue
         written = apply_file_item(args.root, name, rendered, items, plugin_root,
                                   merged=args.from_file)
         commit_item(args.root, name, written)
+        written_by.update(dict.fromkeys(written, name))
         print(f"applied {name}")
     return 0
 

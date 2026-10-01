@@ -227,3 +227,36 @@ def test_the_assembled_build_is_installed_after_the_rename(tmp_path, monkeypatch
     text = (root / ".github/workflows/release-build.yml").read_text()
     assert "# repo-infra: release-build v1" in text
     assert "uses: ./.github/workflows/release-build-local.yml" in text
+
+
+def test_a_bare_apply_installs_every_block_of_an_assembled_file(tmp_path, monkeypatch, capsys):
+    # ci.yml and release-build.yml are each assembled from a frame plus
+    # blocks. The first item writes the whole file, so the blocks after it
+    # have nothing left to commit; they must not fail on an empty commit.
+    root = repo(tmp_path, {"release_build": ["release-source-tarball"],
+                           "release_assets": ["*.tar.gz"], "version_files": []})
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "release-source-tarball: installed with release-build" in out
+    assert git(root, "status", "--porcelain") == ""
+    subjects = git(root, "log", "--format=%s").splitlines()
+    assert "Install release-build from the repo-infra standard" in subjects
+    assert not any("release-source-tarball" in s for s in subjects)
+    code, items = run_check(root, monkeypatch, capsys, facts())
+    assert [n for n, i in items.items() if i["state"] in ("missing", "outdated")] == []
+
+
+def test_a_bare_apply_migrates_a_d26_repository_then_installs_the_files(tmp_path, monkeypatch,
+                                                                         capsys):
+    root = repo(tmp_path, {"release_build": True, "version_files": []},
+                {".github/workflows/release-build.yml": D26_BUILD})
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "applied release-build-rename, release-build-config" in out
+    assert "release-build-local-job: installed with release-build" in out
+    assert git(root, "status", "--porcelain") == ""
+    assert (root / ".github/workflows/release-build-local.yml").read_text() == D26_BUILD
+    code, items = run_check(root, monkeypatch, capsys, facts())
+    assert [n for n, i in items.items() if i["state"] in ("missing", "outdated")] == []

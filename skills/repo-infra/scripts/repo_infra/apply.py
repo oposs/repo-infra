@@ -138,6 +138,26 @@ def _scratch_dir(repo_root):
     return _git_dir(repo_root) / MERGE_DIR
 
 
+def installed_with(repo_root, name, rendered, written_by):
+    """The item of this run that already wrote every file `name` lives in.
+
+    An assembled file carries a frame and its blocks; the first of them to be
+    applied writes the whole file, which leaves the others nothing to commit.
+    `written_by` maps each path written so far to the item that wrote it.
+    Returns None while any of `name`'s files still differs from the rendering.
+    """
+    if not written_by:
+        return None
+    targets = _targets_for(name, rendered)
+    if not all(path in written_by for path, _ in targets):
+        return None
+    for path, expected in targets:
+        target = pathlib.Path(repo_root) / path
+        if not target.is_file() or target.read_text(encoding="utf-8") != expected:
+            return None
+    return written_by[targets[0][0]]
+
+
 def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
     state = next((i.state for i in items if i.name == name), None)
     if state is None:

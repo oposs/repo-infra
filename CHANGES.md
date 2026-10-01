@@ -36,6 +36,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- `apply` without `--item` no longer stops with "git commit -m Install ci-lib from the repo-infra standard ... failed" when a workflow file has more than one block to install, as `ci.yml` and `release-build.yml` do. The first item writes the whole file; each further block of that file is reported as "installed with" that item instead of getting a commit of its own.
 - When `apply` first writes `.github/repo-infra.json` for a Rust repository with a `Cargo.lock`, `version_files` now lists `Cargo.lock` too: one entry for the main crate and one for each workspace crate with `version.workspace = true`. Before, the release pull request left `Cargo.lock` at the old version unless someone added the entry by hand.
 - `apply` works in a linked git worktree. It stopped there with `NotADirectoryError` when it installed the branch ruleset or prepared a merge of a locally edited file.
 - The changelog check no longer fails with "CHANGES.md has no '## [Unreleased]' heading" on the pull request that introduces that heading. A pull request that removes the heading fails with a message naming it.
