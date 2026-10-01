@@ -36,16 +36,10 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+# Every job grants its own permissions; the workflow level stays read-only.
 permissions:
-  contents: write
-  pull-requests: write
-  # The guard reads the check runs on the dispatched commit, and the job ids
-  # of this workflow's runs on it: this run, so the guard can exclude itself,
-  # and every earlier attempt, whose failed build and test jobs sit on the
-  # same commit.
   checks: read
   actions: read
-  statuses: write
 
 jobs:
   prepare:
@@ -55,8 +49,12 @@ jobs:
     permissions:
       contents: write
       pull-requests: read
+      # The guard reads the check runs on the dispatched commit, and the job
+      # ids of this workflow's runs on it: this run, so the guard can exclude
+      # itself, and every earlier attempt, whose failed build and test jobs
+      # sit on the same commit.
       checks: read
-      # Deleting the parked runs of abandoned release branches.
+      # Also deleting the parked runs of abandoned release branches.
       actions: write
     outputs:
       version: ${{ steps.prepare.outputs.version }}

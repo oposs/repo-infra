@@ -68,7 +68,9 @@ def test_the_union_covers_every_permission_ci_yml_asks_for(tmp_path):
 
 def test_permissions_per_job():
     wf = workflow()
-    assert wf["permissions"]["checks"] == "read" and wf["permissions"]["actions"] == "read"
+    # Every job grants its own; a write at workflow level would be dead.
+    assert wf["permissions"] == {"checks": "read", "actions": "read"}
+    assert all("permissions" in job for job in wf["jobs"].values())
     assert wf["jobs"]["prepare"]["permissions"]["actions"] == "write"
     assert wf["jobs"]["finish"]["permissions"] == {
         "contents": "write", "pull-requests": "write", "statuses": "write", "checks": "write"}
