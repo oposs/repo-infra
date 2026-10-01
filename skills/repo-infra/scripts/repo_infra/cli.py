@@ -155,7 +155,7 @@ def apply_command(args):
     ensure_branch(args.root)
     if migrations and (args.item is None or args.item in migrate.NAMES):
         # One config edit, one commit: the items are views of the same file.
-        written = migrate.apply_migrations(args.root, _config(args.root), config)
+        written = migrate.apply_migrations(args.root, _config(args.root), config, rendered)
         migrate.commit_migration(args.root, written)
         print("applied " + ", ".join(i.name for i in migrations))
         if args.item:

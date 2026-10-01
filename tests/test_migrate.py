@@ -260,3 +260,46 @@ def test_a_bare_apply_migrates_a_d26_repository_then_installs_the_files(tmp_path
     assert (root / ".github/workflows/release-build-local.yml").read_text() == D26_BUILD
     code, items = run_check(root, monkeypatch, capsys, facts())
     assert [n for n, i in items.items() if i["state"] in ("missing", "outdated")] == []
+
+
+D26_RELEASE_PR = ("# repo-infra: release-pr-build v1\nname: Create release PR\n"
+                  "on:\n  workflow_dispatch:\njobs: {}\n")
+
+
+def test_check_reports_the_d26_release_pr_as_a_migration(tmp_path, monkeypatch, capsys):
+    root = repo(tmp_path, {"release_build": [], "version_files": []},
+                {".github/workflows/release-pr.yml": D26_RELEASE_PR})
+    assert migrations(root) == {"release-pr-replace": "outdated"}
+    _code, items = run_check(root, monkeypatch, capsys, facts())
+    assert items["release-pr-replace"]["state"] == "outdated"
+    # The file is the migration's to replace, not an unmanaged conflict.
+    assert items.get("release-pr", {}).get("state") != "conflict"
+
+
+def test_a_release_pr_with_another_unknown_marker_stays_a_conflict(tmp_path, monkeypatch,
+                                                                   capsys):
+    root = repo(tmp_path, {"release_build": [], "version_files": []},
+                {".github/workflows/release-pr.yml":
+                    D26_RELEASE_PR.replace("release-pr-build v1", "release-pr-build v2")})
+    assert migrations(root) == {}
+    _code, items = run_check(root, monkeypatch, capsys, facts())
+    assert items["release-pr"]["state"] == "conflict"
+    assert "not managed by repo-infra" in items["release-pr"]["detail"]
+
+
+def test_a_bare_apply_replaces_the_d26_release_pr(tmp_path, monkeypatch, capsys):
+    root = repo(tmp_path, {"release_build": True, "version_files": []},
+                {".github/workflows/release-build.yml": D26_BUILD,
+                 ".github/workflows/release-pr.yml": D26_RELEASE_PR})
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "release-pr-replace" in out
+    text = (root / ".github/workflows/release-pr.yml").read_text()
+    version = MANIFEST["assets"]["release-pr"]["version"]
+    assert f"# repo-infra: release-pr v{version}" in text
+    assert "release-pr-build" not in text
+    assert git(root, "status", "--porcelain") == ""
+    code, items = run_check(root, monkeypatch, capsys, facts())
+    assert items["release-pr"]["state"] == "ok"
+    assert [n for n, i in items.items() if i["state"] in ("missing", "outdated")] == []

@@ -81,10 +81,14 @@ item pending, and a bare `apply` followed by push and PR is enough.
 `apply` refuses while a release is in progress (`release-in-progress`): let
 the open release pull request merge and publish, or close it, first. The
 migration items (`release-build-rename`, `release-build-config`,
-`publish-source-tarball`, `release-assets`, `cargo-lock-version-files`) are
-one commit: they edit `.github/repo-infra.json`, and `release-build-rename`
-renames D26's `release-build.yml` to `release-build-local.yml` with `git mv`
-and no content change. After it, `apply` installs the assembled
+`publish-source-tarball`, `release-assets`, `cargo-lock-version-files`,
+`release-pr-replace`) are one commit: they edit `.github/repo-infra.json`,
+`release-build-rename` renames D26's `release-build.yml` to
+`release-build-local.yml` with `git mv` and no content change, and
+`release-pr-replace` replaces a `release-pr.yml` whose only marker is
+`release-pr-build v1` (D26) whole with the current `release-pr` asset. A
+`release-pr.yml` with any other marker `check` does not know stays a
+`conflict`. After it, `apply` installs the assembled
 `release-build.yml`. Afterwards apply `required-checks` (confirm first): the
 ruleset gains the up-to-date rule.
 

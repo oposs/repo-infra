@@ -3,8 +3,10 @@
 D24 to D27 never shipped, so a repository on them was converted from the
 branch. `check` reports what moves and `apply` moves it: the
 .github/repo-infra.json keys D28 replaced, the Cargo.lock entries detection
-proposes, and D26's project-owned release-build.yml, which becomes
-release-build-local.yml unchanged. Everything is rendered from the migrated
+proposes, D26's project-owned release-build.yml, which becomes
+release-build-local.yml unchanged, and D26's release-pr.yml (marker
+`release-pr-build v1`), which is replaced whole by the release-pr asset.
+Everything is rendered from the migrated
 config, so `check` shows the files as they will be after the move.
 """
 
@@ -13,14 +15,15 @@ import json
 import pathlib
 import re
 
-from .apply import CONFIG, TRAILER, ApplyError, _git
+from .apply import CONFIG, TRAILER, ApplyError, _git, write_asset
 from .markers import parse_markers
 from .state import Item, unmanaged
 
 D26_BUILD = ".github/workflows/release-build.yml"
 LOCAL_BUILD = ".github/workflows/release-build-local.yml"
+RELEASE_PR = ".github/workflows/release-pr.yml"
 NAMES = ("release-build-rename", "release-build-config", "publish-source-tarball",
-         "release-assets", "cargo-lock-version-files")
+         "release-assets", "cargo-lock-version-files", "release-pr-replace")
 # Items whose change alters how a release in flight would finish.
 RELEASE_FLOW = frozenset({"release-pr", "changelog", "ci", "release-publish",
                           "release-build", "workflow-lib", *NAMES})
@@ -31,6 +34,16 @@ _RELEASE = re.compile(r"^## (\d+\.\d+\.\d+) - \d{4}-\d{2}-\d{2}\s*$")
 def _is_d26_build(repo_root):
     path = pathlib.Path(repo_root) / D26_BUILD
     return path.is_file() and not parse_markers(path.read_text(encoding="utf-8"))
+
+
+def _is_d26_release_pr(repo_root):
+    """Exactly the marker D26 shipped. Any other unknown marker stays a conflict:
+    `release-pr-build` is not an alias of `release-pr`."""
+    path = pathlib.Path(repo_root) / RELEASE_PR
+    if not path.is_file():
+        return False
+    found = parse_markers(path.read_text(encoding="utf-8"))
+    return [(m.asset, m.version) for m in found] == [("release-pr-build", 1)]
 
 
 def _lock_crate(entry):
@@ -98,6 +111,14 @@ def migrated_config(repo_root, config, result, manifest):
                 + ", ".join(_lock_crate(e) for e in lock)
                 + "; the release pull request would leave Cargo.lock at the old version. "
                 "apply adds them."))
+
+    if _is_d26_release_pr(repo_root):
+        version = manifest["assets"]["release-pr"]["version"]
+        items.append(Item(
+            "release-pr-replace", "outdated",
+            f"{RELEASE_PR} carries release-pr-build v1, D26's release workflow, which "
+            "calls workflow library functions D28 removed. apply replaces it whole with "
+            f"release-pr v{version}."))
     return new, items
 
 
@@ -106,20 +127,30 @@ def renaming(migrations):
 
 
 def without_superseded(items, migrations):
-    """The D26 build reads as an unmanaged release-build.yml until it is renamed.
+    """D26's files read as unmanaged until their migration acts on them.
 
-    Every block of the assembled file says so, the frame and each add-on, and
-    each one is the rename's to resolve.
+    The D26 build is reported by every block of the assembled release-build.yml,
+    the frame and each add-on, and D26's release-pr.yml by the release-pr item;
+    each of those is the migration's to resolve.
     """
-    if not renaming(migrations):
-        return items
-    return [i for i in items if not (i.state == "conflict" and i.detail == unmanaged(D26_BUILD))]
+    superseded = set()
+    if renaming(migrations):
+        superseded.add(unmanaged(D26_BUILD))
+    if any(i.name == "release-pr-replace" for i in migrations):
+        superseded.add(unmanaged(RELEASE_PR))
+    return [i for i in items if not (i.state == "conflict" and i.detail in superseded)]
 
 
-def apply_migrations(repo_root, config, effective):
-    """Perform the migration and stage it; returns the paths to commit."""
+def apply_migrations(repo_root, config, effective, rendered):
+    """Perform the migration and stage it; returns the paths to commit.
+
+    `rendered` is the rendering of the migrated config; D26's release-pr.yml
+    is replaced by its release-pr.yml.
+    """
     root = pathlib.Path(repo_root)
     written = []
+    if _is_d26_release_pr(root):
+        written.append(write_asset(root, RELEASE_PR, rendered[RELEASE_PR]))
     if effective.get("release_build_local") and not config.get("release_build_local") \
             and _is_d26_build(root):
         _git(root, "mv", D26_BUILD, LOCAL_BUILD)
