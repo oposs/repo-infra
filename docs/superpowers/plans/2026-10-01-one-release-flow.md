@@ -129,7 +129,12 @@ Task order differs from the brief in one place: the single `release-pr.yml` (Tas
   - `untaggedMessage(version: string) -> string`
   - `releasePrMergeCommit(prs, { fullName, tag }) -> string|null`
   - `treeVerdict({ tag, head, mergeSha, mergeTree, headTree }) -> string|null` (null = trees match)
-  - `parkedRuns(runs, { fullName, branch = null, keep = [] }) -> run[]`
+  - `parkedRuns(runs, { fullName, branch = null, keep = [] }) -> run[]`. A
+    run is parked when its conclusion is `action_required`, or when its
+    conclusion is `failure` and `run.jobCount === 0`: GitHub turns a parked run
+    into `failure` with no jobs once its pull request merges or closes (spike,
+    2026-10-01, run 36740994466). Callers set `jobCount` from
+    `listJobsForWorkflowRun` for every `failure` run before calling.
 - Produces (checks.js): `guardVerdict(state) -> string|null`; `waitForChecks` no longer exists.
 
 - [ ] **Step 1: Bump the library to v6**
@@ -254,6 +259,7 @@ const run = (id, branch, opts = {}) => ({
   status: opts.status || 'completed', conclusion: opts.conclusion === undefined
     ? 'action_required' : opts.conclusion,
   head_repository: opts.repo === null ? null : { full_name: opts.repo || REPO },
+  ...(opts.jobCount === undefined ? {} : { jobCount: opts.jobCount }),
 });
 
 test('parkedRuns keeps only parked pull_request runs of this repository\'s release branches', () => {
@@ -265,12 +271,15 @@ test('parkedRuns keeps only parked pull_request runs of this repository\'s relea
     run(5, 'release/v1.2.0', { repo: 'fork/mdmost' }), // a fork's
     run(6, 'release/v1.2.0', { event: 'push' }),
     run(7, 'release/v1.1.0'),
+    run(8, 'release/v1.2.0', { conclusion: 'failure', jobCount: 0 }), // parked, PR merged
+    run(9, 'release/v1.2.0', { conclusion: 'failure', jobCount: 2 }), // approved, ran, failed
+    run(10, 'release/v1.2.0', { conclusion: 'failure' }), // jobs not counted: kept
   ];
-  assert.deepEqual(r.parkedRuns(runs, { fullName: REPO }).map((x) => x.id), [1, 2, 7]);
+  assert.deepEqual(r.parkedRuns(runs, { fullName: REPO }).map((x) => x.id), [1, 2, 7, 8]);
   assert.deepEqual(r.parkedRuns(runs, { fullName: REPO, branch: 'release/v1.2.0' })
-    .map((x) => x.id), [1, 2]);
+    .map((x) => x.id), [1, 2, 8]);
   assert.deepEqual(r.parkedRuns(runs, { fullName: REPO, keep: ['release/v1.1.0'] })
-    .map((x) => x.id), [1, 2]);
+    .map((x) => x.id), [1, 2, 8]);
 });
 ```
 
@@ -404,10 +413,14 @@ function treeVerdict({ tag, head, mergeSha, mergeTree, headTree }) {
 }
 
 // The pull_request runs of a release branch park for an approval nobody needs
-// to give. A run someone approved ran, and is kept. GitHub reports a parked
-// run with status or conclusion `action_required`, depending on the endpoint.
+// to give. A run someone approved ran, and is kept. While the pull request is
+// open a parked run reads status `completed`, conclusion `action_required`.
+// Once it merges or closes, GitHub turns the same run into conclusion
+// `failure` with no jobs (seen on oetiker/repo-infra-spike, run 36740994466),
+// so the caller counts the jobs of each failed run into `jobCount`.
 const isParked = (run) => run.status === 'action_required'
-  || run.conclusion === 'action_required';
+  || run.conclusion === 'action_required'
+  || (run.conclusion === 'failure' && run.jobCount === 0);
 
 function parkedRuns(runs, { fullName, branch = null, keep = [] }) {
   return runs.filter((run) => run.event === 'pull_request' && isParked(run)
@@ -1620,9 +1633,18 @@ jobs:
             // every parked release run belongs to a closed one. A failure here
             // is a warning: the runs are clutter, not state.
             try {
-              const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-                owner, repo, event: 'pull_request', status: 'action_required', per_page: 100,
-              });
+              // No status filter: a parked run of a closed pull request
+              // reads conclusion `failure`, so the jobs of each failed run
+              // are counted (releaseLib.parkedRuns).
+              const runs = (await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+                owner, repo, event: 'pull_request', per_page: 100,
+              })).filter((run) => (run.head_branch || '').startsWith('release/'));
+              for (const run of runs.filter((x) => x.conclusion === 'failure')) {
+                const { data } = await github.rest.actions.listJobsForWorkflowRun({
+                  owner, repo, run_id: run.id, per_page: 1,
+                });
+                run.jobCount = data.total_count;
+              }
               for (const run of releaseLib.parkedRuns(runs, { fullName: `${owner}/${repo}` })) {
                 await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
                 core.notice(`Deleted the parked run ${run.id} of ${run.head_branch}.`);
@@ -2533,6 +2555,8 @@ const runs = %s; const fail = %s; const deleted = []; const warnings = []; let l
 const github = {
   paginate: async (fn, a) => { if (fail) throw new Error('Server Error'); listed = a; return runs; },
   rest: { actions: { listWorkflowRunsForRepo: 'list',
+    listJobsForWorkflowRun: async (a) => ({
+      data: { total_count: runs.find((x) => x.id === a.run_id).jobs } }),
     deleteWorkflowRun: async (a) => { deleted.push(a.run_id); } } },
 };
 const core = { warning: (m) => warnings.push(m), setFailed: (m) => { throw new Error(m); } };
@@ -2549,17 +2573,22 @@ const context = { repo: { owner: 'o', repo: 'r' } };
     return json.loads(proc.stdout)
 
 
-def _parked(id, branch, conclusion="action_required", repo="o/r"):
+def _parked(id, branch, conclusion="action_required", repo="o/r", jobs=0):
+    # `jobs` is what the mocked listJobsForWorkflowRun answers for this run.
     return {"id": id, "event": "pull_request", "head_branch": branch, "status": "completed",
-            "conclusion": conclusion, "head_repository": {"full_name": repo}}
+            "conclusion": conclusion, "head_repository": {"full_name": repo}, "jobs": jobs}
 
 
 def test_finalize_deletes_only_the_parked_runs_of_its_release_branch(tmp_path):
     out = _run_parked(tmp_path, [_parked(1, "release/v1.2.3"),
                                  _parked(2, "release/v1.2.3", conclusion="success"),
                                  _parked(3, "release/v1.2.2"),
-                                 _parked(4, "release/v1.2.3", repo="fork/r")])
-    assert out["deleted"] == [1]
+                                 _parked(4, "release/v1.2.3", repo="fork/r"),
+                                 # parked, then turned into failure by the merge
+                                 _parked(5, "release/v1.2.3", conclusion="failure"),
+                                 # approved, ran its jobs, failed: kept
+                                 _parked(6, "release/v1.2.3", conclusion="failure", jobs=2)])
+    assert out["deleted"] == [1, 5]
     assert out["listed"]["branch"] == "release/v1.2.3"
     assert out["listed"]["event"] == "pull_request"
 
@@ -2659,10 +2688,18 @@ Append the step after the publishing step:
                 `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/release.js`);
               const { owner, repo } = context.repo;
               const branch = 'release/${{ needs.publish.outputs.tag }}';
+              // The merge has already turned the parked runs into conclusion
+              // `failure` with no jobs, so there is no status filter and the
+              // jobs of each failed run are counted (releaseLib.parkedRuns).
               const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-                owner, repo, event: 'pull_request', status: 'action_required', branch,
-                per_page: 100,
+                owner, repo, event: 'pull_request', branch, per_page: 100,
               });
+              for (const run of runs.filter((x) => x.conclusion === 'failure')) {
+                const { data } = await github.rest.actions.listJobsForWorkflowRun({
+                  owner, repo, run_id: run.id, per_page: 1,
+                });
+                run.jobCount = data.total_count;
+              }
               for (const run of releaseLib.parkedRuns(runs, { fullName: `${owner}/${repo}`, branch })) {
                 await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
               }
