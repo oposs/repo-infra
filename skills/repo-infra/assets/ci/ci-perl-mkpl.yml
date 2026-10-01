@@ -8,6 +8,8 @@
         perl: ['5.40', '5.36', '5.32']
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: shogo82148/actions-setup-perl@v1
         with:

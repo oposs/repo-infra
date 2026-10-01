@@ -31,7 +31,8 @@ def ci_jobs(files):
 def test_ci_local_renders_the_seam_job_and_requires_it(tmp_path):
     files = render_all(ASSETS, rust_repo(tmp_path), MANIFEST, ci_local=True)
     jobs = ci_jobs(files)
-    assert jobs["ci-local"] == {"uses": "./.github/workflows/ci-local.yml"}
+    assert jobs["ci-local"] == {"uses": "./.github/workflows/ci-local.yml",
+                                "with": {"ref": "${{ inputs.ref }}"}, "secrets": "inherit"}
     assert jobs["ci-passed"]["needs"][-1] == "ci-local"
 
 

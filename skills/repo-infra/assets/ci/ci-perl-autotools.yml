@@ -4,6 +4,8 @@
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       # The fixed host toolchain: enough to bootstrap, configure, and drive a
       # container. It is the same for every autotools project, which is what

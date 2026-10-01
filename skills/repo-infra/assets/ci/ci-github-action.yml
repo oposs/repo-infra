@@ -4,6 +4,8 @@
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-python@v7
         with:
@@ -65,3 +67,6 @@
   # never learns what inputs this particular action takes.
   action-test:
     uses: ./.github/workflows/action-test.yml
+    with:
+      ref: ${{ inputs.ref }}
+    secrets: inherit

@@ -4,6 +4,8 @@
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       # go-version-file rather than a literal: the toolchain directive in go.mod
       # is the repository's own answer, and dependabot can see it.
@@ -21,6 +23,8 @@
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-go@v7
         with:

@@ -56,7 +56,7 @@ def test_the_addon_is_absent_unless_the_repository_asks_for_it():
     cross-build costs real CI minutes. Detection sees Cargo.toml, not intent."""
     doc = musl_job(ci=())
     assert "rust-musl" not in doc["jobs"]
-    assert set(doc["jobs"]) == {"lib", "rust-plan", "rust-check", "rust-test", "ci-passed"}
+    assert set(doc["jobs"]) == {"lib", "rust-plan", "rust-check", "rust-test", "ci-passed", "release-pr-current"}
 
 
 def test_naming_the_addon_installs_it_and_makes_it_required():
@@ -96,7 +96,7 @@ def test_the_assembled_workflow_is_loadable_yaml():
     # assertion in this file still passes.
     doc = musl_job()
     assert set(doc["jobs"]) == {
-        "lib", "rust-plan", "rust-check", "rust-test", "rust-musl", "ci-passed"}
+        "lib", "rust-plan", "rust-check", "rust-test", "rust-musl", "ci-passed", "release-pr-current"}
 
 
 def test_an_addon_for_an_ecosystem_this_repository_does_not_have_is_refused():
