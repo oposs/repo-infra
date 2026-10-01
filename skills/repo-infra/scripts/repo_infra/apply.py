@@ -55,7 +55,9 @@ def write_asset(repo_root, path, content):
 def _git(cwd, *args):
     result = subprocess.run(("git",) + args, cwd=str(cwd), capture_output=True, text=True)
     if result.returncode != 0:
-        raise ApplyError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+        # `git commit` says "nothing to commit" on stdout and nothing on stderr.
+        said = "\n".join(t for t in (result.stderr.strip(), result.stdout.strip()) if t)
+        raise ApplyError(f"git {' '.join(args)} failed: {said}")
     return result.stdout
 
 
