@@ -35,7 +35,7 @@ _ADMIN_ORDER = {"no-changelog-label": 0, "actions-open-pr": 1}
 CONFORMING_FACTS = Facts(default_branch="main", protected=True,
                          required_contexts={"ci-passed", "changelog-updated"},
                          labels={"no-changelog"}, workflow_permissions="write",
-                         can_approve_pr=True)
+                         can_approve_pr=True, strict=True)
 
 
 def read_facts(repo):

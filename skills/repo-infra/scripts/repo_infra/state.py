@@ -214,9 +214,17 @@ def classify_remote(facts):
 
     wanted = {"ci-passed", "changelog-updated"}
     missing = sorted(wanted - facts.required_contexts)
-    items.append(Item(
-        "required-checks", "ok" if not missing else "missing",
-        "" if not missing else "the ruleset does not require " + " or ".join(missing)))
+    if missing:
+        items.append(Item("required-checks", "missing",
+                          "the ruleset does not require " + " or ".join(missing)))
+    elif not facts.strict:
+        items.append(Item(
+            "required-checks", "outdated",
+            "the ruleset lets a pull request merge while its branch is behind main "
+            "(strict_required_status_checks_policy is off); a release built from an "
+            "older main could then merge (D28)"))
+    else:
+        items.append(Item("required-checks", "ok", ""))
 
     has_label = "no-changelog" in facts.labels
     items.append(Item("no-changelog-label", "ok" if has_label else "missing",

@@ -92,6 +92,6 @@
     "oposs/mkp-builder": "v2"
   },
   "gh": {
-    "ruleset-main": {"version": 1, "source": "gh/ruleset-main.json"}
+    "ruleset-main": {"version": 2, "source": "gh/ruleset-main.json"}
   }
 }

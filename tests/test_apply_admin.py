@@ -91,6 +91,7 @@ def faithful_ruleset(**overrides):
         "bypass_actors": [],
         "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
         "rules": [{"type": "required_status_checks", "parameters": {
+            "strict_required_status_checks_policy": True,
             "required_status_checks": [{"context": "ci-passed"},
                                        {"context": "changelog-updated"}]}}],
     }
@@ -318,4 +319,18 @@ def test_an_updated_ruleset_is_still_read_back_and_checked(tmp_path):
     stripped["rules"] = [r for r in stripped["rules"] if r["type"] != "required_status_checks"]
     recorder = Recorder({LIST: EXISTING, "rulesets": json.dumps(stripped)})
     with pytest.raises(ApplyError):
+        apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
+
+
+def test_the_shipped_ruleset_requires_up_to_date_branches():
+    payload = json.loads((ASSETS / "gh/ruleset-main.json").read_text(encoding="utf-8"))
+    rule = next(r for r in payload["rules"] if r["type"] == "required_status_checks")
+    assert rule["parameters"]["strict_required_status_checks_policy"] is True
+
+
+def test_a_ruleset_that_reads_back_without_the_up_to_date_rule_is_refused(tmp_path):
+    lax = json.loads(faithful_ruleset())
+    lax["rules"][0]["parameters"]["strict_required_status_checks_policy"] = False
+    recorder = Recorder({LIST: EXISTING, "rulesets": json.dumps(lax)})
+    with pytest.raises(ApplyError, match="strict_required_status_checks_policy"):
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)

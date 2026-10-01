@@ -11,7 +11,9 @@ from collections import namedtuple
 
 Facts = namedtuple(
     "Facts",
-    "default_branch protected required_contexts labels workflow_permissions can_approve_pr")
+    "default_branch protected required_contexts labels workflow_permissions can_approve_pr "
+    "strict release_prs tags",
+    defaults=(False, (), None))
 
 
 class GhError(Exception):
@@ -111,6 +113,7 @@ class Gh:
 
         protected = False
         contexts = set()
+        strict = False
         for summary in self._api_paginated_list(f"repos/{repo}/rulesets"):
             ruleset = self.api(f"repos/{repo}/rulesets/{summary['id']}")
             if ruleset.get("enforcement") != "active":
@@ -120,7 +123,10 @@ class Gh:
             protected = True
             for rule in ruleset.get("rules", []):
                 if rule.get("type") == "required_status_checks":
-                    for check in rule["parameters"]["required_status_checks"]:
+                    parameters = rule["parameters"]
+                    strict = strict or parameters.get(
+                        "strict_required_status_checks_policy") is True
+                    for check in parameters["required_status_checks"]:
                         contexts.add(check["context"])
 
         labels = {label["name"] for label in self._api_paginated_list(f"repos/{repo}/labels")}
@@ -133,4 +139,5 @@ class Gh:
             labels=labels,
             workflow_permissions=permissions["default_workflow_permissions"],
             can_approve_pr=permissions["can_approve_pull_request_reviews"],
+            strict=strict,
         )

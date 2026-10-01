@@ -425,6 +425,15 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 f"server may have rejected or altered part of the payload -- "
                 f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
                 "by hand.")
+        strict = any(rule.get("parameters", {}).get("strict_required_status_checks_policy")
+                     is True for rule in created.get("rules", [])
+                     if rule.get("type") == "required_status_checks")
+        if not strict:
+            raise ApplyError(
+                f"{name}: wrote the ruleset but it read back with "
+                "strict_required_status_checks_policy off, so a pull request whose "
+                "branch is behind main can still merge. Check it in Settings -> Rules "
+                f"-> Rulesets on repos/{repo} by hand.")
         if created.get("bypass_actors"):
             raise ApplyError(
                 f"{name}: created the ruleset but it read back with "
@@ -432,7 +441,7 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "ruleset that grants a bypass is not the one we shipped -- "
                 f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
                 "by hand.")
-        return "enabled the branch ruleset with both required checks"
+        return "enabled the branch ruleset with both required checks and up-to-date branches"
 
     raise ApplyError(f"{name}: not an administration item")
 

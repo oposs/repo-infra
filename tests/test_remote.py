@@ -131,3 +131,7 @@ def test_current_repo_reads_the_checkout_gh_is_run_from():
     assert Gh(run=run).current_repo() == "oposs/repo-infra"
     assert calls == [["gh", "repo", "view", "--json", "nameWithOwner",
                       "-q", ".nameWithOwner"]]
+
+
+def test_reads_the_up_to_date_rule():
+    assert facts().strict is False  # the recorded ruleset predates D28

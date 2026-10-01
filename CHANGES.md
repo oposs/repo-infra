@@ -21,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - The `changelog-updated` check now also runs on `release/*` branches. In a repository with `release_build` it fails when the release branch changed after its build, for example after **Update branch**; elsewhere it passes as before.
+- The branch ruleset now requires a pull request's branch to be up to date with `main` before it merges, so a release built from an older `main` can no longer merge. `check` reports `required-checks` as outdated for a ruleset without that rule, and `apply` writes it and reads it back.
 - Re-running the publish workflow no longer fails on a source tarball or a crate that an earlier attempt already uploaded. **Re-run failed jobs** finishes a stopped release; with `release_build`, a whole-workflow re-run does too.
 - When a release pull request shows the "Approve workflows to run" banner,
   Claude now knows the parked runs can be approved from the terminal with
