@@ -97,9 +97,9 @@ this.
   `main` commit, and the guard would refuse the next dispatch from it. Needs
   `checks: write` and `pull-requests: read`.
 - **Publish compares trees** in its `create` path only, before it tags; never
-  in `resume` or `done`. It finds the release pull request through
-  `listPullRequestsAssociatedWithCommit` on the recorded head and compares the
-  tree of that pull request's `merge_commit_sha` with the tree of the recorded
+  in `resume` or `done`. It finds the release pull request by its release
+  branch (`pulls.list`, state closed, head `<owner>:release/vX.Y.Z`) and
+  compares the tree of that pull request's `merge_commit_sha` with the tree of the recorded
   head. Not `context.sha`: a failed first publish followed by an ordinary
   merge that edits `[Unreleased]` starts a new run on a later commit. With the
   ruleset in place a mismatch means an assumption broke, for example the rule
@@ -224,7 +224,8 @@ pull request that installs this flow.
 - `release-pr.yml`: `prepare` gets `actions: write` for deleting parked runs,
   and `finish` gets `checks: write` for the two check runs; the workflow level
   keeps `checks: read` and `actions: read` for the guard.
-- `release-publish.yml`: `actions: write` for deleting the parked runs.
+- `release-publish.yml`: `actions: write` for deleting the parked runs, and
+  `pull-requests: read` at workflow level for finding the release pull request.
 - `ci.yml`: see above.
 
 ### Removed

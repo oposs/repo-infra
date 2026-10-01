@@ -52,6 +52,14 @@ Split it instead:
    git push -u origin repo-infra/apply
    gh pr create --fill --base main --label no-changelog
    ```
+   When the upgrade installs `release-pr` v5 (D28), write the body with
+   `--body` instead of `--fill`, and include this sentence: "From this
+   change on, the release build and the CI run inside Create release PR see
+   every repository secret; no secret may carry write access to this
+   repository." When `check` reported `ci-local-seam`, `action-test-seam` or
+   `release-build-local-seam`, say in the body what the file needs:
+   `on: workflow_call: inputs: ref` and `ref: ${{ inputs.ref }}` on every
+   `actions/checkout`. `apply` never edits those files.
    Label at creation, not after: GitHub keeps only the latest check run per
    context, so adding the label once the changelog check has already failed
    produces a fresh, skipped, green run and waves the merge through with no
@@ -67,6 +75,27 @@ Split it instead:
 
 On a repository that is already onboarded, an upgrade run has no administration
 item pending, and a bare `apply` followed by push and PR is enough.
+
+## Migration to the one release flow (D28)
+
+`apply` refuses while a release is in progress (`release-in-progress`): let
+the open release pull request merge and publish, or close it, first. The
+migration items (`release-build-rename`, `release-build-config`,
+`publish-source-tarball`, `release-assets`, `cargo-lock-version-files`) are
+one commit: they edit `.github/repo-infra.json`, and `release-build-rename`
+renames D26's `release-build.yml` to `release-build-local.yml` with `git mv`
+and no content change. After it, `apply` installs the assembled
+`release-build.yml`. Afterwards apply `required-checks` (confirm first): the
+ruleset gains the up-to-date rule.
+
+The migration comes before every other item. While a migration item is
+pending, `apply --item <name>` for any other item refuses and names the
+migration items; `apply --item` with any one migration item applies all of
+them and stops there. A bare `apply` commits the migration first and then the
+file items, rendered from the migrated configuration. The migration items act
+even when `check` shows them as `conflict`, since they only edit the
+configuration: `release-assets` is reported as `conflict` and `apply` adds the
+missing patterns.
 
 ## If it exits with `NeedsMerge`
 

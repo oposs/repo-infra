@@ -15,22 +15,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - A Rust workspace can list which crates `ci-rust` lints and which it tests, in a `rust` key of `.github/repo-infra.json`; each crate gets its own check. A workspace where a plain `cargo test` would skip some crates now fails the `Rust workspace plan` check until the key says where their tests run.
 - `"ci_local": true` makes the jobs in `.github/workflows/ci-local.yml` part of the required `ci-passed` check.
-- `"release_build": true` builds every release file inside the release pull request, into a draft release. Files such as a Homebrew formula change in that pull request, nothing is pushed to `main` after the merge, and publishing tags and builds from the commit that was built.
+- **Create release PR** builds the release and runs the CI on the release branch before it opens the pull request, so the pull request merges without an **Approve workflows to run** click. Build steps come from `release_build` add-ons and the project's own `.github/workflows/release-build-local.yml`; files such as a Homebrew formula change in the pull request, and publishing tags the commit that was built.
+- The `release-source-tarball` build add-on attaches the `make dist` tarball, built before the merge. It replaces the `publish-source-tarball` publish add-on, and `apply` moves the setting.
 - The `publish-gitea-packages` add-on uploads a release's `.deb` and `.rpm` files to a Gitea package registry, which signs them; the release stays a draft until the upload succeeded.
 
 ### Changed
 
-- The `changelog-updated` check now also runs on `release/*` branches. In a repository with `release_build` it fails when the release branch changed after its build, for example after **Update branch**; elsewhere it passes as before.
-- The branch ruleset now requires a pull request's branch to be up to date with `main` before it merges, so a release built from an older `main` can no longer merge. `check` reports `required-checks` as outdated for a ruleset without that rule, and `apply` writes it and reads it back.
-- Re-running the publish workflow no longer fails on a source tarball or a crate that an earlier attempt already uploaded. **Re-run failed jobs** finishes a stopped release; with `release_build`, a whole-workflow re-run does too.
-- When a release pull request shows the "Approve workflows to run" banner,
-  Claude now knows the parked runs can be approved from the terminal with
-  `gh api`, and asks before doing so. The button stays the fallback.
+- The branch ruleset now requires a pull request to be up to date with `main` before it merges; behind pull requests need **Update branch** first, and `check` reports `required-checks` as outdated until `apply` writes the rule. A release pull request that `main` moved past cannot merge and shows a red `ci-passed`: "main moved after vX.Y.Z was built; close this pull request and dispatch Create release PR again".
+- `Create release PR` no longer waits for the checks on `main`; it refuses only a check that already failed. It also refuses while a release pull request is open or while the latest release in `CHANGES.md` has no tag.
+- Re-running the publish workflow no longer fails on a crate an earlier attempt already uploaded, and both **Re-run failed jobs** and a whole-workflow re-run finish a stopped release. Publish refuses to tag when `main` does not match the release that was built.
+- The release build and the CI run get the repository's secrets. No repository secret may carry write access to the repository.
+- `check` reports `ci-local.yml`, `action-test.yml` and `release-build-local.yml` as a conflict when they do not declare the input `ref` or do not check it out. It also reports `ci-local.yml` and `action-test.yml` when they upload an artifact named `release-asset-*` or `release-files`, names the release build keeps for itself.
 
 ### Fixed
 
 - When `apply` first writes `.github/repo-infra.json` for a Rust repository with a `Cargo.lock`, `version_files` now lists `Cargo.lock` too: one entry for the main crate and one for each workspace crate with `version.workspace = true`. Before, the release pull request left `Cargo.lock` at the old version unless someone added the entry by hand.
-- `check` reports `release-pr` v4. Only a comment in `.github/workflows/release-pr.yml` changed: it no longer suggests a `cargo update` step, because the release pull request never committed the `Cargo.lock` that step changed.
 - `apply` works in a linked git worktree. It stopped there with `NotADirectoryError` when it installed the branch ruleset or prepared a merge of a locally edited file.
 - The changelog check no longer fails with "CHANGES.md has no '## [Unreleased]' heading" on the pull request that introduces that heading. A pull request that removes the heading fails with a message naming it.
 

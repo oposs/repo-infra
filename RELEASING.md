@@ -5,17 +5,20 @@
 **1. Run the `Create release PR` workflow** (Actions → Create release PR →
 Run workflow → bugfix / feature / major). It:
 
-1. refuses unless every check on the current `main` commit is green,
+1. refuses when a check on the current `main` commit has already failed, when
+   a release pull request is open, or when the latest release in `CHANGES.md`
+   has no tag,
 2. computes the next version from the tags and refuses if it already exists,
-3. rolls the `CHANGES.md` `[Unreleased]` section into a dated version section,
-4. sets every file listed in `.github/repo-infra.json` to the same version,
-5. pushes a `release/vX.Y.Z` branch and opens a pull request.
+3. rolls the `CHANGES.md` `[Unreleased]` section into a dated version section
+   and sets every file listed in `.github/repo-infra.json` to the same version,
+4. builds the release (`release-build.yml`) and runs this repository's CI
+   (`ci.yml`) on the `release/vX.Y.Z` branch,
+5. drafts the release with every built file and opens the pull request.
 
 Nothing is tagged or published yet. Closing the pull request cancels the release.
 
-**2. Review the changelog and merge.** That triggers the publish workflow, which
-reads the version back out of `CHANGES.md`, checks every version file agrees,
-tags, and publishes the GitHub release.
+**2. Review and merge.** Nothing needs approving. The merge triggers the
+publish workflow, which tags the commit that was built and publishes the draft.
 
 ## Why a pull request
 
@@ -26,42 +29,27 @@ request needs no stored credential and works with the protection rather than
 around it. Tagging is unaffected: the ruleset targets branches, and tags live in
 a separate ref namespace.
 
-## Why the release pull request needs an approval
+## Why the release pull request merges without an approval
 
-The ruleset requires two status checks, `ci-passed` and `changelog-updated`. Nothing
-merges to `main` without them, including a release.
+The ruleset requires two checks, `ci-passed` and `changelog-updated`, and
+requires the branch to be up to date with `main`. `Create release PR` writes
+both checks on the release branch itself, after it built and tested that
+exact commit. The pull request's own runs still park in an approval-required
+state, because `GITHUB_TOKEN` opened it; nobody needs to approve them, and
+publishing deletes them.
 
-A pull request opened by `GITHUB_TOKEN` does not start its `pull_request`
-workflow runs automatically. They are created in an **approval-required** state:
-the merge box shows a banner, and anyone with write access starts them with
-**Approve workflows to run**. The checks are parked, not skipped, so they do
-report, and the pull request does merge.
+If `main` moves before the merge, GitHub refuses the merge (`the head branch
+is not up to date with the base branch`) and `ci-passed` turns red with
+`main moved after vX.Y.Z was built; close this pull request and dispatch
+Create release PR again`. Do that. Do not press **Update branch**: the new
+head was neither built nor tested, and both checks turn red.
 
-The runs can also be approved from a terminal. List the runs of the release
-branch, then approve each parked one by its ID:
+## Secrets
 
-```sh
-gh run list --branch release/vX.Y.Z
-gh api --method POST repos/oposs/repo-infra/actions/runs/<id>/approve
-```
-
-The button in the merge box stays the fallback.
-
-That single approval is deliberate. The alternative is to open the release pull
-request with a GitHub App or personal access token so the runs start unattended,
-which means a credential to create, store and rotate. One approval costs less.
-
-Do not try to route around it with an `on: push` trigger on the release branch.
-The same restriction covers pushes: a push made with `GITHUB_TOKEN` does not
-trigger workflows either, and the release branch is created by the Actions token
-through the Git Data API. There is no automatic path to a green check here.
-
-`changelog-updated` skips itself on `release/*` branches. A skipped job reports
-Success, so it satisfies the requirement without running.
-
-**Check this still holds** by opening a release pull request and looking for the
-banner. If the runs are not created at all, neither required check can ever
-report, and the ruleset must drop them until another route exists.
+The release build and the CI run inside `Create release PR` get the
+repository's secrets, so a build can sign a binary. No repository secret may
+carry write access to the repository. A classic personal access token with
+`repo` scope, typical for pushing to a Homebrew tap, breaks that rule.
 
 ## Why a required workflow never uses a `paths` filter
 
@@ -82,23 +70,19 @@ something anyone starts from a dropdown. A failed run is re-run from the Actions
 UI, and because the version comes from `CHANGES.md` rather than from run inputs,
 the re-run does exactly what the original attempt would have done.
 
-## Releases that build before the merge
+## When a release gets stuck
 
-A repository with `"release_build": true` builds the release inside the
-release pull request, so the pull request diff shows files such as a Homebrew
-formula.
-
-- Merge such a pull request with a merge commit. All three merge methods stay
-  allowed, but after a squash or rebase `git describe` on `main` no longer
-  finds the tag.
-- Do not press **Update branch** on a release pull request. It moves the branch
-  after the build, `changelog-updated` turns red, and `no-changelog` does not
-  clear it. Close the pull request and run `Create release PR` again.
-- `Create release PR` refuses with `vX.Y.Z is in CHANGES.md on main but has no
-  tag` while the last release has no tag. Either **Re-run failed jobs** on its
-  publish run; or, for a release that is already out under another tag, push
-  `vX.Y.Z` by hand (the ruleset covers the branch, not tags); or, to abandon
-  it, merge a pull request that moves its entries back under `[Unreleased]`.
-- With `release_build`, a tag pushed by hand for the newest released version,
-  without a GitHub release, makes every publish run fail until the next release creates one.
-  Other tags are never looked at.
+- Merge release pull requests with a merge commit. All three merge methods
+  stay allowed, but after a squash or rebase `git describe` on `main` no
+  longer finds the tag.
+- `Create release PR` refuses with `vX.Y.Z is in CHANGES.md on main but has
+  no tag` while the last release has no tag. If its publish run failed for
+  another reason than the tree comparison, **Re-run failed jobs** on it. For
+  a release that is already out under another tag, push `vX.Y.Z` by hand (the
+  ruleset covers the branch, not tags). To abandon it, merge a pull request
+  that moves its entries back under `[Unreleased]`.
+- Publish fails with `main at <sha> does not match the release built from
+  <head>` only when the up-to-date rule was off at the merge. It tags
+  nothing. Abandon the release as above, then dispatch again.
+- A tag pushed by hand for the newest released version, without a GitHub
+  release, makes every publish run fail until the next release creates one.
