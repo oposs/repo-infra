@@ -70,6 +70,9 @@ const notFound = () => { const e = new Error('Not Found'); e.status = 404; retur
 const github = {
   paginate: async (fn) => (fn === 'listReleases' ? state.releases : []),
   rest: {
+    pulls: {
+      list: async (a) => { calls.push(['listPulls', a]); return { data: state.prs }; },
+    },
     git: {
       getRef: async () => { if (!state.tag) throw notFound();
         return { data: { object: state.lightweight
@@ -86,8 +89,6 @@ const github = {
     },
     repos: {
       listReleases: 'listReleases',
-      listPullRequestsAssociatedWithCommit: async (a) => {
-        calls.push(['listPullRequestsAssociatedWithCommit', a]); return { data: state.prs }; },
       getReleaseAsset: async (a) => { calls.push(['getReleaseAsset', a]);
         if (state.recordThrows) throw new Error('503');
         return { data: Buffer.from(JSON.stringify(state.record)) }; },
@@ -240,8 +241,10 @@ TREE_TEXT = (f"main at {MERGE} does not match the release built from {HEAD}; mer
 def test_create_compares_the_release_pr_merge_commit_with_the_recorded_head(tmp_path):
     out = run(tmp_path, releases=[draft()], record={"head": HEAD})
     assert out["failures"] == []
-    (lookup,) = called(out, "listPullRequestsAssociatedWithCommit")
-    assert lookup["commit_sha"] == HEAD  # the recorded head, not context.sha
+    (lookup,) = called(out, "listPulls")
+    # By branch: the commit association lists only open pull requests for a
+    # commit off the default branch, so it cannot see a squash-merged one.
+    assert lookup["head"] == "o:release/v1.2.0" and lookup["state"] == "closed"
     assert {c["commit_sha"] for c in called(out, "getCommit")} >= {HEAD, MERGE}
 
 
@@ -254,6 +257,8 @@ def test_a_tree_mismatch_tags_nothing_and_names_the_way_out(tmp_path):
 
 
 def test_a_squash_merge_with_the_same_tree_publishes(tmp_path):
+    # The built head is off main here; the fake github has no commit
+    # association call, so only the branch lookup can have found the pull request.
     squash = "f" * 40
     out = run(tmp_path, releases=[draft()], record={"head": HEAD},
               prs=[merged_pr(sha=squash)], trees={HEAD: "T", squash: "T"},
@@ -279,7 +284,7 @@ def test_resume_never_compares_trees(tmp_path):
     out = run(tmp_path, tag=HEAD, releases=[draft()], record={"head": HEAD},
               trees={HEAD: "T", MERGE: "U"})
     assert out["failures"] == []
-    assert called(out, "listPullRequestsAssociatedWithCommit") == []
+    assert called(out, "listPulls") == []
 
 
 def test_the_frame_has_one_path():
@@ -287,6 +292,6 @@ def test_the_frame_has_one_path():
 
 
 def test_publish_may_read_the_release_pull_request():
-    # listPullRequestsAssociatedWithCommit needs pull-requests: read; the
+    # pulls.list needs pull-requests: read; the
     # workflow level grants nothing it does not name.
     assert workflow()["permissions"] == {"contents": "write", "pull-requests": "read"}

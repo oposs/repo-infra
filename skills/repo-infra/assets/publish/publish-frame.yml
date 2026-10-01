@@ -209,12 +209,15 @@ jobs:
                 core.setFailed(`${tag}: ${problem}. Nothing was tagged.`);
                 return;
               }
-              // D28: main must be the release that was built. The release pull
-              // request's merge commit, found from the recorded head, not
-              // context.sha: a failed first publish followed by an ordinary
+              // D28: main must be the release that was built. Find the release
+              // pull request by its branch, not from the recorded head or
+              // context.sha: for a commit off the default branch (a squash or
+              // rebase merge) the commit association lists only open pull
+              // requests, and a failed first publish followed by an ordinary
               // merge starts a new run on a later commit.
-              const { data: associated } = await github.rest.repos
-                .listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: record.head });
+              const { data: associated } = await github.rest.pulls.list({
+                owner, repo, state: 'closed', head: `${owner}:release/${tag}`, per_page: 100,
+              });
               const mergeSha = releaseLib.releasePrMergeCommit(associated, {
                 fullName: `${owner}/${repo}`, tag,
               });
