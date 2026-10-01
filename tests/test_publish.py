@@ -35,40 +35,6 @@ def test_the_placeholder_must_appear_exactly_once():
     assert text.count("    needs: []") == 1
 
 
-def test_the_tarball_addon_lands_between_publish_and_finalize():
-    text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
-    assert "    needs: [publish, publish-source-tarball]" in text
-    assert text.index("  publish-source-tarball:") < text.index("  finalize:")
-
-
-def test_the_tarball_addon_carries_its_marker():
-    text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
-    assert ("publish-source-tarball", 3) in [
-        (m.asset, m.version) for m in parse_markers(text)]
-
-
-def test_the_tarball_addon_declares_exactly_the_job_it_contains():
-    from repo_infra.assemble import block_job_ids
-    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
-    assert block_job_ids(text) == MANIFEST["publish_blocks"]["publish-source-tarball"]["jobs"]
-
-
-def test_the_tarball_addon_refuses_to_upload_nothing():
-    # A `make dist` that produced no tarball must fail the job, not publish a
-    # release with no artifact. Guard the guard: this is the whole point of the
-    # add-on and it is one easily-deleted line.
-    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
-    assert "no tarball" in text
-
-
-def test_the_tarball_block_can_drive_a_container():
-    # `make dist` is a container call in driver mode (D18), so the runner needs
-    # an engine. Without it configure fails before dist is ever reached.
-    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
-    assert "autoconf automake gettext podman" in text
-    assert "Known limit" not in text
-
-
 # --- publish-crates-io (D21) -------------------------------------------------
 #
 # These parse the assembled workflow rather than grepping the asset. A substring
@@ -298,8 +264,8 @@ def test_a_repository_local_publish_job_joins_finalizes_needs():
 
 
 def test_a_local_job_lands_after_the_standard_addons_in_needs():
-    needs = _finalize(addons=["publish-source-tarball"], local=[DEB])["needs"]
-    assert needs == ["publish", "publish-source-tarball", "publish-deb-container"]
+    needs = _finalize(addons=["publish-crates-io"], local=[DEB])["needs"]
+    assert needs == ["publish", "publish-crates-io", "publish-deb-container"]
 
 
 def test_a_local_job_that_collides_with_a_generated_one_is_refused():
@@ -307,8 +273,8 @@ def test_a_local_job_that_collides_with_a_generated_one_is_refused():
     # believes it owns a job the assembler generates -- the next version of that
     # add-on would then fight the local block. Say so at assembly time.
     with pytest.raises(AssemblyError, match="already generated"):
-        assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST,
-                         [{"job": "publish-source-tarball", "assets": []}])
+        assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST,
+                         [{"job": "publish-crates-io", "assets": []}])
 
 
 def test_a_local_entry_without_a_job_id_is_refused():
@@ -317,8 +283,8 @@ def test_a_local_entry_without_a_job_id_is_refused():
 
 
 def test_finalize_expects_the_assets_the_installed_blocks_attach():
-    script = _finalize_script(addons=["publish-source-tarball"], local=[DEB])
-    assert "['*.tar.gz', '*.deb', 'smtp-proxy-*-musl']" in script
+    script = _finalize_script(addons=["publish-crates-io"], local=[DEB])
+    assert "['*.deb', 'smtp-proxy-*-musl']" in script
 
 
 def test_finalize_expects_nothing_from_a_block_that_attaches_nothing():
@@ -479,68 +445,6 @@ def test_finalize_deletes_the_build_record_before_it_publishes(tmp_path):
     assert out["failures"] == [] and out["published"] == 1
     assert out["deleted"] == [2]
     assert out["order"] == ["delete", "publish"]
-
-
-# --- a whole-workflow re-run repeats the add-ons that succeeded (D26) ---------
-#
-# With release_build, `publish` resumes a stopped release on a whole-workflow
-# re-run, which also runs every add-on again. An add-on that fails on its own
-# earlier upload would leave the release a draft, so each one skips what is
-# already there.
-
-
-def _run_tarball_upload(tmp_path, attached):
-    import os
-    import re
-    import subprocess
-
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is not installed")
-    job = yaml.safe_load(assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST))[
-        "jobs"]["publish-source-tarball"]
-    script = next(s["with"]["script"] for s in job["steps"]
-                  if "github-script" in s.get("uses", ""))
-    values = {"steps.tarball.outputs.name": "x-1.2.3.tar.gz",
-              "needs.publish.outputs.release_id": "5"}
-    script = re.sub(r"\$\{\{\s*([^}]*?)\s*\}\}", lambda m: values[m.group(1)], script)
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    (ws / "x-1.2.3.tar.gz").write_bytes(b"tarball")
-    harness = """
-const attached = %s;
-const uploads = [];
-const notices = [];
-const github = {
-  paginate: async (fn, a) => { if (a.release_id !== 5) throw new Error('release_id');
-    return attached.map((name, i) => ({ name, id: i + 1 })); },
-  rest: { repos: { listReleaseAssets: 'listReleaseAssets',
-    uploadReleaseAsset: async (a) => { uploads.push(a.name);
-      return { data: { name: a.name, size: a.data.length } }; } } },
-};
-const core = { setFailed: (m) => { throw new Error(m); }, notice: (m) => notices.push(m) };
-const context = { repo: { owner: 'o', repo: 'r' } };
-(async () => {
-%s
-})().then(() => console.log(JSON.stringify({ uploads, notices })));
-""" % (json.dumps(list(attached)), script)
-    path = tmp_path / "upload.js"
-    path.write_text(harness, encoding="utf-8")
-    proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ws,
-                          env={"GITHUB_WORKSPACE": str(ws), "PATH": os.environ["PATH"]})
-    assert proc.returncode == 0, proc.stderr
-    return json.loads(proc.stdout)
-
-
-def test_the_tarball_addon_uploads_a_tarball_the_release_lacks(tmp_path):
-    out = _run_tarball_upload(tmp_path, ["other.deb"])
-    assert out["uploads"] == ["x-1.2.3.tar.gz"]
-
-
-def test_the_tarball_addon_skips_a_tarball_an_earlier_attempt_attached(tmp_path):
-    out = _run_tarball_upload(tmp_path, ["x-1.2.3.tar.gz"])
-    assert out["uploads"] == []
-    assert any("x-1.2.3.tar.gz is already attached" in n for n in out["notices"])
 
 
 CRATES = {"packages": [

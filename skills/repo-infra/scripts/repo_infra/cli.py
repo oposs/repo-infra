@@ -70,7 +70,9 @@ def _load(root):
     rendered = render_all(ASSETS, result, manifest,
                           _chosen(root, "publish"), _chosen(root, "build"),
                           ci, _chosen(root, "publish_local"),
-                          ci_local=bool(config.get("ci_local")))
+                          ci_local=bool(config.get("ci_local")),
+                          release_build=config.get("release_build", []),
+                          release_build_local=bool(config.get("release_build_local")))
     result.candidates = detection.open_candidates(result.candidates, ci)
     return manifest, result, rendered
 

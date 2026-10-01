@@ -200,7 +200,7 @@ def test_a_squash_merge_is_noticed(tmp_path):
     assert any("merge commit" in n for n in out["notices"])
 
 
-@pytest.mark.parametrize("addon", ["publish-source-tarball", "publish-crates-io"])
+@pytest.mark.parametrize("addon", ["publish-crates-io", "publish-gitea-packages"])
 def test_every_addon_checks_out_the_tagged_head(addon):
     job = workflow([addon])["jobs"][addon]
     checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))

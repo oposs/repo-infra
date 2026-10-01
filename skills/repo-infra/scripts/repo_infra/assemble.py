@@ -1,12 +1,14 @@
 """Turn the asset store into the files a repository installs.
 
-Two files are assembled rather than copied: ci.yml, from a frame, one job
-block per detected ecosystem, and the ci-passed aggregator (D15); and
+Three files are assembled rather than copied: ci.yml, from a frame, one job
+block per detected ecosystem, and the ci-passed aggregator (D15);
 release-publish.yml, from a frame, one job block per installed publish
-add-on, and the finalize job. Both follow the same shape -- a frame, zero or
-more blocks each carrying its own marker, and a tail whose `needs:` list is
-generated from the blocks actually present. Everything else is copied
-verbatim, because an asset is the literal file it installs.
+add-on, and the finalize job; and release-build.yml (D28), from a frame, one
+job block per build add-on, and the project's own seam. They follow the same
+shape -- a frame, zero or more blocks each carrying its own marker, and (for
+ci.yml and release-publish.yml) a tail whose `needs:` list is generated from
+the blocks actually present. Everything else is copied verbatim, because an
+asset is the literal file it installs.
 """
 
 import pathlib
@@ -201,8 +203,50 @@ def assemble_publish(assets_root, addons, manifest, local=()):
     return "\n".join(parts) + "\n"
 
 
+def release_build_addon_blocks(addons, manifest):
+    """The build add-ons a repository named in "release_build" (D28)."""
+    if not isinstance(addons, (list, tuple)):
+        raise AssemblyError(
+            '"release_build" in .github/repo-infra.json must be a list of build add-ons, '
+            f"not {addons!r}")
+    chosen = []
+    for name in addons:
+        meta = manifest["release_build_blocks"].get(name)
+        if meta is None:
+            raise AssemblyError(f"release_build add-on {name} is not declared in the manifest")
+        if meta.get("seam"):
+            raise AssemblyError(
+                f"release_build add-on {name} is a seam; set \"{meta['seam']}\": true in "
+                ".github/repo-infra.json instead of naming it")
+        if name in chosen:
+            raise AssemblyError(f"release_build add-on {name} is named twice")
+        chosen.append(name)
+    return chosen
+
+
+def assemble_release_build(assets_root, addons, manifest, local=False):
+    """release-build.yml: the frame, the build add-ons, then the local seam.
+
+    No generated `needs:` list: Create release PR's finish job waits for the
+    whole called workflow, and finish checks the artifacts against
+    release_assets.
+    """
+    folder = pathlib.Path(assets_root) / "release-build"
+    parts = [_read(folder / "release-build-frame.yml").rstrip("\n")]
+    blocks = release_build_addon_blocks(addons, manifest)
+    if local:
+        blocks.append("release-build-local-job")
+    for block in blocks:
+        meta = manifest["release_build_blocks"][block]
+        parts.append("")
+        parts.append(markers.marker_line(block, meta["version"], indent="  "))
+        parts.append(_read(folder / (block + ".yml")).rstrip("\n"))
+    return "\n".join(parts) + "\n"
+
+
 def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
-               publish_local=(), ci_local=False):
+               publish_local=(), ci_local=False, release_build=(),
+               release_build_local=False):
     """Every file this repository should have, keyed by repo-relative path.
 
     `publish`, `build`, `ci` and `publish_local` are decisions the repository
@@ -224,6 +268,9 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
 
     `ci_local` adds the `ci-local` seam after every other block (D25), so
     the project's own jobs join the generated `needs:` list.
+
+    `release_build` names the build add-ons and `release_build_local` adds the
+    project's own build seam (D28).
     """
     assets_root = pathlib.Path(assets_root)
     files = {}
@@ -254,4 +301,6 @@ def render_all(assets_root, result, manifest, publish=(), build=(), ci=(),
     files[".github/workflows/ci.yml"] = assemble_ci(assets_root, blocks, manifest)
     files[".github/workflows/release-publish.yml"] = assemble_publish(
         assets_root, publish, manifest, publish_local)
+    files[".github/workflows/release-build.yml"] = assemble_release_build(
+        assets_root, release_build, manifest, release_build_local)
     return files

@@ -153,7 +153,7 @@ def test_all_three_blocks_install_a_byte_identical_host_toolchain():
     for name in (
         "ci/ci-perl-autotools.yml",
         "ci/ci-repo-infra-selftest.yml",
-        "publish/publish-source-tarball.yml",
+        "release-build/release-source-tarball.yml",
     ):
         text = (ASSETS / name).read_text(encoding="utf-8")
         # The selftest block also installs the man toolchain for repo-infra-man;

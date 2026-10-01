@@ -1,0 +1,12 @@
+  # The project brings the build, the standard brings the seam (D20's shape,
+  # D28). .github/workflows/release-build-local.yml is the project's own file:
+  # it triggers on workflow_call only with the inputs version and ref, checks
+  # out ref in every actions/checkout, sets timeout-minutes on each of its
+  # jobs, uploads each shipped file as a release-asset-* artifact and the
+  # repository files it rewrote as release-files. references/conventions.md.
+  release-build-local:
+    uses: ./.github/workflows/release-build-local.yml
+    with:
+      version: ${{ inputs.version }}
+      ref: ${{ inputs.ref }}
+    secrets: inherit

@@ -41,10 +41,14 @@
     "ci-local": {"version": 2, "jobs": ["ci-local"], "optional": true, "seam": "ci_local"}
   },
   "publish_blocks": {
-    "publish-source-tarball": {"version": 3, "jobs": ["publish-source-tarball"],
-                               "assets": ["*.tar.gz"]},
     "publish-crates-io": {"version": 2, "jobs": ["publish-crates-io"], "assets": []},
     "publish-gitea-packages": {"version": 1, "jobs": ["publish-gitea-packages"], "assets": []}
+  },
+  "release_build_blocks": {
+    "release-source-tarball": {"version": 1, "jobs": ["release-source-tarball"],
+                               "assets": ["*.tar.gz"]},
+    "release-build-local-job": {"version": 1, "jobs": ["release-build-local"], "assets": [],
+                                "seam": "release_build_local"}
   },
   "build_assets": {
     "container": {
@@ -77,6 +81,7 @@
     "actions/setup-node": "v7",
     "actions/github-script": "v9",
     "actions/download-artifact": "v8",
+    "actions/upload-artifact": "v7",
     "actions/setup-python": "v7",
     "actions/cache": "v6",
     "actions/setup-go": "v7",
