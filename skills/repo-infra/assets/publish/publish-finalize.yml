@@ -17,6 +17,8 @@
     timeout-minutes: 5
     permissions:
       contents: write
+      # D28: deleting the parked pull_request runs of the release branch.
+      actions: write
     steps:
       # For .github/workflows/lib/assets.js, below.
       # The tagged head: a re-run reads release_assets the same way.
@@ -47,9 +49,9 @@
             // assembler, from the same declarations the `needs:` list above
             // comes from. Never a literal typed a second time by hand.
             const expected = [];
-            // D26: a release the pull request built must carry every file the
-            // repository declared, read at the tagged head.
-            const declared = config.release_build ? (config.release_assets || []) : [];
+            // D26, D28: the release must carry every file the repository
+            // declared, read at the tagged head.
+            const declared = config.release_assets || [];
 
             // The `needs:` list above is ordering, and ordering cannot report
             // its own absence: reverted, it does not fail, it stops waiting.
@@ -107,3 +109,21 @@
               .addRaw(`Assets: ${names.join(', ') || 'none'}`)
               .addLink('Release', released.html_url)
               .write();
+
+      # The release pull request's own pull_request runs parked for an
+      # approval nobody needed to give (D28). Nothing depends on them.
+      - name: Delete the parked runs of the release branch
+        uses: actions/github-script@v9
+        with:
+          script: |
+            try {
+              const releaseLib = require(
+                `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/release.js`);
+              const { owner, repo } = context.repo;
+              const branch = 'release/${{ needs.publish.outputs.tag }}';
+              for (const run of await releaseLib.fetchParkedRuns(github, { owner, repo, branch })) {
+                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+              }
+            } catch (error) {
+              core.warning(`Could not delete the parked runs of the release branch: ${error.message}`);
+            }

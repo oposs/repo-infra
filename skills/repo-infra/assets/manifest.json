@@ -41,7 +41,7 @@
     "ci-local": {"version": 2, "jobs": ["ci-local"], "optional": true, "seam": "ci_local"}
   },
   "publish_blocks": {
-    "publish-crates-io": {"version": 2, "jobs": ["publish-crates-io"], "assets": []},
+    "publish-crates-io": {"version": 3, "jobs": ["publish-crates-io"], "assets": []},
     "publish-gitea-packages": {"version": 1, "jobs": ["publish-gitea-packages"], "assets": []}
   },
   "release_build_blocks": {

@@ -1,4 +1,4 @@
-"""The publish job with release_build set (D26), run under node against a fake API."""
+"""The publish job (D26, D28), run under node against a fake API."""
 
 import json
 import os
@@ -18,6 +18,12 @@ MAIN = "m" * 40
 HEAD = "a" * 40
 CHANGES = "# Changes\n\n## [Unreleased]\n\n## 1.2.0 - 2026-09-29\n\n### New\n\n- x\n"
 AT_HEAD_OLD = "# Changes\n\n## [Unreleased]\n\n## 1.1.0 - 2026-09-01\n"
+MERGE = "e" * 40
+
+
+def merged_pr(sha=MERGE, ref="release/v1.2.0", login="github-actions[bot]"):
+    return {"number": 9, "user": {"login": login}, "merged_at": "2026-10-01T10:00:00Z",
+            "merge_commit_sha": sha, "head": {"ref": ref, "repo": {"full_name": "o/r"}}}
 
 
 def workflow(addons=()):
@@ -36,8 +42,9 @@ def draft(record=True, rid=5, published=False):
     return {"id": rid, "tag_name": "v1.2.0", "draft": not published, "assets": assets}
 
 
-def run(tmp_path, *, release_build=True, tag=None, releases=(), record=None,
-        changes_at_head=CHANGES, compare="ahead", lightweight=False, head_exists=True, record_throws=False):
+def run(tmp_path, *, tag=None, releases=(), record=None,
+        changes_at_head=CHANGES, compare="ahead", lightweight=False, head_exists=True,
+        record_throws=False, prs=None, trees=None):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -45,11 +52,13 @@ def run(tmp_path, *, release_build=True, tag=None, releases=(), record=None,
     shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
     (ws / "CHANGES.md").write_text(CHANGES)
     (ws / ".github/repo-infra.json").write_text(json.dumps(
-        {"version_files": [], "release_build": release_build}))
+        {"version_files": []}))
     state = {"tag": tag, "releases": list(releases), "record": record,
              "changesAtHead": changes_at_head, "compare": compare,
              "lightweight": lightweight, "headExists": head_exists,
-             "recordThrows": record_throws}
+             "recordThrows": record_throws,
+             "prs": [merged_pr()] if prs is None else prs,
+             "trees": {HEAD: "T", MERGE: "T"} if trees is None else trees}
     harness = """
 const state = %s;
 const calls = [];
@@ -71,10 +80,14 @@ const github = {
       createTag: async (a) => { calls.push(['createTag', a]); return { data: { sha: `obj-${a.tag}` } }; },
       createRef: async (a) => { calls.push(['createRef', a]); return { data: {} }; },
       updateRef: async (a) => { calls.push(['updateRef', a]); return { data: {} }; },
-      getCommit: async () => { if (!state.headExists) throw notFound(); return { data: {} }; },
+      getCommit: async (a) => { calls.push(['getCommit', a]);
+        if (!state.headExists) throw notFound();
+        return { data: { tree: { sha: state.trees[a.commit_sha] } } }; },
     },
     repos: {
       listReleases: 'listReleases',
+      listPullRequestsAssociatedWithCommit: async (a) => {
+        calls.push(['listPullRequestsAssociatedWithCommit', a]); return { data: state.prs }; },
       getReleaseAsset: async (a) => { calls.push(['getReleaseAsset', a]);
         if (state.recordThrows) throw new Error('503');
         return { data: Buffer.from(JSON.stringify(state.record)) }; },
@@ -107,13 +120,6 @@ const context = { repo: { owner: 'o', repo: 'r' }, sha: '%s' };
 
 def called(out, name):
     return [args for n, args in out["calls"] if n == name]
-
-
-def test_without_release_build_the_merge_commit_is_tagged_as_before(tmp_path):
-    out = run(tmp_path, release_build=False)
-    assert [t["object"] for t in called(out, "createTag")] == [MAIN]
-    assert out["outputs"]["head"] == MAIN
-    assert len(called(out, "createRelease")) == 1
 
 
 def test_case_3_tags_the_recorded_head_not_the_merge_commit(tmp_path):
@@ -224,3 +230,63 @@ def test_a_failed_record_download_does_not_stop_a_resume(tmp_path):
     assert out["outputs"]["head"] == HEAD
     (warning,) = out["warnings"]
     assert "503" in warning and "release-build.json" in warning
+
+
+TREE_TEXT = (f"main at {MERGE} does not match the release built from {HEAD}; merge a pull "
+             "request that moves the v1.2.0 entries in CHANGES.md back under [Unreleased], "
+             "then dispatch Create release PR again")
+
+
+def test_create_compares_the_release_pr_merge_commit_with_the_recorded_head(tmp_path):
+    out = run(tmp_path, releases=[draft()], record={"head": HEAD})
+    assert out["failures"] == []
+    (lookup,) = called(out, "listPullRequestsAssociatedWithCommit")
+    assert lookup["commit_sha"] == HEAD  # the recorded head, not context.sha
+    assert {c["commit_sha"] for c in called(out, "getCommit")} >= {HEAD, MERGE}
+
+
+def test_a_tree_mismatch_tags_nothing_and_names_the_way_out(tmp_path):
+    out = run(tmp_path, releases=[draft()], record={"head": HEAD},
+              trees={HEAD: "T", MERGE: "U"})
+    assert out["failures"] == [TREE_TEXT]
+    assert called(out, "createTag") == [] and called(out, "createRef") == []
+    assert called(out, "updateRelease") == [] and out["outputs"] == {}
+
+
+def test_a_squash_merge_with_the_same_tree_publishes(tmp_path):
+    squash = "f" * 40
+    out = run(tmp_path, releases=[draft()], record={"head": HEAD},
+              prs=[merged_pr(sha=squash)], trees={HEAD: "T", squash: "T"},
+              compare="diverged")
+    assert out["failures"] == []
+    assert [t["object"] for t in called(out, "createTag")] == [HEAD]
+
+
+def test_no_merged_release_pull_request_tags_nothing(tmp_path):
+    out = run(tmp_path, releases=[draft()], record={"head": HEAD}, prs=[])
+    assert len(out["failures"]) == 1
+    assert f"no merged release pull request contains {HEAD}" in out["failures"][0]
+    assert called(out, "createTag") == []
+
+
+def test_a_persons_merged_release_branch_is_not_the_release_pull_request(tmp_path):
+    out = run(tmp_path, releases=[draft()], record={"head": HEAD},
+              prs=[merged_pr(login="oetiker")])
+    assert "no merged release pull request" in out["failures"][0]
+
+
+def test_resume_never_compares_trees(tmp_path):
+    out = run(tmp_path, tag=HEAD, releases=[draft()], record={"head": HEAD},
+              trees={HEAD: "T", MERGE: "U"})
+    assert out["failures"] == []
+    assert called(out, "listPullRequestsAssociatedWithCommit") == []
+
+
+def test_the_frame_has_one_path():
+    assert "release_build" not in publish_script()
+
+
+def test_publish_may_read_the_release_pull_request():
+    # listPullRequestsAssociatedWithCommit needs pull-requests: read; the
+    # workflow level grants nothing it does not name.
+    assert workflow()["permissions"] == {"contents": "write", "pull-requests": "read"}

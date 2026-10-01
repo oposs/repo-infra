@@ -20,7 +20,7 @@ def test_with_no_addons_finalize_needs_only_publish():
 
 def test_the_frame_marker_survives_assembly():
     text = assemble_publish(ASSETS, [], MANIFEST)
-    assert ("release-publish", 4) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert ("release-publish", 5) in [(m.asset, m.version) for m in parse_markers(text)]
 
 
 def test_an_unknown_addon_is_an_assembly_error():
@@ -66,7 +66,7 @@ def test_the_crates_io_addon_lands_between_publish_and_finalize():
 
 def test_the_crates_io_addon_carries_its_marker():
     text = assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST)
-    assert ("publish-crates-io", 2) in [
+    assert ("publish-crates-io", 3) in [
         (m.asset, m.version) for m in parse_markers(text)]
 
 
@@ -122,26 +122,6 @@ def test_the_crates_io_token_comes_from_the_auth_action():
     assert publish[0]["env"]["CARGO_REGISTRY_TOKEN"] == "${{ steps.auth.outputs.token }}"
 
 
-def test_the_lock_is_reconciled_before_the_publish_not_after():
-    # Order is the whole fix. Reversed, `--locked` sees the release pull
-    # request's Cargo.toml bump against an unbumped Cargo.lock and fails on
-    # every release.
-    runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
-    update = next(i for i, r in enumerate(runs) if "cargo update" in r)
-    publish = next(i for i, r in enumerate(runs) if "cargo publish" in r)
-    assert update < publish
-
-
-def test_the_lock_reconciliation_moves_no_dependency():
-    # `cargo update` unscoped re-resolves every dependency, which would publish
-    # something the tag never locked. `--workspace` keeps it to the workspace's
-    # own entries -- that restriction is what makes the step safe here.
-    runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
-    update = next(r for r in runs if "cargo update" in r)
-    assert "--workspace" in update
-    assert "--offline" not in update
-
-
 def test_no_step_swallows_its_own_failure():
     # mdmost v0.1.1: a swallowed bump failure tagged 0.1.1 with the lock still
     # at 0.1.0, and the publish died 6 minutes later.
@@ -158,77 +138,11 @@ def test_the_publish_covers_the_whole_workspace_and_stays_locked():
     assert "--locked" in publish
 
 
-def test_the_reconciled_lock_is_committed_before_packaging():
-    # cargo refuses to publish from a tree with uncommitted changes, and the
-    # reconcile step rewrites Cargo.lock -- so the commit is what makes the
-    # publish reachable at all. Proven against oetiker/tvision-rs: without it
-    # the job packages both crates and then dies with "1 files in the working
-    # directory contain changes that were not yet committed into git".
-    runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
-    reconcile = next(r for r in runs if "cargo update" in r)
-    assert "git" in reconcile and "commit" in reconcile
-
-
 def test_the_publish_never_waves_through_a_dirty_tree():
     # --allow-dirty is the tempting one-word alternative to the commit above.
     # It also publishes a modified *source* file that no tag ever pointed at.
     for run in (s.get("run", "") for s in _crates_io_job()["steps"]):
         assert "--allow-dirty" not in _shell_code(run)
-
-
-def test_the_reconcile_step_actually_leaves_the_tree_clean():
-    """Run the block's own reconcile shell against a throwaway git tree.
-
-    The requirement is behavioural -- after this step `cargo publish` must find
-    nothing uncommitted -- and no substring assertion can check it: `true; git
-    commit ...` still contains the words. Proven necessary against
-    oetiker/tvision-rs, where the missing commit made the job package both
-    crates and then die on the dirty Cargo.lock.
-    """
-    import re
-    import subprocess
-    import tempfile
-
-    run = next(r for r in (s.get("run", "") for s in _crates_io_job()["steps"])
-               if "cargo update" in r)
-    # The runner expands workflow expressions before bash ever sees them.
-    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", run)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tree = pathlib.Path(tmp) / "tree"
-        tree.mkdir()
-        git = ["git", "-c", "user.email=t@e", "-c", "user.name=t"]
-        subprocess.run(["git", "init", "-q", "-b", "main", str(tree)], check=True)
-        (tree / "Cargo.lock").write_text('version = "0.1.0"\n', encoding="utf-8")
-        subprocess.run(git + ["add", "Cargo.lock"], cwd=tree, check=True)
-        subprocess.run(git + ["commit", "-qm", "seed"], cwd=tree, check=True)
-
-        # A stand-in cargo that does what `cargo update --workspace` does to the
-        # tree: rewrite Cargo.lock. Nothing here needs the real toolchain.
-        bin_dir = pathlib.Path(tmp) / "bin"
-        bin_dir.mkdir()
-        fake = bin_dir / "cargo"
-        fake.write_text(
-            '#!/bin/sh\nprintf \'version = "1.2.3"\\n\' > Cargo.lock\n', encoding="utf-8")
-        fake.chmod(0o755)
-        env = {
-            "PATH": f"{bin_dir}:{shutil.which('git') and '/usr/bin'}:/bin:/usr/bin",
-            "HOME": tmp,
-        }
-
-        proc = subprocess.run(["bash", "-c", script], cwd=tree, env=env,
-                              capture_output=True, text=True)
-        assert proc.returncode == 0, proc.stderr
-
-        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=tree,
-                               capture_output=True, text=True, check=True).stdout
-        assert dirty == "", f"cargo publish would refuse this tree:\n{dirty}"
-
-        # And it is idempotent: a re-run has nothing to commit, which `git
-        # commit` reports as an error unless the step guards for it.
-        again = subprocess.run(["bash", "-c", script], cwd=tree, env=env,
-                               capture_output=True, text=True)
-        assert again.returncode == 0, again.stderr
 
 
 # --- finalize asserts what it is about to publish (A1) -----------------------
@@ -252,7 +166,7 @@ def _finalize(addons=(), local=()):
 def _finalize_script(addons=(), local=()):
     steps = _finalize(addons, local)["steps"]
     script = [s["with"]["script"] for s in steps if "github-script" in s.get("uses", "")]
-    assert len(script) == 1
+    assert len(script) == 2
     return script[0]
 
 
@@ -426,7 +340,7 @@ def _build_workspace(tmp_path, release_assets):
     ws = tmp_path / "ws"
     shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
     (ws / ".github/repo-infra.json").write_text(json.dumps(
-        {"version_files": [], "release_build": True, "release_assets": release_assets}))
+        {"version_files": [], "release_assets": release_assets}))
     return ws
 
 
@@ -538,3 +452,84 @@ def test_the_generated_finalize_refuses_an_asset_whose_upload_did_not_finish(tmp
     assert out["published"] == 0
     assert len(out["failures"]) == 1
     assert "x_1_amd64.deb" in out["failures"][0] and "a.tar.gz" not in out["failures"][0]
+
+
+def test_the_crates_io_addon_never_rewrites_the_lock():
+    # The release pull request bumps Cargo.lock through version_files (D28).
+    for run in (s.get("run", "") for s in _crates_io_job()["steps"]):
+        assert "cargo update" not in _shell_code(run)
+        assert "git" not in _shell_code(run).split()
+
+
+def test_finalize_may_delete_runs():
+    assert _finalize()["permissions"] == {"contents": "write", "actions": "write"}
+
+
+def _parked_step():
+    steps = _finalize()["steps"]
+    return next(s for s in steps if s.get("name") == "Delete the parked runs of the release branch")
+
+
+def _run_parked(tmp_path, runs, fail=False):
+    import os
+    import re
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", _parked_step()["with"]["script"])
+    # The helper under test is the installed copy of lib/release.js, driven
+    # through a fake github: only the listing and the deletion are faked.
+    harness = """
+const runs = %s; const fail = %s; const deleted = []; const warnings = []; let listed;
+const github = {
+  paginate: async (fn, a) => { if (fail) throw new Error('Server Error'); listed = a; return runs; },
+  rest: { actions: { listWorkflowRunsForRepo: 'list',
+    listJobsForWorkflowRun: async (a) => ({
+      data: { total_count: runs.find((x) => x.id === a.run_id).jobs } }),
+    deleteWorkflowRun: async (a) => { deleted.push(a.run_id); } } },
+};
+const core = { warning: (m) => warnings.push(m), setFailed: (m) => { throw new Error(m); } };
+const context = { repo: { owner: 'o', repo: 'r' } };
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ deleted, warnings, listed })));
+""" % (json.dumps(runs), "true" if fail else "false", script)
+    path = tmp_path / "parked.js"
+    path.write_text(harness, encoding="utf-8")
+    proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ROOT,
+                          env={"GITHUB_WORKSPACE": str(ROOT), "PATH": os.environ["PATH"]})
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def _parked(id, branch, conclusion="action_required", repo="o/r", jobs=0):
+    # `jobs` is what the fake listJobsForWorkflowRun answers for this run.
+    return {"id": id, "event": "pull_request", "head_branch": branch, "status": "completed",
+            "conclusion": conclusion, "head_repository": {"full_name": repo}, "jobs": jobs}
+
+
+def test_finalize_deletes_only_the_parked_runs_of_its_release_branch(tmp_path):
+    out = _run_parked(tmp_path, [_parked(1, "release/v1.2.3"),
+                                 _parked(2, "release/v1.2.3", conclusion="success"),
+                                 _parked(3, "release/v1.2.2"),
+                                 _parked(4, "release/v1.2.3", repo="fork/r"),
+                                 # parked, then turned into failure by the merge
+                                 _parked(5, "release/v1.2.3", conclusion="failure"),
+                                 # approved, ran its jobs, failed: kept
+                                 _parked(6, "release/v1.2.3", conclusion="failure", jobs=2)])
+    assert out["deleted"] == [1, 5]
+    assert out["listed"]["branch"] == "release/v1.2.3"
+    assert out["listed"]["event"] == "pull_request"
+
+
+def test_a_failed_deletion_is_a_warning(tmp_path):
+    out = _run_parked(tmp_path, [], fail=True)
+    assert out["deleted"] == [] and "Server Error" in out["warnings"][0]
+
+
+def test_finalize_asserts_release_assets_for_every_repository(tmp_path):
+    ws = _build_workspace(tmp_path, ["*.tar.gz"])
+    out = _run_finalize(tmp_path, ["x.deb"], local=(), workspace=ws)
+    assert out["published"] == 0 and "*.tar.gz" in out["failures"][0]
