@@ -255,7 +255,8 @@ def test_check_reports_a_missing_action_test_workflow(tmp_path):
 
 
 def test_a_present_action_test_workflow_reports_nothing(tmp_path):
-    result = action_repo_result(tmp_path, seam="on: [workflow_call]\njobs: {}\n")
+    result = action_repo_result(tmp_path, seam=(
+        "on:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\njobs: {}\n"))
     assert classify_contracts(tmp_path, result) == []
 
 

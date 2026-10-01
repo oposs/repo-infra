@@ -56,7 +56,8 @@ def test_a_missing_ci_local_workflow_is_a_conflict(tmp_path):
 def test_a_present_ci_local_workflow_reports_nothing(tmp_path):
     result = rust_repo(tmp_path)
     (tmp_path / ".github/workflows").mkdir(parents=True)
-    (tmp_path / ".github/workflows/ci-local.yml").write_text("on: [workflow_call]\n")
+    (tmp_path / ".github/workflows/ci-local.yml").write_text(
+        "on:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\njobs: {}\n")
     assert classify_contracts(tmp_path, result, {"ci_local": True}) == []
 
 

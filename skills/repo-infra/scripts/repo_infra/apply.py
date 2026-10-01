@@ -458,6 +458,10 @@ def _stage_ruleset_payload(repo_root, payload):
 
 BRANCH = "repo-infra/apply"
 
+# Ends every commit apply makes in the target repository, one item or the
+# D28 migration.
+TRAILER = "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+
 
 def ensure_branch(repo_root):
     current = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").strip()
@@ -474,8 +478,7 @@ def commit_item(repo_root, name, paths):
         return None
     _git(repo_root, "add", *paths)
     _git(repo_root, "commit", "-m",
-         f"Install {name} from the repo-infra standard\n\n"
-         "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>")
+         f"Install {name} from the repo-infra standard\n\n{TRAILER}")
     return _git(repo_root, "rev-parse", "HEAD").strip()
 
 

@@ -42,6 +42,8 @@ RECORDED = {
     "/rulesets": "rulesets.json",
     "/labels": "labels.json",
     "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
+    "/tags": "tags.json",
     "oposs/repo-infra": "repo.json",
 }
 
@@ -86,6 +88,8 @@ def test_pagination_labels_includes_items_from_all_pages():
         "/rulesets": "rulesets.json",
         "/labels": "labels-paginated.json",  # Two-page slurped response
         "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
+    "/tags": "tags.json",
         "oposs/repo-infra": "repo.json",
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
@@ -102,6 +106,8 @@ def test_ruleset_with_all_scope_protects_default_branch():
         "/rulesets": "rulesets.json",
         "/labels": "labels.json",
         "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
+    "/tags": "tags.json",
         "oposs/repo-infra": "repo.json",
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
@@ -115,6 +121,8 @@ def test_ruleset_with_explicit_branch_protects_default_branch():
         "/rulesets": "rulesets.json",
         "/labels": "labels.json",
         "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
+    "/tags": "tags.json",
         "oposs/repo-infra": "repo.json",
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
@@ -135,3 +143,11 @@ def test_current_repo_reads_the_checkout_gh_is_run_from():
 
 def test_reads_the_up_to_date_rule():
     assert facts().strict is False  # the recorded ruleset predates D28
+
+
+def test_reads_the_open_release_pull_requests_of_the_bot_only():
+    assert facts().release_prs == ((12, "release/v0.3.0"),)
+
+
+def test_reads_the_tags():
+    assert facts().tags == frozenset({"v0.2.0", "v0.1.0"})

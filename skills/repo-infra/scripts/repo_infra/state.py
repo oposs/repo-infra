@@ -14,6 +14,7 @@ import re
 from collections import namedtuple
 
 from .markers import parse_markers
+from .seam import seam_problems
 
 Item = namedtuple("Item", "name state detail")
 
@@ -140,6 +141,13 @@ def _collapse_dir_asset(name, entries):
     return Item(name, "conflict", f"files disagree: {summary}")
 
 
+def unmanaged(path):
+    """The detail of a file at a rendered path that carries no marker of ours.
+
+    migrate.py recognises the D26 build by it."""
+    return f"{path} exists but is not managed by repo-infra"
+
+
 def classify_files(repo_root, rendered, manifest):
     dir_assets = _dir_asset_names(manifest)
     per_path = []
@@ -162,8 +170,7 @@ def classify_files(repo_root, rendered, manifest):
                                   "every unmatched pull request pending forever. Move "
                                   "the condition into the job.")))
             elif have is None:
-                per_path.append((path, Item(marker.asset, "conflict",
-                                  f"{path} exists but is not managed by repo-infra")))
+                per_path.append((path, Item(marker.asset, "conflict", unmanaged(path))))
             elif have < marker.version:
                 per_path.append((path, Item(marker.asset, "outdated",
                                   f"v{have} installed, v{marker.version} available")))
@@ -248,7 +255,7 @@ def classify_ambiguities(result):
     return [Item(a["id"], "ambiguous", a["question"]) for a in result.ambiguities]
 
 
-def classify_contracts(repo_root, result, config=None):
+def classify_contracts(repo_root, result, config=None, pending_rename=False):
     """Project-owned files an installed block depends on but cannot ship.
 
     The counterpart of an ambiguity: not a question about this repository, but
@@ -279,23 +286,40 @@ def classify_contracts(repo_root, result, config=None):
                 "workflow, so every check stops reporting. Write it as the "
                 "project's own jobs (references/conventions.md), or remove "
                 "\"ci_local\" from .github/repo-infra.json."))
-    if config.get("release_build"):
-        seam = pathlib.Path(repo_root) / ".github/workflows/release-build.yml"
-        if not seam.is_file():
+    root = pathlib.Path(repo_root)
+    local_build = ".github/workflows/release-build-local.yml"
+    if config.get("release_build_local") and not pending_rename:
+        if not (root / local_build).is_file():
             items.append(Item(
-                "release-build", "conflict",
-                "release_build is set and .github/workflows/release-build.yml does "
-                "not exist; the release workflow calls it and GitHub rejects the "
-                "whole workflow. Write it (references/release-flow.md)."))
+                "release-build-local", "conflict",
+                "release_build_local is set and .github/workflows/release-build-local.yml "
+                "does not exist; release-build.yml calls it and GitHub rejects the whole "
+                "release workflow. Write it (references/conventions.md), or remove "
+                "\"release_build_local\" from .github/repo-infra.json."))
+    # D28: each seam declares `ref` and checks it out; only the build may
+    # upload release-asset-* and release-files. While the D26 rename is
+    # pending, the build is still release-build.yml.
+    seams = []
+    if "github-action" in result.ecosystems:
+        seams.append(("action-test-seam", ".github/workflows/action-test.yml", True))
+    if config.get("ci_local"):
+        seams.append(("ci-local-seam", ".github/workflows/ci-local.yml", True))
+    if config.get("release_build_local"):
+        seams.append(("release-build-local-seam",
+                      ".github/workflows/release-build.yml" if pending_rename else local_build,
+                      False))
+    for name, rel, reserved in seams:
+        path = root / rel
+        if not path.is_file():
+            continue
+        problems = seam_problems(path.read_text(encoding="utf-8"), reserved)
+        if problems:
+            items.append(Item(
+                name, "conflict",
+                f"{rel} " + "; ".join(problems) + ". apply does not edit this file: declare "
+                "`on: workflow_call: inputs: ref` and give every actions/checkout "
+                "`ref: ${{ inputs.ref }}` (references/conventions.md)."))
     if "publish-gitea-packages" in config.get("publish", []):
-        if not config.get("release_build"):
-            items.append(Item(
-                "gitea-packages-build", "conflict",
-                "publish-gitea-packages uploads the .deb and .rpm files the release "
-                "pull request built, and without release_build nothing builds them "
-                "before it runs, so it would upload a partial set. Set "
-                "\"release_build\": true in .github/repo-infra.json, or remove "
-                "publish-gitea-packages from \"publish\"."))
         gitea = config.get("gitea_packages")
         gitea = gitea if isinstance(gitea, dict) else {}
         absent = [k for k in ("url", "owner") if not gitea.get(k)]

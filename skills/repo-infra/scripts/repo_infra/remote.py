@@ -131,6 +131,13 @@ class Gh:
 
         labels = {label["name"] for label in self._api_paginated_list(f"repos/{repo}/labels")}
         permissions = self.api(f"repos/{repo}/actions/permissions/workflow")
+        release_prs = tuple(
+            (pr["number"], pr["head"]["ref"])
+            for pr in self._api_paginated_list(f"repos/{repo}/pulls?state=open")
+            if pr["head"]["ref"].startswith("release/")
+            and (pr["head"].get("repo") or {}).get("full_name") == repo
+            and pr["user"]["login"] == "github-actions[bot]")
+        tags = frozenset(t["name"] for t in self._api_paginated_list(f"repos/{repo}/tags"))
 
         return Facts(
             default_branch=default_branch,
@@ -140,4 +147,6 @@ class Gh:
             workflow_permissions=permissions["default_workflow_permissions"],
             can_approve_pr=permissions["can_approve_pull_request_reviews"],
             strict=strict,
+            release_prs=release_prs,
+            tags=tags,
         )
