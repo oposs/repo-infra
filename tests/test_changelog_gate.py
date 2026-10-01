@@ -23,7 +23,8 @@ def job():
 
 
 def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), statuses=(),
-         behind=0, head_changes=SAME, base_changes=SAME, sabotage_merge_lib=False):
+         behind=0, head_changes=SAME, base_changes=SAME, sabotage_merge_lib=False,
+         sabotage_merge_changes=False, base_lib=True):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -31,10 +32,14 @@ def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), statuses=
     ws = tmp_path / "ws"
     # Several tests call gate() twice with one tmp_path: copy over, never fail on an existing tree.
     shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib", dirs_exist_ok=True)
-    shutil.copytree(ROOT / ".github/workflows/lib", ws / "repo-infra-base/.github/workflows/lib",
-                    dirs_exist_ok=True)
+    if base_lib:
+        shutil.copytree(ROOT / ".github/workflows/lib",
+                        ws / "repo-infra-base/.github/workflows/lib", dirs_exist_ok=True)
     if sabotage_merge_lib:
         (ws / ".github/workflows/lib/release.js").write_text("module.exports = {};\n")
+    if sabotage_merge_changes:
+        (ws / ".github/workflows/lib/changes.js").write_text(
+            "module.exports = { gateVerdict: () => ({ ok: true, message: 'waved' }) };\n")
     contents = {"CHANGES.md@b": base_changes, "CHANGES.md@h": head_changes}
     contents = {k: v for k, v in contents.items() if v is not None}
     pr = {"number": 1, "labels": [{"name": n} for n in labels], "user": {"login": login},
@@ -122,6 +127,20 @@ def test_a_status_someone_else_set_does_not_count(tmp_path):
 def test_release_mode_reads_the_library_of_the_base_commit(tmp_path):
     assert gate(tmp_path, head_ref="release/v1.2.0", statuses=BUILT, behind=1,
                 sabotage_merge_lib=True) == [STALE]
+
+
+def test_the_ordinary_rules_come_from_the_base_commit(tmp_path):
+    # A pull request that rewrites lib/changes.js is still judged by main's rules.
+    failures = gate(tmp_path, head_ref="fix/x", login="oetiker", sabotage_merge_changes=True)
+    assert len(failures) == 1 and "[Unreleased]" in failures[0]
+
+
+def test_the_pull_request_that_installs_the_library_uses_its_own(tmp_path):
+    # Its base has no .github/workflows/lib yet.
+    assert gate(tmp_path, head_ref="repo-infra/apply", login="oetiker", base_lib=False,
+                head_changes=MORE) == []
+    assert len(gate(tmp_path, head_ref="repo-infra/apply", login="oetiker",
+                    base_lib=False)) == 1
 
 
 def test_a_persons_release_branch_gets_the_ordinary_rules(tmp_path):

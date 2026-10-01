@@ -42,7 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Release mode loads the library from the base commit (D28).
+      # The library is loaded from the base commit (D28), so a pull request
+      # that edits lib/changes.js or lib/release.js is judged by main's rules.
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
@@ -51,14 +52,19 @@ jobs:
       - uses: actions/github-script@v9
         with:
           script: |
+            const fs = require('fs');
             const ws = process.env.GITHUB_WORKSPACE;
-            const changes = require(`${ws}/.github/workflows/lib/changes.js`);
+            // The pull request that first installs the library finds none on
+            // its base and has only its own to run.
+            const baseLib = `${ws}/repo-infra-base/.github/workflows/lib`;
+            const changes = require(fs.existsSync(`${baseLib}/changes.js`)
+              ? `${baseLib}/changes.js`
+              : `${ws}/.github/workflows/lib/changes.js`);
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
 
             if (pr.head.ref.startsWith('release/')) {
-              const releaseLib = require(
-                `${ws}/repo-infra-base/.github/workflows/lib/release.js`);
+              const releaseLib = require(`${baseLib}/release.js`);
               if (releaseLib.isReleasePr(pr, `${owner}/${repo}`)) {
                 // The head commit's statuses, not the merge commit's: finish
                 // sets release-built on the head it built.
