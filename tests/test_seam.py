@@ -119,3 +119,35 @@ def test_a_flow_style_upload_is_a_problem_where_names_are_reserved():
     problems = seam_problems(text, reserved_artifacts=True)
     assert problems and "actions/upload-artifact step this check cannot read" in problems[0]
     assert seam_problems(text, reserved_artifacts=False) == []
+
+
+@pytest.mark.parametrize("ref", [
+    "'${{ github.sha }}' # ${{ inputs.ref }}",
+    '"main" # ${{ inputs.ref }}',
+    "main # ${{ inputs.ref }}",
+    "${{ inputs.ref || github.sha }}",
+])
+def test_only_the_whole_value_inputs_ref_counts(ref):
+    text = GOOD.replace("          fetch-depth: 0\n          ref: ${{ inputs.ref }}\n",
+                        f"          fetch-depth: 0\n          ref: {ref}\n")
+    assert seam_problems(text, False) == [
+        "has an actions/checkout step that does not check out `ref: ${{ inputs.ref }}`"]
+
+
+@pytest.mark.parametrize("ref", ["'${{ inputs.ref }}' # pinned", "${{inputs.ref}}"])
+def test_a_quoted_or_tight_inputs_ref_counts(ref):
+    text = GOOD.replace("          fetch-depth: 0\n          ref: ${{ inputs.ref }}\n",
+                        f"          fetch-depth: 0\n          ref: {ref}\n")
+    assert seam_problems(text, False) == []
+
+
+def test_the_action_name_is_read_in_any_case():
+    text = STEPS + "      - uses: Actions/Checkout@v7\n"
+    assert seam_problems(text, False) == [
+        "has an actions/checkout step that does not check out `ref: ${{ inputs.ref }}`"]
+
+
+def test_a_comment_after_with_is_not_a_value():
+    text = GOOD.replace("          fetch-depth: 0\n", "").replace("        with:\n",
+                                                                   "        with: # pinned\n")
+    assert seam_problems(text, True) == []

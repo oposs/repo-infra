@@ -19,12 +19,25 @@ _BARE_DASH = re.compile(r"^(?P<indent>\s*)-(?:\s+&[\w-]+)?\s*$")
 _ALIAS = re.compile(r"^\s*-\s+\*[\w-]+\s*$|:\s+\*[\w-]+\s*$")
 _INPUT_REF = re.compile(r"\$\{\{\s*inputs\.ref\s*\}\}")
 _RESERVED = re.compile(r"^(release-asset-.*|release-files)$")
+_QUOTED = re.compile(r"""^(?P<q>['"]).*?(?P=q)(?=\s+#|\s*$)""")
+# Compared in lower case: GitHub reads owner and repository names case-insensitively.
 _CHECKOUT = "actions/checkout@"
 _UPLOAD = "actions/upload-artifact@"
 
 
 def _strip(value):
     return value.strip().strip("'\"")
+
+
+def _value(value):
+    """A key's value without its trailing comment; a quoted value keeps its quotes."""
+    value = value.strip()
+    if value.startswith("#"):
+        return ""
+    quoted = _QUOTED.match(value)
+    if quoted:
+        return quoted.group(0)
+    return value.split(" #", 1)[0].strip()
 
 
 def _code(raw):
@@ -50,9 +63,7 @@ def _parse(text):
         if not match:
             pending = None
             continue
-        value = match["value"]
-        if " #" in value and not value.lstrip().startswith(("'", '"')):
-            value = value.split(" #", 1)[0]
+        value = _value(match["value"])
         indent = len(match["indent"]) + (len(match["dash"]) if match["dash"] else 0)
         if match["dash"]:
             dash = len(match["indent"])
@@ -140,7 +151,7 @@ def seam_problems(text, reserved_artifacts):
     for step in _steps(lines):
         at = _own(step, "uses")
         uses = _strip(step[at][3]) if at is not None else ""
-        action = next((a for a in actions if uses.startswith(a)), None)
+        action = next((a for a in actions if uses.lower().startswith(a)), None)
         if action is None:
             continue
         read[action] += 1
@@ -149,7 +160,7 @@ def seam_problems(text, reserved_artifacts):
             problems.append(_unreadable(action))
         elif action == _CHECKOUT:
             refs = [v for _i, _d, k, v in children if k == "ref"]
-            if not refs or not all(_INPUT_REF.search(v) for v in refs):
+            if not refs or not all(_INPUT_REF.fullmatch(_strip(v)) for v in refs):
                 problems.append("has an actions/checkout step that does not check out "
                                 "`ref: ${{ inputs.ref }}`")
         else:
@@ -158,6 +169,6 @@ def seam_problems(text, reserved_artifacts):
                     problems.append(f"uploads an artifact named {_strip(value)}, a name "
                                     "reserved for the release build")
     for action in actions:
-        if sum(line.count(action) for line in code) != read[action]:
+        if sum(line.lower().count(action) for line in code) != read[action]:
             problems.append(_unreadable(action))
     return list(dict.fromkeys(problems))
