@@ -76,6 +76,15 @@ def test_ci_local_may_not_upload_a_release_asset(tmp_path):
           "        with:\n          name: release-files\n          path: x\n")
     (item,) = classify_contracts(tmp_path, result(tmp_path), {"ci_local": True})
     assert item.name == "ci-local-seam" and "release-files" in item.detail
+    # Only the name is wrong: the advice is to rename, not to add `ref`.
+    assert "inputs: ref" not in item.detail and "another name" in item.detail
+
+
+def test_a_seam_without_ref_and_with_a_reserved_name_gets_both_advices(tmp_path):
+    write(tmp_path, "ci-local.yml", SEAM_NO_REF + "      - uses: actions/upload-artifact@v7\n"
+          "        with:\n          name: release-files\n          path: x\n")
+    (item,) = classify_contracts(tmp_path, result(tmp_path), {"ci_local": True})
+    assert "inputs: ref" in item.detail and "another name" in item.detail
 
 
 def test_release_build_local_may_upload_release_assets(tmp_path):

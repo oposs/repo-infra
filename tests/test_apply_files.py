@@ -357,8 +357,8 @@ def test_a_single_file_asset_still_reports_exactly_one_written_path(tmp_path):
 
 def test_a_failed_git_command_says_what_git_printed_on_stdout(tmp_path):
     # `git commit` reports "nothing to commit" on stdout, not stderr.
-    from repo_infra.apply import _git
+    from repo_infra.apply import git
 
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     with pytest.raises(ApplyError, match="nothing to commit"):
-        _git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "x")
+        git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "x")

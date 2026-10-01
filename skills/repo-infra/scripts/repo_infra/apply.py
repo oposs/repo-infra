@@ -52,7 +52,7 @@ def write_asset(repo_root, path, content):
     return path
 
 
-def _git(cwd, *args):
+def git(cwd, *args):
     result = subprocess.run(("git",) + args, cwd=str(cwd), capture_output=True, text=True)
     if result.returncode != 0:
         # `git commit` says "nothing to commit" on stdout and nothing on stderr.
@@ -88,7 +88,7 @@ def base_version_of(plugin_root, asset_path, version):
     rather than failing.
     """
     try:
-        revisions = _git(plugin_root, "log", "--format=%H", "--", asset_path).split()
+        revisions = git(plugin_root, "log", "--format=%H", "--", asset_path).split()
     except ApplyError:
         return None
     for revision in revisions:
@@ -97,7 +97,7 @@ def base_version_of(plugin_root, asset_path, version):
             # from cwd -- the leading `./` is what tells git to resolve it
             # relative to `plugin_root` instead, which is a subdirectory of the
             # real plugin checkout (`skills/repo-infra`), never its root.
-            text = _git(plugin_root, "show", f"{revision}:./{asset_path}")
+            text = git(plugin_root, "show", f"{revision}:./{asset_path}")
         except ApplyError:
             continue
         found = parse_markers(text)
@@ -106,7 +106,7 @@ def base_version_of(plugin_root, asset_path, version):
     return None
 
 
-def _targets_for(name, rendered):
+def targets_for(name, rendered):
     """Every rendered path carrying this asset's marker, not just the first.
 
     A directory asset ships one marker copied into each of its files, so
@@ -140,24 +140,18 @@ def _scratch_dir(repo_root):
     return _git_dir(repo_root) / MERGE_DIR
 
 
-def installed_with(repo_root, name, rendered, written_by):
-    """The item of this run that already wrote every file `name` lives in.
+def changed(repo_root, paths):
+    """The paths among `paths` whose content differs from the last commit.
 
-    An assembled file carries a frame and its blocks; the first of them to be
-    applied writes the whole file, which leaves the others nothing to commit.
-    `written_by` maps each path written so far to the item that wrote it.
-    Returns None while any of `name`'s files still differs from the rendering.
+    A block of an assembled file finds its file already written by the item
+    before it; writing the rendering again changes nothing, and `git commit`
+    would fail with "nothing to commit".
     """
-    if not written_by:
-        return None
-    targets = _targets_for(name, rendered)
-    if not all(path in written_by for path, _ in targets):
-        return None
-    for path, expected in targets:
-        target = pathlib.Path(repo_root) / path
-        if not target.is_file() or target.read_text(encoding="utf-8") != expected:
-            return None
-    return written_by[targets[0][0]]
+    if not paths:
+        return []
+    status = git(repo_root, "status", "--porcelain", "--untracked-files=all", "--", *paths)
+    dirty = {line[3:] for line in status.splitlines()}
+    return [p for p in paths if p in dirty]
 
 
 def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
@@ -170,7 +164,7 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         detail = next(i.detail for i in items if i.name == name)
         raise ApplyError(f"{name}: conflict: {detail}. This is a migration, not an upgrade.")
 
-    targets = _targets_for(name, rendered)
+    targets = targets_for(name, rendered)
     path, expected = targets[0]
     wanted = next(m.version for m in parse_markers(expected) if m.asset == name)
 
@@ -486,11 +480,11 @@ TRAILER = "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 
 def ensure_branch(repo_root):
-    current = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    current = git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     if current == BRANCH:
         return BRANCH
-    existing = _git(repo_root, "branch", "--list", BRANCH).strip()
-    _git(repo_root, "checkout", BRANCH) if existing else _git(repo_root, "checkout", "-b", BRANCH)
+    existing = git(repo_root, "branch", "--list", BRANCH).strip()
+    git(repo_root, "checkout", BRANCH) if existing else git(repo_root, "checkout", "-b", BRANCH)
     return BRANCH
 
 
@@ -498,13 +492,33 @@ def commit_item(repo_root, name, paths):
     """One commit per item, so any single item can be dropped at review."""
     if not paths:
         return None
-    _git(repo_root, "add", *paths)
-    _git(repo_root, "commit", "-m",
+    git(repo_root, "add", *paths)
+    git(repo_root, "commit", "-m",
          f"Install {name} from the repo-infra standard\n\n{TRAILER}")
-    return _git(repo_root, "rev-parse", "HEAD").strip()
+    return git(repo_root, "rev-parse", "HEAD").strip()
 
 
 CONFIG = ".github/repo-infra.json"
+
+
+def config_text(data, original=None):
+    """`data` as JSON in the layout of `original`, the file it replaces.
+
+    A plain json.dumps(indent=2) rewrote every line of a repo-infra.json that
+    was indented by four spaces, so the migration's one-key change showed up
+    as a diff of the whole file. The indent and the final newline are read
+    from the file; key order is the order of `data`.
+    """
+    indent, newline = 2, "\n"
+    if original is not None:
+        newline = "\n" if original.endswith("\n") else ""
+        for line in original.splitlines()[1:]:
+            stripped = line.lstrip(" \t")
+            if stripped and stripped != line:
+                lead = line[:len(line) - len(stripped)]
+                indent = lead if "\t" in lead else len(lead)
+                break
+    return json.dumps(data, indent=indent) + newline
 
 
 def write_config(repo_root, result, answers=None):
@@ -516,9 +530,11 @@ def write_config(repo_root, result, answers=None):
     without it the checker nags about the same item forever.
     """
     existing = {}
+    original = None
     target = pathlib.Path(repo_root) / CONFIG
     if target.is_file():
-        existing = json.loads(target.read_text(encoding="utf-8"))
+        original = target.read_text(encoding="utf-8")
+        existing = json.loads(original)
 
     if result.ambiguities:
         answered = (answers or {}).keys() | existing.get("answers", {}).keys()
@@ -541,5 +557,4 @@ def write_config(repo_root, result, answers=None):
     if answers:
         config.setdefault("answers", {}).update(answers)
 
-    body = json.dumps(config, indent=2) + "\n"
-    return write_asset(repo_root, CONFIG, body)
+    return write_asset(repo_root, CONFIG, config_text(config, original))

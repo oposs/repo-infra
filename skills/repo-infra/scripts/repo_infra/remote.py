@@ -37,6 +37,22 @@ def protects_default_branch(ruleset, default_branch):
     return "~ALL" in includes or "~DEFAULT_BRANCH" in includes or branch_ref in includes
 
 
+class Tags:
+    """The repository's tags, each looked up when it is asked about.
+
+    `check` needs one tag, the latest release in CHANGES.md. Listing them all
+    paginated through every tag of the repository on every run.
+    """
+
+    def __init__(self, gh, repo):
+        self._gh, self._repo, self._known = gh, repo, {}
+
+    def __contains__(self, tag):
+        if tag not in self._known:
+            self._known[tag] = self._gh.tag_exists(self._repo, tag)
+        return self._known[tag]
+
+
 def _subprocess_run(args):
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
@@ -88,6 +104,16 @@ class Gh:
         except GhError as error:
             return False if "404" in str(error) else None
 
+    def tag_exists(self, repo, tag):
+        """A 404 is a missing tag; any other failure is raised, never guessed."""
+        try:
+            self.run(["gh", "api", f"repos/{repo}/git/ref/tags/{tag}"])
+            return True
+        except GhError as error:
+            if "404" in str(error):
+                return False
+            raise
+
     def current_repo(self):
         return self.run(["gh", "repo", "view", "--json", "nameWithOwner",
                          "-q", ".nameWithOwner"]).strip()
@@ -137,7 +163,6 @@ class Gh:
             if pr["head"]["ref"].startswith("release/")
             and (pr["head"].get("repo") or {}).get("full_name") == repo
             and pr["user"]["login"] == "github-actions[bot]")
-        tags = frozenset(t["name"] for t in self._api_paginated_list(f"repos/{repo}/tags"))
 
         return Facts(
             default_branch=default_branch,
@@ -148,5 +173,5 @@ class Gh:
             can_approve_pr=permissions["can_approve_pull_request_reviews"],
             strict=strict,
             release_prs=release_prs,
-            tags=tags,
+            tags=Tags(self, repo),
         )

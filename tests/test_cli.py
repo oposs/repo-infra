@@ -61,3 +61,54 @@ def test_ordered_names_asks_for_the_ruleset_once_when_both_facts_are_missing():
     names = cli._ordered_names(items)
     assert names.count("required-checks") == 1
     assert "branch-protection" not in names
+
+
+# --- apply re-reads each file item before it acts (C5) -----------------------
+#
+# `fx` writes a.yml whole, which carries `by` as well; `by` also ships b.yml.
+# Its files only partly overlap what `fx` wrote.
+A = "# repo-infra: fx v2\n# repo-infra: by v2\na\n"
+B = "# repo-infra: by v2\nb\n"
+
+
+def overlapping(tmp_path, monkeypatch, files):
+    import subprocess
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    for path, text in files.items():
+        (root / path).write_text(text)
+    (root / "seed").write_text("x\n")
+    for args in (("init", "-q", "-b", "main"), ("add", "-A"),
+                 ("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed")):
+        subprocess.run(("git",) + args, cwd=root, check=True, capture_output=True)
+    rendered = {"a.yml": A, "b.yml": B}
+    monkeypatch.setattr(cli, "_prepare", lambda r: ({}, None, rendered, {}, []))
+    monkeypatch.setattr(cli, "read_facts", lambda repo: cli.CONFORMING_FACTS)
+    monkeypatch.setattr(cli.migrate, "release_in_progress", lambda r, f: None)
+    return root
+
+
+def log(root):
+    import subprocess
+
+    return subprocess.run(["git", "log", "--format=%s", "--name-only"], cwd=root,
+                          capture_output=True, text=True, check=True).stdout
+
+
+def test_an_item_whose_other_files_are_current_makes_no_commit(tmp_path, monkeypatch, capsys):
+    root = overlapping(tmp_path, monkeypatch, {"b.yml": B})
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "applied fx" in out and "by: installed with fx" in out
+    assert "applied by" not in out
+    assert log(root).count("Install ") == 1
+
+
+def test_an_item_writes_only_the_files_an_earlier_item_left(tmp_path, monkeypatch, capsys):
+    root = overlapping(tmp_path, monkeypatch, {})
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert out.count("applied by") == 1
+    assert "Install by from the repo-infra standard\n\nb.yml\n" in log(root)
+    assert (root / "b.yml").read_text() == B

@@ -79,7 +79,11 @@ item pending, and a bare `apply` followed by push and PR is enough.
 ## Migration to the one release flow (D28)
 
 `apply` refuses while a release is in progress (`release-in-progress`): let
-the open release pull request merge and publish, or close it, first. The
+the open release pull request merge and publish, or close it, first. `apply
+--item` refuses only the migration items and the items that write a release
+workflow: `release-pr.yml`, `changelog.yml`, `ci.yml` (its frame and every
+block), `release-publish.yml`, `release-build.yml` and the workflow library.
+Administration items and other files apply. The
 migration items (`release-build-rename`, `release-build-config`,
 `publish-source-tarball`, `release-assets`, `cargo-lock-version-files`,
 `release-pr-replace`) are one commit: they edit `.github/repo-infra.json`,

@@ -14,7 +14,7 @@ import re
 from collections import namedtuple
 
 from .markers import parse_markers
-from .seam import seam_problems
+from .seam import seam_advice, seam_problems
 
 Item = namedtuple("Item", "name state detail")
 
@@ -316,9 +316,8 @@ def classify_contracts(repo_root, result, config=None, pending_rename=False):
         if problems:
             items.append(Item(
                 name, "conflict",
-                f"{rel} " + "; ".join(problems) + ". apply does not edit this file: declare "
-                "`on: workflow_call: inputs: ref` and give every actions/checkout "
-                "`ref: ${{ inputs.ref }}` (references/conventions.md)."))
+                f"{rel} " + "; ".join(problems) + ". apply does not edit this file: "
+                + seam_advice(problems) + " (references/conventions.md)."))
     if "publish-gitea-packages" in config.get("publish", []):
         gitea = config.get("gitea_packages")
         gitea = gitea if isinstance(gitea, dict) else {}

@@ -9,9 +9,10 @@ from .apply import (
     ApplyError,
     apply_admin_item,
     apply_file_item,
+    changed,
     commit_item,
     ensure_branch,
-    installed_with,
+    targets_for,
 )
 from .assemble import render_all
 from .detect import Detection
@@ -84,9 +85,18 @@ def _load(root):
     return _prepare(root)[:3]
 
 
-def _blocker(root, facts, items):
+def _blocker(root, facts, items, rendered, item=None):
+    """The release in progress that stops this run, or None.
+
+    `apply --item` is stopped only by a release in progress when that item
+    belongs to the release flow; any other run when an item it would apply does.
+    """
     blocker = migrate.release_in_progress(root, facts)
-    return blocker if blocker and migrate.touches_release_flow(items) else None
+    if blocker is None:
+        return None
+    if item is not None:
+        return blocker if migrate.in_release_flow(item, rendered) else None
+    return blocker if migrate.touches_release_flow(items, rendered) else None
 
 
 def check(args):
@@ -98,7 +108,7 @@ def check(args):
     items += classify_ambiguities(result)
     items += classify_contracts(args.root, result, config,
                                 pending_rename=migrate.renaming(migrations))
-    blocker = _blocker(args.root, facts, items)
+    blocker = _blocker(args.root, facts, items, rendered)
     if blocker:
         items.append(blocker)
     renderer = report.render_json if args.json else report.render_text
@@ -147,7 +157,7 @@ def apply_command(args):
     facts = read_facts(repo)
     items = migrate.without_superseded(classify(args.root, rendered, manifest, facts),
                                        migrations) + migrations
-    blocker = _blocker(args.root, facts, items)
+    blocker = _blocker(args.root, facts, items, rendered, args.item)
     if blocker:
         raise ApplyError(f"release-in-progress: {blocker.detail}")
     plugin_root = ASSETS.parent
@@ -164,23 +174,36 @@ def apply_command(args):
         items = classify(args.root, rendered, manifest, facts)
 
     names = [args.item] if args.item else _ordered_names(items)
-    # The states in `items` were read before anything was written; a block
-    # whose file an earlier item already wrote whole is reported, not redone.
+    # Which item of this run wrote each path, to name it when a later item
+    # finds nothing left to do.
     written_by = {}
     for name in names:
         if name in ADMIN:
             print(apply_admin_item(Gh(), repo, name, facts, ASSETS, args.root))
             continue
-        writer = installed_with(args.root, name, rendered, written_by)
-        if writer:
-            print(f"{name}: installed with {writer}")
+        # An assembled file carries a frame and its blocks, and the first of
+        # them to be applied writes the whole file. Re-read the files before
+        # acting, so a later block acts only on what still differs.
+        current = _file_state(name, classify(args.root, rendered, manifest, facts))
+        written = changed(args.root, apply_file_item(
+            args.root, name, rendered, current, plugin_root, merged=args.from_file))
+        if not written:
+            writers = sorted({written_by[p] for p, _ in targets_for(name, rendered)
+                              if p in written_by})
+            print(f"{name}: installed with {', '.join(writers)}" if writers
+                  else f"{name}: already installed")
             continue
-        written = apply_file_item(args.root, name, rendered, items, plugin_root,
-                                  merged=args.from_file)
         commit_item(args.root, name, written)
         written_by.update(dict.fromkeys(written, name))
         print(f"applied {name}")
     return 0
+
+
+def _file_state(name, items):
+    """One item for `name`: a block in several files is one row per file, and
+    it needs work while any of them does."""
+    own = [i for i in items if i.name == name]
+    return [next((i for i in own if i.state != "ok"), own[0])] if own else []
 
 
 def main(argv=None):

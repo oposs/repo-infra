@@ -15,7 +15,7 @@ import json
 import pathlib
 import re
 
-from .apply import CONFIG, TRAILER, ApplyError, _git, write_asset
+from .apply import CONFIG, TRAILER, ApplyError, config_text, git, write_asset
 from .markers import parse_markers
 from .state import Item, unmanaged
 
@@ -24,9 +24,15 @@ LOCAL_BUILD = ".github/workflows/release-build-local.yml"
 RELEASE_PR = ".github/workflows/release-pr.yml"
 NAMES = ("release-build-rename", "release-build-config", "publish-source-tarball",
          "release-assets", "cargo-lock-version-files", "release-pr-replace")
-# Items whose change alters how a release in flight would finish.
-RELEASE_FLOW = frozenset({"release-pr", "changelog", "ci", "release-publish",
-                          "release-build", "workflow-lib", *NAMES})
+# The files whose change alters how a release in flight would finish. An item
+# belongs to the release flow when it writes one of them: a CI block writes
+# the whole ci.yml, frame included. The ruleset's up-to-date rule is not in
+# it: turning it on while an old-flow release pull request is open only asks
+# that pull request to be up to date before it merges.
+RELEASE_FLOW_FILES = frozenset({
+    RELEASE_PR, ".github/workflows/changelog.yml", ".github/workflows/ci.yml",
+    ".github/workflows/release-publish.yml", D26_BUILD})
+_LIB = ".github/workflows/lib/"
 _LOCK_NAME = re.compile(r'name = "([^"]+)"')
 _RELEASE = re.compile(r"^## (\d+\.\d+\.\d+) - \d{4}-\d{2}-\d{2}\s*$")
 
@@ -153,11 +159,12 @@ def apply_migrations(repo_root, config, effective, rendered):
         written.append(write_asset(root, RELEASE_PR, rendered[RELEASE_PR]))
     if effective.get("release_build_local") and not config.get("release_build_local") \
             and _is_d26_build(root):
-        _git(root, "mv", D26_BUILD, LOCAL_BUILD)
+        git(root, "mv", D26_BUILD, LOCAL_BUILD)
         written.append(LOCAL_BUILD)
     if effective != config:
         target = root / CONFIG
-        target.write_text(json.dumps(effective, indent=2) + "\n", encoding="utf-8")
+        original = target.read_text(encoding="utf-8") if target.is_file() else None
+        target.write_text(config_text(effective, original), encoding="utf-8")
         if json.loads(target.read_text(encoding="utf-8")) != effective:
             raise ApplyError(f"{CONFIG}: wrote the migrated config and read back something else")
         written.append(CONFIG)
@@ -167,10 +174,10 @@ def apply_migrations(repo_root, config, effective, rendered):
 def commit_migration(repo_root, written):
     if not written:
         return None
-    _git(repo_root, "add", *written)
-    _git(repo_root, "commit", "-m",
+    git(repo_root, "add", *written)
+    git(repo_root, "commit", "-m",
          f"Migrate to the one release flow (repo-infra D28)\n\n{TRAILER}")
-    return _git(repo_root, "rev-parse", "HEAD").strip()
+    return git(repo_root, "rev-parse", "HEAD").strip()
 
 
 def latest_release(text):
@@ -205,5 +212,14 @@ def release_in_progress(repo_root, facts):
     return None
 
 
-def touches_release_flow(items):
-    return any(i.name in RELEASE_FLOW and i.state not in ("ok", "skipped") for i in items)
+def in_release_flow(name, rendered):
+    if name in NAMES:
+        return True
+    return any(path in RELEASE_FLOW_FILES or path.startswith(_LIB)
+               for path, text in rendered.items()
+               if any(m.asset == name for m in parse_markers(text)))
+
+
+def touches_release_flow(items, rendered):
+    return any(i.state not in ("ok", "skipped") and in_release_flow(i.name, rendered)
+               for i in items)

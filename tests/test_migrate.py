@@ -124,7 +124,11 @@ def test_unknown_tags_are_not_a_refusal(tmp_path):
 def run_check(root, monkeypatch, capsys, the_facts):
     monkeypatch.setattr(cli, "read_facts", lambda repo: the_facts)
     code = cli.main(["check", "--repo", "o/r", "--root", str(root), "--json"])
-    return code, {i["name"]: i for i in json.loads(capsys.readouterr().out)["items"]}
+    items = json.loads(capsys.readouterr().out)["items"]
+    names = [i["name"] for i in items]
+    # Keyed by name below; a second row of one name would hide the first.
+    assert len(names) == len(set(names)), names
+    return code, {i["name"]: i for i in items}
 
 
 def test_check_reports_migrations_and_the_refusal(tmp_path, monkeypatch, capsys):
@@ -303,3 +307,40 @@ def test_a_bare_apply_replaces_the_d26_release_pr(tmp_path, monkeypatch, capsys)
     code, items = run_check(root, monkeypatch, capsys, facts())
     assert items["release-pr"]["state"] == "ok"
     assert [n for n, i in items.items() if i["state"] in ("missing", "outdated")] == []
+
+
+def test_an_unrelated_item_applies_while_a_release_is_in_progress(tmp_path, monkeypatch, capsys):
+    root = repo(tmp_path, {"release_build": [], "version_files": []})
+    monkeypatch.setattr(cli, "read_facts",
+                        lambda repo: facts(release_prs=((12, "release/v0.6.1"),)))
+    monkeypatch.setattr(cli, "apply_admin_item", lambda *a: "created the no-changelog label")
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root),
+                     "--item", "no-changelog-label"]) == 0
+    assert "created the no-changelog label" in capsys.readouterr().out
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root), "--item", "dependabot"]) == 0
+
+
+@pytest.mark.parametrize("item", ["release-pr", "ci", "ci-lib", "workflow-lib", "release-build",
+                                  "release-publish", "changelog"])
+def test_a_release_flow_item_is_refused_while_a_release_is_in_progress(tmp_path, monkeypatch,
+                                                                       item):
+    # ci-lib is a block of ci.yml: applying it writes the whole file.
+    root = repo(tmp_path, {"release_build": [], "version_files": []})
+    monkeypatch.setattr(cli, "read_facts",
+                        lambda repo: facts(release_prs=((12, "release/v0.6.1"),)))
+    with pytest.raises(ApplyError, match="release-in-progress"):
+        cli.main(["apply", "--repo", "o/r", "--root", str(root), "--item", item])
+
+
+def test_the_migration_keeps_the_config_files_layout(tmp_path, monkeypatch):
+    root = repo(tmp_path, {})
+    text = ('{\n    "version_files": [],\n    "release_build": false,\n'
+            '    "moving_major_tag": false\n}')
+    (root / ".github/repo-infra.json").write_text(text)
+    git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "four spaces")
+    assert git(root, "status", "--porcelain") == ""
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    cli.main(["apply", "--repo", "o/r", "--root", str(root), "--item", "release-build-config"])
+    assert (root / ".github/repo-infra.json").read_text() == (
+        '{\n    "version_files": [],\n    "release_build": [],\n'
+        '    "moving_major_tag": false\n}')

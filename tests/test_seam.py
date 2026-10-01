@@ -67,7 +67,8 @@ def test_a_comment_mentioning_ref_does_not_count():
     assert len(seam_problems(text, False)) == 1
 
 
-@pytest.mark.parametrize("name", ["release-asset-x", "'release-files'", '"release-asset-"'])
+@pytest.mark.parametrize("name", ["release-asset-x", "'release-files'", '"release-asset-"',
+                                  "Release-Files", "RELEASE-ASSET-x"])
 def test_a_reserved_artifact_name_is_named_where_it_is_reserved(name):
     text = GOOD + ("      - uses: actions/upload-artifact@v7\n        with:\n"
                    f"          name: {name}\n          path: out/\n")
@@ -126,6 +127,9 @@ def test_a_flow_style_upload_is_a_problem_where_names_are_reserved():
     '"main" # ${{ inputs.ref }}',
     "main # ${{ inputs.ref }}",
     "${{ inputs.ref || github.sha }}",
+    # The quotes inside are part of the value: the ref named is '<sha>', quotes included.
+    "\"'${{ inputs.ref }}'\"",
+    "'\"${{ inputs.ref }}\"'",
 ])
 def test_only_the_whole_value_inputs_ref_counts(ref):
     text = GOOD.replace("          fetch-depth: 0\n          ref: ${{ inputs.ref }}\n",
@@ -134,7 +138,8 @@ def test_only_the_whole_value_inputs_ref_counts(ref):
         "has an actions/checkout step that does not check out `ref: ${{ inputs.ref }}`"]
 
 
-@pytest.mark.parametrize("ref", ["'${{ inputs.ref }}' # pinned", "${{inputs.ref}}"])
+@pytest.mark.parametrize("ref", ["'${{ inputs.ref }}' # pinned", "${{inputs.ref}}",
+                                 "${{ INPUTS.REF }}", "${{ Inputs.Ref }}"])
 def test_a_quoted_or_tight_inputs_ref_counts(ref):
     text = GOOD.replace("          fetch-depth: 0\n          ref: ${{ inputs.ref }}\n",
                         f"          fetch-depth: 0\n          ref: {ref}\n")

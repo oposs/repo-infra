@@ -17,8 +17,12 @@ _LINE = re.compile(r"^(?P<indent>\s*)(?P<dash>-\s+(?:&[\w-]+\s+)?)?"
 _BARE_DASH = re.compile(r"^(?P<indent>\s*)-(?:\s+&[\w-]+)?\s*$")
 # An aliased list item, value or merge key: the text it stands for is elsewhere.
 _ALIAS = re.compile(r"^\s*-\s+\*[\w-]+\s*$|:\s+\*[\w-]+\s*$")
-_INPUT_REF = re.compile(r"\$\{\{\s*inputs\.ref\s*\}\}")
-_RESERVED = re.compile(r"^(release-asset-.*|release-files)$")
+# GitHub reads context names in an expression case-insensitively.
+_INPUT_REF = re.compile(r"\$\{\{\s*inputs\.ref\s*\}\}", re.IGNORECASE)
+# In any case: whether GitHub tells artifact names apart by case is not
+# documented, so a name that differs only in case is refused too.
+_RESERVED = re.compile(r"^(release-asset-.*|release-files)$", re.IGNORECASE)
+_RESERVED_PROBLEM = "uploads an artifact named"
 _QUOTED = re.compile(r"""^(?P<q>['"]).*?(?P=q)(?=\s+#|\s*$)""")
 # Compared in lower case: GitHub reads owner and repository names case-insensitively.
 _CHECKOUT = "actions/checkout@"
@@ -26,7 +30,12 @@ _UPLOAD = "actions/upload-artifact@"
 
 
 def _strip(value):
-    return value.strip().strip("'\"")
+    """The value without one pair of enclosing YAML quotes. Quotes inside them
+    are part of the value: `"'${{ inputs.ref }}'"` names a ref in quotes."""
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        return value[1:-1]
+    return value
 
 
 def _value(value):
@@ -166,9 +175,24 @@ def seam_problems(text, reserved_artifacts):
         else:
             for _i, _d, key, value in children:
                 if key == "name" and _RESERVED.match(_strip(value)):
-                    problems.append(f"uploads an artifact named {_strip(value)}, a name "
+                    problems.append(f"{_RESERVED_PROBLEM} {_strip(value)}, a name "
                                     "reserved for the release build")
     for action in actions:
         if sum(line.lower().count(action) for line in code) != read[action]:
             problems.append(_unreadable(action))
     return list(dict.fromkeys(problems))
+
+
+def seam_advice(problems):
+    """What to change for these problems: the ref contract, the artifact name, or both.
+
+    An upload step the reader cannot follow says what to do in its own text."""
+    upload = _unreadable(_UPLOAD)
+    advice = []
+    if any(not p.startswith(_RESERVED_PROBLEM) and p != upload for p in problems):
+        advice.append("declare `on: workflow_call: inputs: ref` and give every "
+                      "actions/checkout `ref: ${{ inputs.ref }}`")
+    if any(p.startswith(_RESERVED_PROBLEM) for p in problems):
+        advice.append("give the artifact another name; release-asset-* and release-files "
+                      "are the release build's")
+    return "; ".join(advice) or "rewrite the upload step as the problem says"
