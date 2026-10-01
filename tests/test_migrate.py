@@ -171,6 +171,38 @@ def test_apply_refuses_while_a_release_is_in_progress(tmp_path, monkeypatch):
     assert head.count("\n") == 1  # nothing committed
 
 
+def git(root, *args):
+    return subprocess.run(("git",) + args, cwd=root, capture_output=True, text=True).stdout
+
+
+def test_apply_item_refuses_another_item_while_a_migration_is_pending(tmp_path, monkeypatch):
+    root = repo(tmp_path, {"publish": ["publish-source-tarball"], "version_files": []})
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    with pytest.raises(ApplyError, match="publish-source-tarball, release-assets"):
+        cli.main(["apply", "--repo", "o/r", "--root", str(root), "--item", "release-publish"])
+    assert git(root, "branch", "--format=%(refname:short)") == "main\n"
+    assert git(root, "status", "--porcelain") == ""
+    assert git(root, "log", "--oneline").count("\n") == 1
+
+
+def test_apply_item_runs_once_nothing_migrates(tmp_path, monkeypatch):
+    root = repo(tmp_path, {"release_build": [], "version_files": []})
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    cli.main(["apply", "--repo", "o/r", "--root", str(root), "--item", "release-publish"])
+    assert git(root, "log", "-1", "--format=%s") == \
+        "Install release-publish from the repo-infra standard\n"
+
+
+def test_any_migration_item_applies_the_whole_migration(tmp_path, monkeypatch):
+    root = repo(tmp_path, {"publish": ["publish-source-tarball"], "version_files": []})
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    cli.main(["apply", "--repo", "o/r", "--root", str(root), "--item", "release-assets"])
+    config = json.loads((root / ".github/repo-infra.json").read_text())
+    assert config["publish"] == [] and config["release_build"] == ["release-source-tarball"]
+    assert config["release_assets"] == ["*.tar.gz"]
+    assert migrations(root) == {}
+
+
 def test_apply_renames_the_d26_build_unchanged_and_rewrites_the_config(tmp_path, monkeypatch):
     root = repo(tmp_path, {"release_build": True, "version_files": []},
                 {".github/workflows/release-build.yml": D26_BUILD})

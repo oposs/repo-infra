@@ -126,6 +126,15 @@ def _ordered_names(items):
 
 def apply_command(args):
     manifest, result, rendered, config, migrations = _prepare(args.root)
+    if migrations and args.item and args.item not in migrate.NAMES:
+        # Every file is rendered from the migrated config; an item committed
+        # on top of the old one would ship a release flow that config does not
+        # describe.
+        pending = ", ".join(i.name for i in migrations)
+        raise ApplyError(
+            f"{args.item}: the migration to the one release flow is pending ({pending}). "
+            f"Run `apply --item {migrations[0].name}` first; it applies all of them in "
+            "one commit.")
     repo = args.repo or Gh().current_repo()
     facts = read_facts(repo)
     items = migrate.without_superseded(classify(args.root, rendered, manifest, facts),

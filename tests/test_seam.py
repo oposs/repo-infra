@@ -80,3 +80,42 @@ def test_a_step_display_name_is_not_an_artifact_name():
     text = GOOD + ("      - name: release-files\n        uses: actions/upload-artifact@v7\n"
                    "        with:\n          name: coverage\n          path: out/\n")
     assert seam_problems(text, reserved_artifacts=True) == []
+
+
+# A form the reader does not follow is a conflict, never a pass: each of these
+# checks out the default commit and would otherwise read as conforming.
+STEPS = GOOD.split("    steps:\n")[0] + "    steps:\n"
+UNREADABLE_CHECKOUT = ("has an actions/checkout step this check cannot read; write each "
+                       "step in block style")
+
+
+@pytest.mark.parametrize("steps", [
+    "      -\n        uses: actions/checkout@v7\n",
+    "      - run: true\n      - &co\n        uses: actions/checkout@v7\n      - *co\n",
+    "      - &co\n        uses: actions/checkout@v7\n      - *co\n",
+    "      - {uses: actions/checkout@v7}\n",
+    "      - uses: actions/checkout@v7\n        with: {fetch-depth: 0}\n",
+    "      - uses: actions/checkout@v7\n        env:\n          ref: ${{ inputs.ref }}\n",
+    "      - uses: actions/checkout@v7\n        with:\n          ref: ${{ inputs.ref }}\n"
+    "          ref: main\n",
+])
+def test_a_checkout_that_ignores_ref_in_any_form_is_a_problem(steps):
+    assert seam_problems(STEPS + steps, False) != []
+
+
+def test_a_bare_dash_step_is_read_like_any_other():
+    text = STEPS + "      -\n        uses: actions/checkout@v7\n        with:\n" \
+                   "          ref: ${{ inputs.ref }}\n"
+    assert seam_problems(text, True) == []
+
+
+def test_a_flow_style_step_is_named_as_unreadable():
+    problems = seam_problems(STEPS + "      - {uses: actions/checkout@v7}\n", False)
+    assert any(p.startswith(UNREADABLE_CHECKOUT) for p in problems)
+
+
+def test_a_flow_style_upload_is_a_problem_where_names_are_reserved():
+    text = GOOD + "      - uses: actions/upload-artifact@v7\n        with: {name: release-files}\n"
+    problems = seam_problems(text, reserved_artifacts=True)
+    assert problems and "actions/upload-artifact step this check cannot read" in problems[0]
+    assert seam_problems(text, reserved_artifacts=False) == []
