@@ -93,8 +93,17 @@ migration items (`release-build-rename`, `release-build-config`,
 `release-pr-build v1` (D26) whole with the current `release-pr` asset. A
 `release-pr.yml` with any other marker `check` does not know stays a
 `conflict`. After it, `apply` installs the assembled
-`release-build.yml`. Afterwards apply `required-checks` (confirm first): the
-ruleset gains the up-to-date rule.
+`release-build.yml`. The ruleset gains the up-to-date rule through
+`required-checks`: a bare `apply` writes it in the same run, after the file
+items and before their pull request merges; with `--item`, apply it on its own
+(confirm first). The rule on its own breaks nothing in the old flow.
+
+`release-pr`, `ci` and `workflow-lib` work only together: `Create release PR`
+calls `ci.yml` with the input `ref`, which only the new `ci` frame declares,
+and both call functions only the new `workflow-lib` has. `apply --item ci`
+alone, or a run that stops at `NeedsMerge`, leaves the pull request with some
+of them old. Before that pull request merges, run `check` and apply each of
+the three it still reports.
 
 The migration comes before every other item. While a migration item is
 pending, `apply --item <name>` for any other item refuses and names the

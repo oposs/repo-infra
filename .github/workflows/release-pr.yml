@@ -489,7 +489,10 @@ jobs:
             core.notice(`Release pull request opened: ${pr.html_url}`);
 
             // 8. Opened first, so a release that went stale while it built is
-            //    visible and says why.
+            //    visible and says why. A push to main between this comparison
+            //    and the check write below lets release-pr-current's red
+            //    ci-passed land first and this green one replace it; the
+            //    ruleset's up-to-date rule still refuses the merge.
             const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
               owner, repo, basehead: `${context.payload.repository.default_branch}...${head}`,
             });

@@ -47,7 +47,7 @@ def render_text(repo, result, items):
     # detail -- a second "? question" block here would just repeat them.
 
     if result.candidates:
-        lines.append("  candidates (later specs)")
+        lines.append("  candidates")
         lines.append("  " + "  ".join(result.candidates))
         lines.append("")
 
