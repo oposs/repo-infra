@@ -13,20 +13,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+- **Create release PR** builds the release and runs the CI on the release branch before it opens the pull request, and writes the required checks itself, so the pull request can merge at once. The **Approve workflows to run** banner still appears on it, but nobody needs to approve those runs, and publishing deletes them.
+- `.github/workflows/release-build.yml` is now installed and kept up to date by `apply` in every repository. It runs the build add-ons listed in `release_build`, and with `"release_build_local": true` also the project's own `.github/workflows/release-build-local.yml`; files such as a Homebrew formula change in the pull request, and publishing tags the commit that was built.
+- The `release-source-tarball` build add-on attaches the `make dist` tarball, built before the merge. It replaces the `publish-source-tarball` publish add-on, and `apply` moves the setting.
 - A Rust workspace can list which crates `ci-rust` lints and which it tests, in a `rust` key of `.github/repo-infra.json`; each crate gets its own check. A workspace where a plain `cargo test` would skip some crates now fails the `Rust workspace plan` check until the key says where their tests run.
 - `"ci_local": true` makes the jobs in `.github/workflows/ci-local.yml` part of the required `ci-passed` check.
-- **Create release PR** builds the release and runs the CI on the release branch before it opens the pull request, so the pull request merges without an **Approve workflows to run** click. Build steps come from `release_build` add-ons and the project's own `.github/workflows/release-build-local.yml`; files such as a Homebrew formula change in the pull request, and publishing tags the commit that was built.
-- The `release-source-tarball` build add-on attaches the `make dist` tarball, built before the merge. It replaces the `publish-source-tarball` publish add-on, and `apply` moves the setting.
 - The `publish-gitea-packages` add-on uploads a release's `.deb` and `.rpm` files to a Gitea package registry, which signs them; the release stays a draft until the upload succeeded.
 
 ### Changed
 
 - The branch ruleset now requires a pull request to be up to date with `main` before it merges; behind pull requests need **Update branch** first, and `check` reports `required-checks` as outdated until `apply` writes the rule. A release pull request that `main` moved past cannot merge and shows a red `ci-passed`: "main moved after vX.Y.Z was built; close this pull request and dispatch Create release PR again".
+- **Update branch** on a release pull request turns `ci-passed` and `changelog-updated` red with "the release branch changed after it was built (the Update branch button does this); close this pull request and dispatch Create release PR again".
 - `Create release PR` no longer waits for the checks on `main`; it refuses only a check that already failed. It also refuses while a release pull request is open or while the latest release in `CHANGES.md` has no tag.
-- Re-running the publish workflow no longer fails on a crate an earlier attempt already uploaded, and both **Re-run failed jobs** and a whole-workflow re-run finish a stopped release. Publish refuses to tag when `main` does not match the release that was built.
+- Publish refuses to tag when `main` does not match the release that was built: "main at <sha> does not match the release built from <head>; merge a pull request that moves the vX.Y.Z entries in CHANGES.md back under [Unreleased], then dispatch Create release PR again".
+- Publish refuses to tag when it finds no merged release pull request for the version: "vX.Y.Z: no merged release pull request from release/vX.Y.Z, so publish cannot compare main with the release that was built. Nothing was tagged."
+- Re-running the publish workflow no longer fails on a crate an earlier attempt already uploaded, and both **Re-run failed jobs** and a whole-workflow re-run finish a stopped release.
+- Publishing to crates.io uses the `Cargo.lock` of the release pull request as it is (`cargo publish --locked`) and no longer runs `cargo update --workspace` first. For a Rust repository whose `version_files` lacks the `Cargo.lock` entries, `check` reports `cargo-lock-version-files` and `apply` adds them.
+- `apply` refuses with `release-in-progress` while a release pull request is open or the latest release in `CHANGES.md` has no tag. Merge and publish that release, or close it, then run `apply` again.
 - The release build and the CI run get the repository's secrets. No repository secret may carry write access to the repository.
 - `check` reports `ci-local.yml`, `action-test.yml` and `release-build-local.yml` as a conflict when they do not declare the input `ref` or do not check it out. It also reports `ci-local.yml` and `action-test.yml` when they upload an artifact named `release-asset-*` or `release-files`, names the release build keeps for itself.
-- `check` reports `container` v2 for autotools repositories that build in a container. Only a comment in `build/container.mk` changed: it names the new `release-source-tarball` add-on.
+- `check` reports `container` as outdated; only a comment in `build/container.mk` changed.
 
 ### Fixed
 
