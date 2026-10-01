@@ -117,18 +117,37 @@ function staleMessage(tag) {
     + 'Create release PR again';
 }
 
-// ci-passed and changelog-updated on a release pull request. The test results
-// do not count: finish built and tested exactly the head that carries
-// release-built, and the up-to-date rule needs it not to be behind main. The
-// answer must equal finishVerdict's and staleReleasePrs', or an approved
-// parked run would turn their red check green.
-function releaseModeVerdict({ statuses, behindBy, tag }) {
+function judgeReleaseHead({ statuses, behindBy, tag }) {
   if (!releaseBuilt(statuses)) return { ok: false, message: CHANGED_AFTER_BUILD };
   if (behindBy > 0) return { ok: false, message: staleMessage(tag) };
   return {
     ok: true,
     message: `${tag}: this head was built and tested, and main has not moved since.`,
   };
+}
+
+// ci-passed and changelog-updated on a pull request from a release/* branch.
+// null: not the pull request Create release PR opened (a fork's, a person's),
+// and the ordinary rules apply. It takes the pull request rather than its
+// statuses, so no caller can judge a fork's branch by the release rules; and
+// it reads the API only for a release pull request, since comparing a fork's
+// head can fail. The test results do not count: finish built and tested
+// exactly the head that carries release-built, and the up-to-date rule needs
+// it not to be behind main. The answer must equal finishVerdict's and
+// staleReleasePr's, or an approved parked run would turn their red check green.
+async function releaseModeVerdict(github, { owner, repo, pr }) {
+  if (!isReleasePr(pr, `${owner}/${repo}`)) return null;
+  // The head commit's statuses, not the merge commit's: finish sets
+  // release-built on the head it built.
+  const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, {
+    owner, repo, ref: pr.head.sha, per_page: 100,
+  });
+  const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
+    owner, repo, basehead: `${pr.base.ref}...${pr.head.sha}`,
+  });
+  return judgeReleaseHead({
+    statuses, behindBy: compared.behind_by, tag: releaseTag(pr.head.ref),
+  });
 }
 
 // finish opens the pull request first and judges it afterwards, so a release
@@ -142,15 +161,14 @@ function finishVerdict({ behindBy, tag }) {
     summary: `Create release PR built and tested ${tag} on the current main.` };
 }
 
-// release-pr-current: every open release pull request main has moved past.
-function staleReleasePrs(entries, fullName) {
-  return entries
-    .filter(({ pr, behindBy }) => isReleasePr(pr, fullName) && behindBy > 0)
-    .map(({ pr }) => {
-      const tag = releaseTag(pr.head.ref);
-      return { number: pr.number, sha: pr.head.sha,
-        title: `main moved after ${tag} was built`, summary: staleMessage(tag) };
-    });
+// release-pr-current: the failed check for a release pull request main has
+// moved past, or null. The caller lists the open pull requests and keeps the
+// ones isReleasePr accepts before it compares each with main.
+function staleReleasePr(pr, behindBy) {
+  if (!(behindBy > 0)) return null;
+  const tag = releaseTag(pr.head.ref);
+  return { number: pr.number, sha: pr.head.sha,
+    title: `main moved after ${tag} was built`, summary: staleMessage(tag) };
 }
 
 // A re-run helps only when publish failed for a reason other than the tree
@@ -166,10 +184,15 @@ function untaggedMessage(version) {
 // release branch (pulls.list). Not by the recorded head: for a commit off the
 // default branch GitHub lists only open pull requests. Not context.sha: a failed
 // first publish followed by an ordinary merge starts a new run on a later commit.
+// A version abandoned and released again leaves two merged pull requests from
+// one branch; the one merged last put this version on main. The listing order
+// does not decide it.
 function releasePrMergeCommit(prs, { fullName, tag }) {
-  const found = prs.find((pr) => isReleasePr(pr, fullName)
-    && pr.head.ref === `release/${tag}` && pr.merged_at);
-  return found ? found.merge_commit_sha : null;
+  const found = prs
+    .filter((pr) => isReleasePr(pr, fullName) && pr.head.ref === `release/${tag}`
+      && pr.merged_at)
+    .sort((a, b) => Date.parse(b.merged_at) - Date.parse(a.merged_at));
+  return found.length ? found[0].merge_commit_sha : null;
 }
 
 // With the up-to-date rule on, the merge commit's tree is the built head's
@@ -186,7 +209,10 @@ function treeVerdict({ tag, head, mergeSha, mergeTree, headTree }) {
 }
 
 // The pull_request runs of a release branch park for an approval nobody needs
-// to give. A run someone approved ran, and is kept. While the pull request is
+// to give. A run someone approved ran, and is kept. The bot opened the pull
+// request, so it is the run's actor, also after an approval (the approver is
+// the triggering actor). A person's own release/x whose run failed with no
+// jobs (an invalid workflow file) is not ours to delete. While the pull request is
 // open a parked run reads status `completed`, conclusion `action_required`.
 // Once it merges or closes, GitHub turns the same run into conclusion
 // `failure` with no jobs (seen on oetiker/repo-infra-spike, run 36740994466),
@@ -197,6 +223,7 @@ const isParked = (run) => run.status === 'action_required'
 
 function parkedRuns(runs, { fullName, branch = null, keep = [] }) {
   return runs.filter((run) => run.event === 'pull_request' && isParked(run)
+    && Boolean(run.actor) && run.actor.login === BOT
     && Boolean(run.head_repository) && run.head_repository.full_name === fullName
     && typeof run.head_branch === 'string' && run.head_branch.startsWith('release/')
     && (branch === null || run.head_branch === branch)
@@ -208,10 +235,19 @@ function parkedRuns(runs, { fullName, branch = null, keep = [] }) {
 // released; both need `actions: write` for that, and the listing here needs
 // `actions: read`. Only the failed runs of release branches have their jobs
 // counted, one request each.
+//
+// GitHub returns at most 1000 runs for one listing, so listing every
+// pull_request run of a busy repository would never reach its old parked
+// runs. The listing asks for the bot's runs with one of the two conclusions a
+// parked run has, which leaves the runs of release pull requests only.
 async function fetchParkedRuns(github, { owner, repo, branch = null }) {
-  const listed = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-    owner, repo, event: 'pull_request', ...(branch === null ? {} : { branch }), per_page: 100,
-  });
+  const listed = [];
+  for (const status of ['action_required', 'failure']) {
+    listed.push(...await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+      owner, repo, event: 'pull_request', actor: BOT, status,
+      ...(branch === null ? {} : { branch }), per_page: 100,
+    }));
+  }
   const runs = [];
   for (const run of listed) {
     if (!(run.head_branch || '').startsWith('release/')) continue;
@@ -232,6 +268,6 @@ module.exports = {
   staleDrafts, ownDrafts, refusedReleaseFiles, undeclaredReleaseFiles,
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
-  staleReleasePrs, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
+  staleReleasePr, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
   fetchParkedRuns,
 };

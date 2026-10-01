@@ -126,24 +126,57 @@ test('releaseTag reads the tag off a release branch', () => {
   assert.equal(r.releaseTag('release/v1.2.0'), 'v1.2.0');
 });
 
-test('release mode passes a built head that main has not left behind', () => {
-  const v = r.releaseModeVerdict({ statuses: BUILT, behindBy: 0, tag: 'v1.2.0' });
+// A fake Octokit for releaseModeVerdict: the head's statuses and how far main
+// is ahead of it. `calls` records every request.
+function modeGithub(statuses, behindBy) {
+  const calls = [];
+  return {
+    calls,
+    rest: { repos: {
+      listCommitStatusesForRef: 'statuses',
+      compareCommitsWithBasehead: async (a) => {
+        calls.push(a.basehead);
+        return { data: { behind_by: behindBy } };
+      },
+    } },
+    paginate: async (route, a) => {
+      calls.push(`${route}@${a.ref}`);
+      return statuses;
+    },
+  };
+}
+const releasePr = (opts) => ({ ...pr('release/v1.2.0', opts),
+  head: { ...pr('release/v1.2.0', opts).head, sha: 'h' }, base: { ref: 'main' } });
+const mode = (statuses, behindBy, opts) => r.releaseModeVerdict(modeGithub(statuses, behindBy),
+  { owner: 'oetiker', repo: 'mdmost', pr: releasePr(opts) });
+
+test('release mode passes a built head that main has not left behind', async () => {
+  const github = modeGithub(BUILT, 0);
+  const v = await r.releaseModeVerdict(github, { owner: 'oetiker', repo: 'mdmost',
+    pr: releasePr() });
   assert.equal(v.ok, true);
+  assert.deepEqual(github.calls, ['statuses@h', 'main...h']);
 });
 
-test('release mode fails a head without the release-built status', () => {
-  assert.deepEqual(r.releaseModeVerdict({ statuses: [], behindBy: 0, tag: 'v1.2.0' }),
-    { ok: false, message: r.CHANGED_AFTER_BUILD });
+test('release mode fails a head without the release-built status', async () => {
+  assert.deepEqual(await mode([], 0), { ok: false, message: r.CHANGED_AFTER_BUILD });
 });
 
-test('release mode fails a built head that main moved past', () => {
-  assert.deepEqual(r.releaseModeVerdict({ statuses: BUILT, behindBy: 3, tag: 'v1.2.0' }),
-    { ok: false, message: STALE });
+test('release mode fails a built head that main moved past', async () => {
+  assert.deepEqual(await mode(BUILT, 3), { ok: false, message: STALE });
 });
 
-test('release mode names the missing status first (Update branch)', () => {
-  assert.equal(r.releaseModeVerdict({ statuses: [], behindBy: 2, tag: 'v1.2.0' }).message,
-    r.CHANGED_AFTER_BUILD);
+test('release mode names the missing status first (Update branch)', async () => {
+  assert.equal((await mode([], 2)).message, r.CHANGED_AFTER_BUILD);
+});
+
+test('release mode leaves a fork\'s or a person\'s release branch to the ordinary rules', async () => {
+  for (const opts of [{ login: 'oetiker' }, { repo: 'fork/mdmost' }, { repo: null }]) {
+    const github = modeGithub(BUILT, 0);
+    assert.equal(await r.releaseModeVerdict(github, { owner: 'oetiker', repo: 'mdmost',
+      pr: releasePr(opts) }), null);
+    assert.deepEqual(github.calls, []); // a fork's head may not compare at all
+  }
 });
 
 test('the Update-branch text is the D26 text, unchanged', () => {
@@ -163,18 +196,12 @@ test('finish fails a release main moved past while it built, with the stale text
   });
 });
 
-test('staleReleasePrs picks the bot release pull requests that are behind', () => {
-  const p = (number, ref, sha, opts) => ({ ...pr(ref, opts), number, head: {
-    ...pr(ref, opts).head, sha } });
-  const entries = [
-    { pr: p(1, 'release/v1.2.0', 'aaa'), behindBy: 2 }, // stale
-    { pr: p(2, 'release/v1.3.0', 'bbb'), behindBy: 0 }, // current
-    { pr: p(3, 'release/x', 'ccc', { login: 'oetiker' }), behindBy: 5 }, // a person's
-    { pr: p(4, 'release/y', 'ddd', { repo: 'fork/mdmost' }), behindBy: 5 }, // a fork's
-  ];
-  assert.deepEqual(r.staleReleasePrs(entries, REPO), [{
+test('staleReleasePr marks a release pull request main moved past', () => {
+  const p = (ref, sha) => ({ ...pr(ref), number: 1, head: { ...pr(ref).head, sha } });
+  assert.deepEqual(r.staleReleasePr(p('release/v1.2.0', 'aaa'), 2), {
     number: 1, sha: 'aaa', title: 'main moved after v1.2.0 was built', summary: STALE,
-  }]);
+  });
+  assert.equal(r.staleReleasePr(p('release/v1.3.0', 'bbb'), 0), null);
 });
 
 test('the untagged refusal no longer starts with re-run and names the tree comparison', () => {
@@ -198,6 +225,16 @@ test('releasePrMergeCommit finds the merged release pull request of this version
   ];
   assert.equal(r.releasePrMergeCommit(prs, { fullName: REPO, tag: 'v1.2.0' }), 'mmm');
   assert.equal(r.releasePrMergeCommit([], { fullName: REPO, tag: 'v1.2.0' }), null);
+});
+
+test('releasePrMergeCommit takes the release merged last, in any listing order', () => {
+  // v1.2.0 abandoned once and released again: two merged pull requests, one branch.
+  const first = merged('release/v1.2.0', 'abandoned', { mergedAt: '2026-10-01T10:00:00Z' });
+  const again = merged('release/v1.2.0', 'again', { mergedAt: '2026-10-02T09:00:00Z' });
+  const open = merged('release/v1.2.0', 'open', { mergedAt: null });
+  for (const prs of [[first, again, open], [open, again, first]]) {
+    assert.equal(r.releasePrMergeCommit(prs, { fullName: REPO, tag: 'v1.2.0' }), 'again');
+  }
 });
 
 test('treeVerdict passes equal trees, also after a squash merge', () => {
@@ -224,6 +261,7 @@ const run = (id, branch, opts = {}) => ({
   status: opts.status || 'completed', conclusion: opts.conclusion === undefined
     ? 'action_required' : opts.conclusion,
   head_repository: opts.repo === null ? null : { full_name: opts.repo || REPO },
+  actor: { login: opts.actor || r.BOT },
   ...(opts.jobCount === undefined ? {} : { jobCount: opts.jobCount }),
 });
 
@@ -238,7 +276,9 @@ test('parkedRuns keeps only parked pull_request runs of this repository\'s relea
     run(7, 'release/v1.1.0'),
     run(8, 'release/v1.2.0', { conclusion: 'failure', jobCount: 0 }), // parked, PR merged
     run(9, 'release/v1.2.0', { conclusion: 'failure', jobCount: 2 }), // approved, ran, failed
-    run(10, 'release/v1.2.0', { conclusion: 'failure' }), // jobs not counted: kept
+    run(10, 'release/v1.2.0', { conclusion: 'failure' }), // jobs not counted: not parked
+    run(11, 'release/v1.2.0', { conclusion: 'failure', jobCount: 0, actor: 'oetiker' }),
+    // a person's release/x with an invalid workflow file
   ];
   assert.deepEqual(r.parkedRuns(runs, { fullName: REPO }).map((x) => x.id), [1, 2, 7, 8]);
   assert.deepEqual(r.parkedRuns(runs, { fullName: REPO, branch: 'release/v1.2.0' })
@@ -247,10 +287,11 @@ test('parkedRuns keeps only parked pull_request runs of this repository\'s relea
     .map((x) => x.id), [1, 2, 8]);
 });
 
-// A fake Octokit for fetchParkedRuns: paginate lists the runs, and
+// A fake Octokit for fetchParkedRuns: paginate lists the runs whose status or
+// conclusion matches the `status` filter, as GitHub does, and
 // listJobsForWorkflowRun answers each run's job count from `jobs`.
 function runsGithub(runs, jobs = {}) {
-  const calls = { listed: null, counted: [] };
+  const calls = { listed: [], counted: [] };
   return {
     calls,
     rest: { actions: {
@@ -262,8 +303,8 @@ function runsGithub(runs, jobs = {}) {
     } },
     paginate: async (route, params) => {
       if (route !== 'listWorkflowRunsForRepo') throw new Error(`unexpected route ${route}`);
-      calls.listed = params;
-      return runs;
+      calls.listed.push(params);
+      return runs.filter((x) => x.status === params.status || x.conclusion === params.status);
     },
   };
 }
@@ -279,8 +320,17 @@ test('fetchParkedRuns counts the jobs of failed release runs and keeps the parke
   const parked = await r.fetchParkedRuns(github, { owner: 'oetiker', repo: 'mdmost' });
   assert.deepEqual(parked.map((x) => x.id), [1, 2]);
   assert.deepEqual(github.calls.counted, [2, 3]);
-  assert.deepEqual(github.calls.listed,
-    { owner: 'oetiker', repo: 'mdmost', event: 'pull_request', per_page: 100 });
+});
+
+test('fetchParkedRuns lists only the bot\'s parked and failed pull_request runs', async () => {
+  // GitHub stops a listing at 1000 runs; all pull_request runs of a busy
+  // repository would hide the old parked ones.
+  const github = runsGithub([]);
+  await r.fetchParkedRuns(github, { owner: 'oetiker', repo: 'mdmost' });
+  const common = { owner: 'oetiker', repo: 'mdmost', event: 'pull_request',
+    actor: 'github-actions[bot]', per_page: 100 };
+  assert.deepEqual(github.calls.listed, [{ ...common, status: 'action_required' },
+    { ...common, status: 'failure' }]);
 });
 
 test('fetchParkedRuns for one branch lists that branch only', async () => {
@@ -292,7 +342,8 @@ test('fetchParkedRuns for one branch lists that branch only', async () => {
     owner: 'oetiker', repo: 'mdmost', branch: 'release/v1.2.0',
   });
   assert.deepEqual(parked.map((x) => x.id), [1]);
-  assert.equal(github.calls.listed.branch, 'release/v1.2.0');
+  assert.deepEqual(github.calls.listed.map((x) => x.branch),
+    ['release/v1.2.0', 'release/v1.2.0']);
 });
 
 test('fetchParkedRuns does not write the job count into the listed runs', async () => {

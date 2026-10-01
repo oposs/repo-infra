@@ -13,7 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
-- **Create release PR** builds the release and runs the CI on the release branch before it opens the pull request, and writes the required checks itself, so the pull request can merge at once. The **Approve workflows to run** banner still appears on it, but nobody needs to approve those runs, and publishing deletes them.
+- **Create release PR** builds the release and runs the CI on the release branch before it opens the pull request, and writes the required checks itself, so the pull request can merge at once. The **Approve workflows to run** banner still appears on it, but nobody needs to approve those runs: publishing deletes them, and the next **Create release PR** deletes those of a closed release pull request.
 - `.github/workflows/release-build.yml` is now installed and kept up to date by `apply` in every repository. It runs the build add-ons listed in `release_build`, and with `"release_build_local": true` also the project's own `.github/workflows/release-build-local.yml`; files such as a Homebrew formula change in the pull request, and publishing tags the commit that was built.
 - The `release-source-tarball` build add-on attaches the `make dist` tarball, built before the merge. It replaces the `publish-source-tarball` publish add-on, and `apply` moves the setting.
 - A Rust workspace can list which crates `ci-rust` lints and which it tests, in a `rust` key of `.github/repo-infra.json`; each crate gets its own check. A workspace where a plain `cargo test` would skip some crates now fails the `Rust workspace plan` check until the key says where their tests run.

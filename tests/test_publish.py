@@ -470,7 +470,7 @@ def _parked_step():
     return next(s for s in steps if s.get("name") == "Delete the parked runs of the release branch")
 
 
-def _run_parked(tmp_path, runs, fail=False):
+def _run_parked(tmp_path, runs, fail_list=False, fail_delete=()):
     import os
     import re
     import subprocess
@@ -482,20 +482,31 @@ def _run_parked(tmp_path, runs, fail=False):
     # The helper under test is the installed copy of lib/release.js, driven
     # through a fake github: only the listing and the deletion are faked.
     harness = """
-const runs = %s; const fail = %s; const deleted = []; const warnings = []; let listed;
+const runs = %s; const failList = %s; const failDelete = %s;
+const deleted = []; const warnings = []; const listed = [];
 const github = {
-  paginate: async (fn, a) => { if (fail) throw new Error('Server Error'); listed = a; return runs; },
+  // As GitHub does, the listing returns the runs whose status or conclusion
+  // matches the `status` filter.
+  paginate: async (fn, a) => {
+    if (failList) throw new Error('Server Error');
+    listed.push(a);
+    return runs.filter((x) => x.status === a.status || x.conclusion === a.status);
+  },
   rest: { actions: { listWorkflowRunsForRepo: 'list',
     listJobsForWorkflowRun: async (a) => ({
       data: { total_count: runs.find((x) => x.id === a.run_id).jobs } }),
-    deleteWorkflowRun: async (a) => { deleted.push(a.run_id); } } },
+    deleteWorkflowRun: async (a) => {
+      if (failDelete.includes(a.run_id)) throw new Error(`Server Error on ${a.run_id}`);
+      deleted.push(a.run_id);
+    } } },
 };
 const core = { warning: (m) => warnings.push(m), setFailed: (m) => { throw new Error(m); } };
 const context = { repo: { owner: 'o', repo: 'r' } };
 (async () => {
 %s
 })().then(() => console.log(JSON.stringify({ deleted, warnings, listed })));
-""" % (json.dumps(runs), "true" if fail else "false", script)
+""" % (json.dumps(runs), "true" if fail_list else "false", json.dumps(list(fail_delete)),
+       script)
     path = tmp_path / "parked.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ROOT,
@@ -507,7 +518,8 @@ const context = { repo: { owner: 'o', repo: 'r' } };
 def _parked(id, branch, conclusion="action_required", repo="o/r", jobs=0):
     # `jobs` is what the fake listJobsForWorkflowRun answers for this run.
     return {"id": id, "event": "pull_request", "head_branch": branch, "status": "completed",
-            "conclusion": conclusion, "head_repository": {"full_name": repo}, "jobs": jobs}
+            "conclusion": conclusion, "head_repository": {"full_name": repo}, "jobs": jobs,
+            "actor": {"login": "github-actions[bot]"}}
 
 
 def test_finalize_deletes_only_the_parked_runs_of_its_release_branch(tmp_path):
@@ -520,13 +532,21 @@ def test_finalize_deletes_only_the_parked_runs_of_its_release_branch(tmp_path):
                                  # approved, ran its jobs, failed: kept
                                  _parked(6, "release/v1.2.3", conclusion="failure", jobs=2)])
     assert out["deleted"] == [1, 5]
-    assert out["listed"]["branch"] == "release/v1.2.3"
-    assert out["listed"]["event"] == "pull_request"
+    assert {a["branch"] for a in out["listed"]} == {"release/v1.2.3"}
+    assert {a["event"] for a in out["listed"]} == {"pull_request"}
 
 
-def test_a_failed_deletion_is_a_warning(tmp_path):
-    out = _run_parked(tmp_path, [], fail=True)
+def test_a_failed_listing_is_a_warning(tmp_path):
+    out = _run_parked(tmp_path, [_parked(1, "release/v1.2.3")], fail_list=True)
     assert out["deleted"] == [] and "Server Error" in out["warnings"][0]
+
+
+def test_a_failed_deletion_is_a_warning_and_the_others_are_deleted(tmp_path):
+    runs = [_parked(1, "release/v1.2.3"), _parked(2, "release/v1.2.3"),
+            _parked(3, "release/v1.2.3")]
+    out = _run_parked(tmp_path, runs, fail_delete=[1])
+    assert out["deleted"] == [2, 3]
+    assert len(out["warnings"]) == 1 and "Server Error on 1" in out["warnings"][0]
 
 
 def test_finalize_asserts_release_assets_for_every_repository(tmp_path):

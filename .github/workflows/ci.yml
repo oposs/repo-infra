@@ -213,46 +213,42 @@ jobs:
       contents: read
       pull-requests: read
       statuses: read
+    # The three release-mode steps run on a pull request from a release/*
+    # branch; this names that condition once.
+    env:
+      RELEASE_BRANCH_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
     steps:
-      - if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')
+      - if: env.RELEASE_BRANCH_PR == 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: repo-infra-base
 
-      - if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')
+      - if: env.RELEASE_BRANCH_PR == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 22
 
+      # An API error fails this step and so the job: a release pull request
+      # whose verdict could not be read is never green.
       - id: release
         name: Release mode
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')
+        if: env.RELEASE_BRANCH_PR == 'true'
         uses: actions/github-script@v9
         with:
           script: |
             const lib = `${process.env.GITHUB_WORKSPACE}/repo-infra-base/.github/workflows/lib`;
             const releaseLib = require(`${lib}/release.js`);
             const { owner, repo } = context.repo;
-            const pr = context.payload.pull_request;
+            const verdict = await releaseLib.releaseModeVerdict(github, {
+              owner, repo, pr: context.payload.pull_request,
+            });
             // A fork's or a person's release/x gets the ordinary rules.
-            if (!releaseLib.isReleasePr(pr, `${owner}/${repo}`)) {
+            if (verdict === null) {
               core.setOutput('mode', 'ordinary');
               return;
             }
             core.setOutput('mode', 'release');
-            const statuses = await github.paginate(
-              github.rest.repos.listCommitStatusesForRef,
-              { owner, repo, ref: pr.head.sha, per_page: 100 },
-            );
-            const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
-              owner, repo, basehead: `${pr.base.ref}...${pr.head.sha}`,
-            });
-            const verdict = releaseLib.releaseModeVerdict({
-              statuses,
-              behindBy: compared.behind_by,
-              tag: releaseLib.releaseTag(pr.head.ref),
-            });
             if (!verdict.ok) {
               core.setFailed(verdict.message);
               return;
@@ -268,7 +264,9 @@ jobs:
   # only: when Create release PR calls this file the event is
   # workflow_dispatch and the job skips. It never fails: a failed job is a
   # failed check run on this main commit, and the guard of the next dispatch
-  # would refuse it. An API error is a warning.
+  # would refuse it. An API error is a warning, one per pull request, and the
+  # others are still marked. A pull request left unmarked still cannot merge:
+  # the ruleset's up-to-date rule refuses it.
   release-pr-current:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -290,29 +288,35 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
+            const { owner, repo } = context.repo;
+            const fullName = `${owner}/${repo}`;
+            let releaseLib;
+            let releasePrs;
             try {
-              const releaseLib = require(
+              releaseLib = require(
                 `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/release.js`);
-              const { owner, repo } = context.repo;
-              const fullName = `${owner}/${repo}`;
               const prs = await github.paginate(github.rest.pulls.list, {
                 owner, repo, state: 'open', per_page: 100,
               });
-              const entries = [];
-              for (const pr of prs.filter((p) => releaseLib.isReleasePr(p, fullName))) {
+              releasePrs = prs.filter((p) => releaseLib.isReleasePr(p, fullName));
+            } catch (error) {
+              core.warning(`Could not list the open release pull requests: ${error.message}`);
+              return;
+            }
+            for (const pr of releasePrs) {
+              try {
                 const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
                   owner, repo, basehead: `${pr.base.ref}...${pr.head.sha}`,
                 });
-                entries.push({ pr, behindBy: compared.behind_by });
-              }
-              for (const stale of releaseLib.staleReleasePrs(entries, fullName)) {
+                const stale = releaseLib.staleReleasePr(pr, compared.behind_by);
+                if (!stale) continue;
                 await github.rest.checks.create({
                   owner, repo, name: 'ci-passed', head_sha: stale.sha,
                   status: 'completed', conclusion: 'failure',
                   output: { title: stale.title, summary: stale.summary },
                 });
                 core.notice(`#${stale.number}: ${stale.summary}`);
+              } catch (error) {
+                core.warning(`Could not mark release pull request #${pr.number}: ${error.message}`);
               }
-            } catch (error) {
-              core.warning(`Could not mark stale release pull requests: ${error.message}`);
             }

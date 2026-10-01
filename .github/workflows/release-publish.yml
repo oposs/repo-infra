@@ -382,14 +382,22 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
+            const { owner, repo } = context.repo;
+            const branch = 'release/${{ needs.publish.outputs.tag }}';
+            let parked;
             try {
               const releaseLib = require(
                 `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/release.js`);
-              const { owner, repo } = context.repo;
-              const branch = 'release/${{ needs.publish.outputs.tag }}';
-              for (const run of await releaseLib.fetchParkedRuns(github, { owner, repo, branch })) {
-                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
-              }
+              parked = await releaseLib.fetchParkedRuns(github, { owner, repo, branch });
             } catch (error) {
-              core.warning(`Could not delete the parked runs of the release branch: ${error.message}`);
+              core.warning(`Could not list the parked runs of the release branch: ${error.message}`);
+              return;
+            }
+            // One failed deletion does not keep the others.
+            for (const run of parked) {
+              try {
+                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+              } catch (error) {
+                core.warning(`Could not delete the parked run ${run.id}: ${error.message}`);
+              }
             }

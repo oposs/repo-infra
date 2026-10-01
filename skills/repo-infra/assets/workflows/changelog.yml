@@ -65,21 +65,8 @@ jobs:
 
             if (pr.head.ref.startsWith('release/')) {
               const releaseLib = require(`${baseLib}/release.js`);
-              if (releaseLib.isReleasePr(pr, `${owner}/${repo}`)) {
-                // The head commit's statuses, not the merge commit's: finish
-                // sets release-built on the head it built.
-                const statuses = await github.paginate(
-                  github.rest.repos.listCommitStatusesForRef,
-                  { owner, repo, ref: pr.head.sha, per_page: 100 },
-                );
-                const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
-                  owner, repo, basehead: `${pr.base.ref}...${pr.head.sha}`,
-                });
-                const verdict = releaseLib.releaseModeVerdict({
-                  statuses,
-                  behindBy: compared.behind_by,
-                  tag: releaseLib.releaseTag(pr.head.ref),
-                });
+              const verdict = await releaseLib.releaseModeVerdict(github, { owner, repo, pr });
+              if (verdict !== null) {
                 if (!verdict.ok) {
                   core.setFailed(verdict.message);
                   return;

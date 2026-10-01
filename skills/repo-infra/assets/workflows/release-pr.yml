@@ -166,14 +166,21 @@ jobs:
             // The parked pull_request runs of abandoned release branches. No
             // release pull request is open at this point (refused above), so
             // every parked release run belongs to a closed one. A failure here
-            // is a warning: the runs are clutter, not state.
+            // is a warning: the runs are clutter, not state. One failed
+            // deletion does not keep the others.
+            let parked = [];
             try {
-              for (const run of await releaseLib.fetchParkedRuns(github, { owner, repo })) {
+              parked = await releaseLib.fetchParkedRuns(github, { owner, repo });
+            } catch (error) {
+              core.warning(`Could not list the parked runs of closed release branches: ${error.message}`);
+            }
+            for (const run of parked) {
+              try {
                 await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
                 core.notice(`Deleted the parked run ${run.id} of ${run.head_branch}.`);
+              } catch (error) {
+                core.warning(`Could not delete the parked run ${run.id} of ${run.head_branch}: ${error.message}`);
               }
-            } catch (error) {
-              core.warning(`Could not delete parked runs of closed release branches: ${error.message}`);
             }
 
       - name: Compute the version and rewrite the files

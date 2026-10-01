@@ -84,6 +84,26 @@ def test_release_mode_loads_the_library_from_the_base_commit():
     assert "repo-infra-base/.github/workflows/lib" in script
 
 
+def test_the_release_mode_steps_run_on_pull_requests_from_release_branches():
+    # The harness never evaluates these expressions, so only an exact
+    # comparison notices a dropped condition.
+    job = ci_jobs()["ci-passed"]
+    assert job["env"] == {"RELEASE_BRANCH_PR": "${{ github.event_name == 'pull_request' && "
+                                               "startsWith(github.head_ref, 'release/') }}"}
+    release_steps = [s for s in job["steps"] if "run" not in s]
+    assert len(release_steps) == 3
+    for step in release_steps:
+        assert step["if"] == "env.RELEASE_BRANCH_PR == 'true'"
+
+
+def test_an_api_error_in_release_mode_fails_the_step(tmp_path):
+    # The exception fails the step and with it the job; the failure step
+    # after it is skipped (no always()), so ci-passed cannot turn green.
+    out = ci_passed(tmp_path, statuses=BUILT, fail_compare=True)
+    assert out["thrown"] == "Server Error"
+    assert "always()" not in ci_jobs()["ci-passed"]["steps"][-1]["if"]
+
+
 def test_the_failure_step_is_skipped_in_release_mode():
     last = ci_jobs()["ci-passed"]["steps"][-1]
     assert last["run"] == "exit 1"
@@ -109,8 +129,11 @@ def _workspace(tmp_path, base_too=True):
 
 
 def _run(tmp_path, ws, script, prelude):
-    harness = prelude + "\n(async () => {\n" + script + "\n})().then(() => console.log(" \
-        "JSON.stringify({ failures, outputs, warnings, notices, created })));\n"
+    # An exception that leaves the script fails the github-script step; the
+    # harness records it as `thrown`.
+    harness = prelude + "\nlet thrown = null;\n(async () => {\n" + script + \
+        "\n})().catch((e) => { thrown = e.message; }).then(() => console.log(" \
+        "JSON.stringify({ failures, outputs, warnings, notices, created, thrown })));\n"
     path = tmp_path / "harness.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run([_node(), str(path)], capture_output=True, text=True, cwd=ws,
@@ -128,7 +151,7 @@ const core = { setFailed: (m) => failures.push(m), setOutput: (k, v) => { output
 
 
 def ci_passed(tmp_path, *, head_ref="release/v1.2.0", login=BOT, head_repo="o/r",
-              statuses=(), behind=0, sabotage_merge_lib=False):
+              statuses=(), behind=0, sabotage_merge_lib=False, fail_compare=False):
     """Run ci-passed's release step against a fake API; the D28 verdict table."""
     script = next(s for s in ci_jobs()["ci-passed"]["steps"]
                   if s.get("id") == "release")["with"]["script"]
@@ -140,16 +163,17 @@ def ci_passed(tmp_path, *, head_ref="release/v1.2.0", login=BOT, head_repo="o/r"
                    "repo": {"full_name": head_repo} if head_repo else None},
           "base": {"ref": "main", "sha": "b"}}
     prelude = PRELUDE + """
-const statuses = %s;
+const statuses = %s; const failCompare = %s;
 const github = {
   paginate: async (fn) => (fn === 'statuses' ? statuses : []),
   rest: { repos: { listCommitStatusesForRef: 'statuses',
     compareCommitsWithBasehead: async ({ basehead }) => {
+      if (failCompare) { const e = new Error('Server Error'); e.status = 500; throw e; }
       if (basehead !== 'main...h') throw new Error(`basehead ${basehead}`);
       return { data: { behind_by: %d } }; } } },
 };
 const context = { repo: { owner: 'o', repo: 'r' }, payload: { pull_request: %s } };
-""" % (json.dumps(list(statuses)), behind, json.dumps(pr))
+""" % (json.dumps(list(statuses)), "true" if fail_compare else "false", behind, json.dumps(pr))
     return _run(tmp_path, ws, script, prelude)
 
 
@@ -179,24 +203,29 @@ def test_ci_passed_reads_the_library_of_the_base_commit(tmp_path):
                      sabotage_merge_lib=True)["failures"] == [STALE]
 
 
-def release_pr_current(tmp_path, prs, behind, fail_compare=False):
+def release_pr_current(tmp_path, prs, behind, fail_compare=(), fail_list=False):
     script = ci_jobs()["release-pr-current"]["steps"][-1]["with"]["script"]
     ws = _workspace(tmp_path, base_too=False)
     prelude = PRELUDE + """
-const prs = %s; const behind = %s; const failCompare = %s;
+const prs = %s; const behind = %s; const failCompare = %s; const failList = %s;
 const github = {
   paginate: async (fn, args) => { if (fn !== 'pulls' || args.state !== 'open') throw new Error(fn);
+    if (failList) throw new Error('Server Error');
     return prs; },
   rest: {
     pulls: { list: 'pulls' },
     repos: { compareCommitsWithBasehead: async ({ basehead }) => {
-      if (failCompare) { const e = new Error('Server Error'); e.status = 500; throw e; }
-      return { data: { behind_by: behind[basehead.split('...')[1]] } }; } },
+      const sha = basehead.split('...')[1];
+      if (failCompare.includes(sha)) {
+        const e = new Error(`Server Error on ${sha}`); e.status = 500; throw e;
+      }
+      return { data: { behind_by: behind[sha] } }; } },
     checks: { create: async (a) => { created.push(a); return { data: {} }; } },
   },
 };
 const context = { repo: { owner: 'o', repo: 'r' } };
-""" % (json.dumps(prs), json.dumps(behind), "true" if fail_compare else "false")
+""" % (json.dumps(prs), json.dumps(behind), json.dumps(list(fail_compare)),
+       "true" if fail_list else "false")
     return _run(tmp_path, ws, script, prelude)
 
 
@@ -217,7 +246,14 @@ def test_release_pr_current_marks_only_the_stale_release_pull_request(tmp_path):
 
 
 def test_release_pr_current_never_fails_on_an_api_error(tmp_path):
-    out = release_pr_current(tmp_path, [_pr(1, "release/v1.2.0", "s1")], {},
-                             fail_compare=True)
-    assert out["failures"] == [] and out["created"] == []
+    out = release_pr_current(tmp_path, [_pr(1, "release/v1.2.0", "s1")], {}, fail_list=True)
+    assert out["failures"] == [] and out["created"] == [] and out["thrown"] is None
     assert len(out["warnings"]) == 1 and "Server Error" in out["warnings"][0]
+
+
+def test_an_error_on_one_release_pull_request_leaves_the_others_marked(tmp_path):
+    prs = [_pr(1, "release/v1.2.0", "s1"), _pr(2, "release/v1.3.0", "s2")]
+    out = release_pr_current(tmp_path, prs, {"s2": 1}, fail_compare=["s1"])
+    assert [c["head_sha"] for c in out["created"]] == ["s2"]
+    assert out["failures"] == [] and out["thrown"] is None
+    assert len(out["warnings"]) == 1 and "#1" in out["warnings"][0]
