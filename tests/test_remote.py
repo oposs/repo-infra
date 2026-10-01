@@ -141,6 +141,19 @@ def test_reads_the_up_to_date_rule():
     assert facts().strict is False  # the recorded ruleset predates D28
 
 
+def test_reads_the_up_to_date_rule_when_it_is_on():
+    recorded = fake_run(RECORDED)
+
+    def run(args):
+        text = recorded(args)
+        if args[2].endswith("rulesets/21037721"):
+            text = text.replace('"strict_required_status_checks_policy":false',
+                                '"strict_required_status_checks_policy":true')
+            assert "policy\":true" in text
+        return text
+    assert Gh(run=run).facts("oposs/repo-infra").strict is True
+
+
 def test_reads_the_open_release_pull_requests_of_the_bot_only():
     assert facts().release_prs == ((12, "release/v0.3.0"),)
 

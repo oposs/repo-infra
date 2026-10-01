@@ -63,6 +63,20 @@ def test_ordered_names_asks_for_the_ruleset_once_when_both_facts_are_missing():
     assert "branch-protection" not in names
 
 
+def test_a_chosen_build_add_on_is_no_longer_a_candidate(tmp_path):
+    for name in ("configure.ac", "cpanfile"):
+        (tmp_path / name).write_text("")
+    assert "release-source-tarball" in cli._prepare(tmp_path)[1].candidates
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github/repo-infra.json").write_text(
+        json.dumps({"release_build": ["release-source-tarball"]}))
+    assert "release-source-tarball" not in cli._prepare(tmp_path)[1].candidates
+    # Also when the migration moves the setting there.
+    (tmp_path / ".github/repo-infra.json").write_text(
+        json.dumps({"publish": ["publish-source-tarball"]}))
+    assert "release-source-tarball" not in cli._prepare(tmp_path)[1].candidates
+
+
 # --- apply re-reads each file item before it acts (C5) -----------------------
 #
 # `fx` writes a.yml whole, which carries `by` as well; `by` also ships b.yml.

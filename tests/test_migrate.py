@@ -156,9 +156,13 @@ def test_the_d26_build_is_named_by_one_item_only(tmp_path, monkeypatch, capsys):
 
 
 def test_check_says_nothing_about_a_release_when_nothing_migrates(tmp_path, monkeypatch, capsys):
-    root = ROOT  # repo-infra itself is current
+    root = repo(tmp_path, {"release_build": [], "version_files": []})
+    monkeypatch.setattr(cli, "read_facts", lambda repo: facts())
+    assert cli.main(["apply", "--repo", "o/r", "--root", str(root)]) == 0
+    capsys.readouterr()
     code, items = run_check(root, monkeypatch, capsys,
                             facts(release_prs=((12, "release/v0.6.1"),)))
+    assert [n for n, i in items.items() if i["state"] in ("missing", "outdated")] == []
     assert "release-in-progress" not in items
 
 

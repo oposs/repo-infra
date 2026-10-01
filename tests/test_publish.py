@@ -50,9 +50,8 @@ def _crates_io_job():
 def _shell_code(run):
     """A `run:` block with its shell comments removed.
 
-    The block explains in comments why it does NOT use `--allow-dirty` or
-    `|| true`. Those comments live inside the run string, so a plain substring
-    search cannot tell the explanation from the thing it warns against.
+    A comment inside the run string that names `--allow-dirty` or `|| true`
+    would otherwise read as a use of it.
     """
     return "\n".join(
         line for line in run.splitlines() if not line.strip().startswith("#"))
@@ -130,8 +129,8 @@ def test_no_step_swallows_its_own_failure():
 
 
 def test_the_publish_covers_the_whole_workspace_and_stays_locked():
-    # --workspace is what serves the multi-crate consumer in one invocation;
-    # --locked is what still guards dependency drift after the update above.
+    # --workspace publishes every crate in one invocation; --locked keeps the
+    # Cargo.lock the release pull request bumped instead of re-resolving it.
     runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
     publish = next(r for r in runs if "cargo publish" in r)
     assert "--workspace" in publish
@@ -139,8 +138,7 @@ def test_the_publish_covers_the_whole_workspace_and_stays_locked():
 
 
 def test_the_publish_never_waves_through_a_dirty_tree():
-    # --allow-dirty is the tempting one-word alternative to the commit above.
-    # It also publishes a modified *source* file that no tag ever pointed at.
+    # --allow-dirty would publish a modified source file no tag points at.
     for run in (s.get("run", "") for s in _crates_io_job()["steps"]):
         assert "--allow-dirty" not in _shell_code(run)
 

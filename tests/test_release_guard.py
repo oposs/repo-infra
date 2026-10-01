@@ -4,8 +4,8 @@
 `lib/checks.test.js` proves `guardIgnoreIds` gathers the right ids. Those tests
 run under node, which `make check` does not have -- and neither proves the
 shipped workflow actually calls the function. A guard whose logic is perfect and
-unreferenced is the bug it replaced, so these three lines are checked here, in
-the gate that always runs.
+unreferenced is the bug it replaced, so the workflow's calls into it are
+checked here, in the gate that always runs.
 """
 import pathlib
 

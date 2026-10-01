@@ -61,10 +61,41 @@ def test_the_tarball_add_on_builds_at_ref_and_uploads_a_release_asset():
     assert job["timeout-minutes"] == 30
 
 
-def test_the_tarball_add_on_refuses_zero_or_two_tarballs():
-    text = (ASSETS / "release-build/release-source-tarball.yml").read_text(encoding="utf-8")
-    assert "make dist produced no tarball" in text
-    assert "more than one tarball in the source root" in text
+def _locate(tmp_path, tarballs):
+    """Run the add-on's Locate step in a directory holding `tarballs`."""
+    import shutil
+    import subprocess
+
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("bash is not installed")
+    steps = doc(["release-source-tarball"])["jobs"]["release-source-tarball"]["steps"]
+    script = next(s["run"] for s in steps if s.get("name") == "Locate the tarball")
+    work, temp = tmp_path / "src", tmp_path / "runner-temp"
+    work.mkdir()
+    temp.mkdir()
+    for name in tarballs:
+        (work / name).write_text("x")
+    proc = subprocess.run([bash, "-c", script], cwd=work, capture_output=True, text=True,
+                          env={"RUNNER_TEMP": str(temp), "PATH": "/usr/bin:/bin"})
+    return proc, sorted(p.name for p in (temp / "release-asset-source").glob("*")) \
+        if (temp / "release-asset-source").is_dir() else []
+
+
+def test_the_tarball_add_on_uploads_exactly_one_tarball(tmp_path):
+    proc, moved = _locate(tmp_path, ["app-1.2.0.tar.gz"])
+    assert proc.returncode == 0, proc.stderr
+    assert moved == ["app-1.2.0.tar.gz"]
+
+
+@pytest.mark.parametrize("tarballs,message", [
+    ([], "make dist produced no tarball"),
+    (["a-1.tar.gz", "b-1.tar.gz"], "more than one tarball in the source root"),
+])
+def test_the_tarball_add_on_refuses_zero_or_two_tarballs(tmp_path, tarballs, message):
+    proc, moved = _locate(tmp_path, tarballs)
+    assert proc.returncode == 1 and message in proc.stderr
+    assert moved == []
 
 
 def test_the_local_seam_passes_version_ref_and_the_secrets():

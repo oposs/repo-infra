@@ -179,8 +179,10 @@ def test_a_head_without_the_heading_fails_by_name(tmp_path):
     assert len(failures) == 1 and "no '## [Unreleased]' heading" in failures[0]
 
 
-@pytest.mark.parametrize("statuses,behind", [(BUILT, 0), (BUILT, 2), ((), 0), ((), 3)])
-def test_both_required_checks_agree_on_a_release_pull_request(tmp_path, statuses, behind):
+@pytest.mark.parametrize("statuses,behind,expected", [
+    (BUILT, 0, []), (BUILT, 2, [STALE]), ((), 0, [BLURB]), ((), 3, [BLURB])])
+def test_both_required_checks_agree_on_a_release_pull_request(tmp_path, statuses, behind,
+                                                              expected):
     # Review Focus 2: an approved parked run must not disagree with finish
     # and release-pr-current.
     from test_release_mode import ci_passed
@@ -189,4 +191,4 @@ def test_both_required_checks_agree_on_a_release_pull_request(tmp_path, statuses
     (tmp_path / "ci").mkdir()
     ours = gate(tmp_path / "gate", head_ref="release/v1.2.0", statuses=statuses, behind=behind)
     theirs = ci_passed(tmp_path / "ci", statuses=statuses, behind=behind)["failures"]
-    assert ours == theirs
+    assert ours == theirs == expected

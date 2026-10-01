@@ -25,7 +25,8 @@ def asset_files(name, spec):
 
 def test_manifest_parses():
     data = manifest()
-    assert set(data) == {"assets", "ci_blocks", "publish_blocks", "release_build_blocks", "build_assets", "actions", "gh"}
+    assert set(data) == {"assets", "ci_blocks", "publish_blocks", "release_build_blocks",
+                         "build_assets", "actions", "gh"}
 
 
 def test_every_declared_asset_exists():

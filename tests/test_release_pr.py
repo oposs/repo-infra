@@ -96,6 +96,8 @@ def test_prepare_refuses_then_cleans_up_before_it_writes_anything():
     assert refuse.index("blockingReleasePr") < refuse.index("untaggedMessage") \
         < refuse.index("staleDrafts") < refuse.index("releaseLib.fetchParkedRuns(github, {")
     assert "deleteWorkflowRun" in refuse and "core.warning" in refuse
+    # Without a branch: every closed release branch's parked runs, not one.
+    assert "releaseLib.fetchParkedRuns(github, { owner, repo })" in refuse
     assert "Re-run the failed jobs" not in refuse
 
 
