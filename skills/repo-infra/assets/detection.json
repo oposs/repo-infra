@@ -112,7 +112,9 @@
   ],
   "candidates": [
     {"id": "docs-site", "signals": {"any": ["book.toml"]}},
-    {"id": "man-pages", "signals": {"any": ["docs/manual.md"]}, "ci_block": "ci-man"}
+    {"id": "man-pages", "signals": {"any": ["docs/manual.md"]}, "ci_block": "ci-man"},
+    {"id": "release-source-tarball", "signals": {"all": ["configure.ac", "cpanfile"]},
+     "release_build": "release-source-tarball"}
   ],
   "ambiguities": [
     {

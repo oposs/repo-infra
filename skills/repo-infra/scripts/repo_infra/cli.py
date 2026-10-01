@@ -68,7 +68,8 @@ def _prepare(root):
                           ci_local=bool(config.get("ci_local")),
                           release_build=config.get("release_build", []),
                           release_build_local=bool(config.get("release_build_local")))
-    result.candidates = detection.open_candidates(result.candidates, ci)
+    result.candidates = detection.open_candidates(
+        result.candidates, ci, config.get("release_build", []))
     return manifest, result, rendered, config, migrations
 
 

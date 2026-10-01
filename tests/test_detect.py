@@ -358,3 +358,16 @@ def test_an_unreadable_cargo_toml_proposes_no_lockfile_entry(tmp_path):
     result = real(tmp_path, {"Cargo.toml": "[package\n", "Cargo.lock": "version = 4\n"})
     assert result.ecosystems == ["rust"]
     assert lock_entries(result) == []
+
+
+def test_an_autotools_perl_repository_is_proposed_the_source_tarball():
+    detection = Detection.load(REAL)
+    result = detection.detect(HERE / "fixtures/repo-perl-autotools")
+    assert "release-source-tarball" in result.candidates
+    assert "release-source-tarball" not in detection.open_candidates(
+        result.candidates, [], ["release-source-tarball"])
+
+
+def test_a_python_repository_is_not_proposed_the_source_tarball():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-python")
+    assert "release-source-tarball" not in result.candidates

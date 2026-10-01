@@ -118,15 +118,17 @@ class Detection:
         result.ecosystems.sort()
         return result
 
-    def open_candidates(self, candidates, chosen_ci):
-        """The candidates a repository has not acted on yet (D23).
+    def open_candidates(self, candidates, chosen_ci, chosen_release_build=()):
+        """The candidates a repository has not acted on yet (D23, D28).
 
         A candidate is a hint that more of the standard fits this repository.
-        Once the repository has chosen the CI block that answers it -- `ci-man`
-        for `man-pages` -- the hint has been acted on, and repeating it on
-        every `check` would read as advice still open. Detection cannot see
-        the choice, so the caller passes the `ci` list in.
+        Once the repository has chosen what answers it -- the CI block `ci-man`
+        for `man-pages`, the build add-on `release-source-tarball` for an
+        autotools tree -- the hint has been acted on. Detection cannot see the
+        choice, so the caller passes the `ci` and `release_build` lists in.
         """
         served = {entry["id"] for entry in self.data.get("candidates", [])
-                  if entry.get("ci_block") in chosen_ci}
+                  if (entry.get("ci_block") and entry["ci_block"] in chosen_ci)
+                  or (entry.get("release_build")
+                      and entry["release_build"] in chosen_release_build)}
         return [c for c in candidates if c not in served]
