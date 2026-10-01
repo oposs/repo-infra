@@ -8,8 +8,9 @@ name: Changelog
 # this workflow (spec D13).
 #
 # The release PR is not blocked by being GITHUB_TOKEN-authored: its runs are
-# created in an approval-required state and start when a maintainer clicks
-# "Approve workflows to run".
+# created in an approval-required state and start once someone with write
+# access approves them, with the "Approve workflows to run" button or
+# `gh api --method POST repos/{owner}/{repo}/actions/runs/<id>/approve`.
 
 on:
   pull_request:
