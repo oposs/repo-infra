@@ -212,10 +212,10 @@ test('treeVerdict names main, the head and the way out when the trees differ', (
     + 'dispatch Create release PR again');
 });
 
-test('treeVerdict refuses when no merged release pull request contains the head', () => {
+test('treeVerdict refuses when no release branch pull request was merged', () => {
   const m = r.treeVerdict({ tag: 'v1.2.0', head: 'h', mergeSha: null, mergeTree: null,
     headTree: 't' });
-  assert.match(m, /no merged release pull request contains h/);
+  assert.match(m, /no merged release pull request from release\/v1\.2\.0,/);
   assert.match(m, /Nothing was tagged/);
 });
 

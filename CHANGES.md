@@ -26,6 +26,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Re-running the publish workflow no longer fails on a crate an earlier attempt already uploaded, and both **Re-run failed jobs** and a whole-workflow re-run finish a stopped release. Publish refuses to tag when `main` does not match the release that was built.
 - The release build and the CI run get the repository's secrets. No repository secret may carry write access to the repository.
 - `check` reports `ci-local.yml`, `action-test.yml` and `release-build-local.yml` as a conflict when they do not declare the input `ref` or do not check it out. It also reports `ci-local.yml` and `action-test.yml` when they upload an artifact named `release-asset-*` or `release-files`, names the release build keeps for itself.
+- `check` reports `container` v2 for autotools repositories that build in a container. Only a comment in `build/container.mk` changed: it names the new `release-source-tarball` add-on.
 
 ### Fixed
 

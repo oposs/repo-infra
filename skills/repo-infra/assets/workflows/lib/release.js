@@ -1,9 +1,10 @@
 // repo-infra: workflow-lib v6
 'use strict';
 
-// Decisions of a release pull request that builds its release (D26). Each is
-// a pure function over what the API returned, so every state the workflows
-// can meet is a line in release.test.js rather than a hope in YAML.
+// Decisions of the release flow that builds and tests a release before its
+// pull request exists (D28). Each is a pure function over what the API
+// returned, so every state the workflows can meet is a line in
+// release.test.js rather than a hope in YAML.
 
 const path = require('path');
 
@@ -161,9 +162,10 @@ function untaggedMessage(version) {
     + 'pull request that moves its entries back under [Unreleased].';
 }
 
-// The release pull request whose merge put this version on main, found from
-// the recorded head. Not context.sha: a failed first publish followed by an
-// ordinary merge starts a new run on a later commit.
+// The release pull request whose merge put this version on main, found by its
+// release branch (pulls.list). Not by the recorded head: for a commit off the
+// default branch GitHub lists only open pull requests. Not context.sha: a failed
+// first publish followed by an ordinary merge starts a new run on a later commit.
 function releasePrMergeCommit(prs, { fullName, tag }) {
   const found = prs.find((pr) => isReleasePr(pr, fullName)
     && pr.head.ref === `release/${tag}` && pr.merged_at);
@@ -174,7 +176,7 @@ function releasePrMergeCommit(prs, { fullName, tag }) {
 // tree (also after a squash or rebase). A mismatch means the rule was off.
 function treeVerdict({ tag, head, mergeSha, mergeTree, headTree }) {
   if (!mergeSha) {
-    return `${tag}: no merged release pull request contains ${head}, so publish cannot `
+    return `${tag}: no merged release pull request from release/${tag}, so publish cannot `
       + 'compare main with the release that was built. Nothing was tagged.';
   }
   if (mergeTree === headTree) return null;

@@ -1,4 +1,4 @@
-# repo-infra: container v1
+# repo-infra: container v2
 #
 # Autotools as a container driver (D18).
 #

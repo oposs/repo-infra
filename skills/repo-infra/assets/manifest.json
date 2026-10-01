@@ -52,7 +52,7 @@
   },
   "build_assets": {
     "container": {
-      "version": 1,
+      "version": 2,
       "source": "build/container.mk",
       "target": "build/container.mk",
       "comment": "#"

@@ -270,7 +270,7 @@ def test_a_squash_merge_with_the_same_tree_publishes(tmp_path):
 def test_no_merged_release_pull_request_tags_nothing(tmp_path):
     out = run(tmp_path, releases=[draft()], record={"head": HEAD}, prs=[])
     assert len(out["failures"]) == 1
-    assert f"no merged release pull request contains {HEAD}" in out["failures"][0]
+    assert "no merged release pull request from release/v1.2.0," in out["failures"][0]
     assert called(out, "createTag") == []
 
 
