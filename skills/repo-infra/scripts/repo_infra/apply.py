@@ -149,8 +149,16 @@ def changed(repo_root, paths):
     """
     if not paths:
         return []
-    status = git(repo_root, "status", "--porcelain", "--untracked-files=all", "--", *paths)
-    dirty = {line[3:] for line in status.splitlines()}
+    # -z: a path with a space or a quote is written as is, not quoted.
+    entries = iter(git(repo_root, "status", "--porcelain", "-z", "--untracked-files=all",
+                       "--", *paths).split("\0"))
+    dirty = set()
+    for entry in entries:
+        if not entry:
+            continue
+        dirty.add(entry[3:])
+        if entry[0] in "RC":
+            next(entries, None)  # the path it was renamed or copied from
     return [p for p in paths if p in dirty]
 
 

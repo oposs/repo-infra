@@ -362,3 +362,15 @@ def test_a_failed_git_command_says_what_git_printed_on_stdout(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     with pytest.raises(ApplyError, match="nothing to commit"):
         git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "x")
+
+
+def test_changed_reads_paths_git_would_quote(tmp_path):
+    from repo_infra.apply import changed, git
+
+    git(tmp_path, "init", "-q")
+    (tmp_path / "a b.yml").write_text("x\n")
+    (tmp_path / 'q"uote.yml').write_text("x\n")
+    (tmp_path / "same.yml").write_text("x\n")
+    git(tmp_path, "add", "same.yml")
+    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed")
+    assert changed(tmp_path, ["a b.yml", 'q"uote.yml', "same.yml"]) == ["a b.yml", 'q"uote.yml']

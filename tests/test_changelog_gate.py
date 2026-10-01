@@ -24,7 +24,7 @@ def job():
 
 def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), statuses=(),
          behind=0, head_changes=SAME, base_changes=SAME, sabotage_merge_lib=False,
-         sabotage_merge_changes=False, base_lib=True):
+         sabotage_merge_changes=False, base_lib=True, base_lib_dir=None):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -33,7 +33,7 @@ def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), statuses=
     # Several tests call gate() twice with one tmp_path: copy over, never fail on an existing tree.
     shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib", dirs_exist_ok=True)
     if base_lib:
-        shutil.copytree(ROOT / ".github/workflows/lib",
+        shutil.copytree(base_lib_dir or ROOT / ".github/workflows/lib",
                         ws / "repo-infra-base/.github/workflows/lib", dirs_exist_ok=True)
     if sabotage_merge_lib:
         (ws / ".github/workflows/lib/release.js").write_text("module.exports = {};\n")
@@ -141,6 +141,25 @@ def test_the_pull_request_that_installs_the_library_uses_its_own(tmp_path):
                 head_changes=MORE) == []
     assert len(gate(tmp_path, head_ref="repo-infra/apply", login="oetiker",
                     base_lib=False)) == 1
+
+
+# The library main carries in a repository on v0.2.0: workflow-lib v4, whose
+# changes.js has no gateVerdict, and no release.js.
+LIB_V0_2_0 = ROOT / "tests/fixtures/lib-v0.2.0"
+
+
+def test_the_pull_request_that_upgrades_from_v0_2_0_uses_its_own_rules(tmp_path):
+    assert gate(tmp_path, head_ref="repo-infra/apply", login="oetiker",
+                base_lib_dir=LIB_V0_2_0, head_changes=MORE) == []
+    failures = gate(tmp_path, head_ref="repo-infra/apply", login="oetiker",
+                    base_lib_dir=LIB_V0_2_0)
+    assert len(failures) == 1 and "[Unreleased]" in failures[0]
+
+
+def test_the_v0_2_0_fixture_is_the_released_library():
+    text = (LIB_V0_2_0 / "changes.js").read_text(encoding="utf-8")
+    assert "// repo-infra: workflow-lib v4" in text and "gateVerdict" not in text
+    assert not (LIB_V0_2_0 / "release.js").exists()
 
 
 def test_a_persons_release_branch_gets_the_ordinary_rules(tmp_path):

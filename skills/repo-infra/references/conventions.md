@@ -131,7 +131,7 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   missing pattern and `apply` adds it.
 - `release_build_local`: `true` adds the project's own
   `.github/workflows/release-build-local.yml` to `release-build.yml`.
-- `release_assets, release_files`: every file the release must carry, as
+- `release_assets`, `release_files`: every file the release must carry, as
   name patterns, and the repository paths the build may rewrite (D26).
 - `build`: which build assets this repository's Makefile and `configure.ac`
   install, by id (`manifest.json` `build_assets`). A containerized autotools

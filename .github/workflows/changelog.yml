@@ -52,14 +52,23 @@ jobs:
       - uses: actions/github-script@v9
         with:
           script: |
-            const fs = require('fs');
             const ws = process.env.GITHUB_WORKSPACE;
-            // The pull request that first installs the library finds none on
-            // its base and has only its own to run.
             const baseLib = `${ws}/repo-infra-base/.github/workflows/lib`;
-            const changes = require(fs.existsSync(`${baseLib}/changes.js`)
-              ? `${baseLib}/changes.js`
-              : `${ws}/.github/workflows/lib/changes.js`);
+            // The base's changes.js when it has gateVerdict. The pull request
+            // that installs or upgrades the library finds none there, or one
+            // without it (v0.2.0 shipped workflow-lib v4, before gateVerdict),
+            // and runs its own. The base commit decides which, not the pull
+            // request.
+            const baseChanges = (() => {
+              try {
+                const lib = require(`${baseLib}/changes.js`);
+                return typeof lib.gateVerdict === 'function' ? lib : null;
+              } catch (error) {
+                return null;
+              }
+            })();
+            const changes = baseChanges
+              || require(`${ws}/.github/workflows/lib/changes.js`);
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
 
