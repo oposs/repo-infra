@@ -114,10 +114,14 @@ def test_without_git_history_the_log_says_so(tmp_path):
 
 def test_a_file_no_commit_touches_yet_says_so_in_the_log(tmp_path):
     git_repo(tmp_path)
+    # A first commit, so `git log` succeeds and prints nothing for the file.
+    (tmp_path / "README").write_text("x\n", encoding="utf-8")
+    commit_all(tmp_path, "Start")
     installed(tmp_path, OLD)
     with pytest.raises(NeedsMerge) as raised:
         apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
-    assert raised.value.log.read_text(encoding="utf-8").startswith("(no history:")
+    assert raised.value.log.read_text(encoding="utf-8") == (
+        "(no history: no commit touches .github/workflows/ci.yml)\n")
 
 
 def test_a_merge_handed_back_is_written_without_a_stamp(tmp_path):
