@@ -186,14 +186,15 @@ def test_an_edited_piece_that_claims_the_current_version_is_not_pending(
     assert "Install ri-x" not in "\n".join(log_subjects(repo))
 
 
-def test_an_edited_piece_whose_only_edit_is_a_dropped_file_is_not_pending(
+def test_an_edited_dropped_file_does_not_stop_the_other_files_being_written(
         monkeypatch, store, repo):
     install(repo, ".github/workflows/ri-x.yml", NEW)
     install(repo, ".github/workflows/lib-x/gone.js", LIB1["gone.js"] + "// mine\n")
     git(repo, "commit", "-qam", "edit")
     run_apply(monkeypatch, store, repo)
-    assert (repo / ".github/workflows/lib-x/a.js").read_text(encoding="utf-8") == LIB1["a.js"]
-    assert log_subjects(repo)[0] == "edit"
+    assert (repo / ".github/workflows/lib-x/a.js").read_text(encoding="utf-8") == LIB2["a.js"]
+    assert (repo / ".github/workflows/lib-x/gone.js").is_file()
+    assert log_subjects(repo)[0] == "Install lib-x v2 from the repo-infra standard"
 
 
 @pytest.fixture
@@ -387,3 +388,94 @@ def test_without_git_history_the_log_says_so(tmp_path):
     with pytest.raises(apply.NeedsMerge) as stopped:
         apply._prepare_merge(tmp_path, "ri-x", ".github/workflows/ri-x.yml", NEW, OLD)
     assert stopped.value.log.read_text(encoding="utf-8").startswith("(no history:")
+
+
+# --- one rule per file ------------------------------------------------------
+
+P1 = {"a.js": lib_file("lib-y", 1, "a1"), "b.js": lib_file("lib-y", 1, "b1")}
+P2 = {"a.js": lib_file("lib-y", 2, "a2"), "b.js": lib_file("lib-y", 2, "b2")}
+P3 = lib_file("lib-y", 3, "newer")
+
+
+@pytest.fixture
+def pair(tmp_path):
+    history = [("lib-y", f, t) for f, t in P1.items()]
+    return make_assets(tmp_path / "pair", {"lib-y": P2}, history)
+
+
+def lib_y(repo, **files):
+    for name, text in files.items():
+        install(repo, f".github/workflows/lib-y/{name}.js", text)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "set up lib-y")
+
+
+def hand_back(monkeypatch, pair, repo, name, text):
+    merged = repo.parent / f"merged-{name}"
+    merged.write_text(text, encoding="utf-8")
+    run_apply(monkeypatch, pair, repo, "--item", "lib-y", "--from", str(merged))
+
+
+def test_an_edited_file_claiming_a_newer_version_is_neither_merged_nor_written(
+        monkeypatch, capsys, pair, repo):
+    lib_y(repo, a=P1["a.js"], b=P3)
+    run_apply(monkeypatch, pair, repo, "--item", "lib-y")
+    folder = repo / ".github/workflows/lib-y"
+    assert (folder / "b.js").read_text(encoding="utf-8") == P3
+    assert (folder / "a.js").read_text(encoding="utf-8") == P2["a.js"]
+
+
+def test_an_edited_file_claiming_a_newer_version_alone_is_left_alone(
+        monkeypatch, capsys, pair, repo):
+    lib_y(repo, a=P3, b=P3)
+    run_apply(monkeypatch, pair, repo, "--item", "lib-y")
+    assert "lib-y: already v2" in capsys.readouterr().out
+    assert (repo / ".github/workflows/lib-y/a.js").read_text(encoding="utf-8") == P3
+
+
+def test_the_merge_targets_the_file_that_needs_it_not_the_first_edited_one(
+        monkeypatch, pair, repo):
+    # a.js claims the current version, b.js an older one.
+    lib_y(repo, a=P2["a.js"] + "// mine\n", b=P1["b.js"] + "// mine\n")
+    with pytest.raises(apply.NeedsMerge) as stopped:
+        run_apply(monkeypatch, pair, repo)
+    assert stopped.value.target.name == "b.js"
+
+
+def test_two_edited_files_are_merged_one_after_the_other_and_then_done(
+        monkeypatch, capsys, pair, repo):
+    lib_y(repo, a=P1["a.js"] + "// mine\n", b=P1["b.js"] + "// mine\n")
+    with pytest.raises(apply.NeedsMerge) as first:
+        run_apply(monkeypatch, pair, repo)
+    assert first.value.target.name == "a.js"
+    hand_back(monkeypatch, pair, repo, "a", P2["a.js"] + "// mine\n")
+    with pytest.raises(apply.NeedsMerge) as second:
+        run_apply(monkeypatch, pair, repo)
+    assert second.value.target.name == "b.js"
+    hand_back(monkeypatch, pair, repo, "b", P2["b.js"] + "// mine\n")
+    count = len(log_subjects(repo))
+    capsys.readouterr()
+    run_apply(monkeypatch, pair, repo)
+    assert len(log_subjects(repo)) == count
+    assert "Install lib-y" not in capsys.readouterr().out
+
+
+def test_an_edited_file_at_the_current_version_is_left_while_an_old_file_is_written(
+        monkeypatch, pair, repo):
+    mine = P2["a.js"] + "// mine\n"
+    lib_y(repo, a=mine, b=P1["b.js"])
+    run_apply(monkeypatch, pair, repo)
+    folder = repo / ".github/workflows/lib-y"
+    assert (folder / "a.js").read_text(encoding="utf-8") == mine
+    assert (folder / "b.js").read_text(encoding="utf-8") == P2["b.js"]
+    assert log_subjects(repo)[0] == "Install lib-y v2 from the repo-infra standard"
+
+
+def test_the_notes_of_a_merge_start_at_the_targets_claimed_version(
+        monkeypatch, capsys, pair, repo):
+    lib_y(repo, a=P2["a.js"] + "// mine\n", b=P1["b.js"] + "// mine\n")
+    with pytest.raises(apply.NeedsMerge):
+        run_apply(monkeypatch, pair, repo)
+    capsys.readouterr()
+    hand_back(monkeypatch, pair, repo, "b", P2["b.js"] + "// mine\n")
+    assert "lib-y v2\nNotes for lib-y v2." in capsys.readouterr().out

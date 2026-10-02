@@ -16,6 +16,7 @@ import json
 import pathlib
 import re
 import subprocess
+from collections import namedtuple
 
 from .check import unstamped
 from .markers import parse_markers
@@ -146,37 +147,85 @@ def _prepare_merge(repo_root, name, path, expected, installed):
     raise NeedsMerge(name, new_path, current_path, log_path, pathlib.Path(repo_root) / path)
 
 
+Plan = namedtuple("Plan", "write candidates dropped since")
+
+
+def plan_piece(repo_root, piece, state, history):
+    """What apply does for `piece`, one rule per file.
+
+    write: shipped files that are absent or whose bytes (stamp aside) are a
+    published version and not yet the current text.
+    candidates: edited shipped files whose marker claims an older version
+    than the piece, or none; the first one is the merge target. An edited
+    file claiming the current or a newer version is left alone: there is
+    nothing to merge into it, and writing it would be a downgrade.
+    dropped: files the new version no longer ships whose bytes are a
+    published version; they are removed. Edited ones stay (`kept_edits`).
+    since: the version the upgrade notes start after, or None."""
+    root = pathlib.Path(repo_root)
+    write, candidates, versions = [], [], []
+    for path in sorted(piece.files):
+        if path in state.edited:
+            claimed = claimed_version(repo_root, piece, path)
+            if claimed is None or claimed < piece.version:
+                candidates.append(path)
+            continue
+        target = root / path
+        if not target.is_file():
+            write.append(path)
+            continue
+        data = unstamped(target.read_bytes())
+        if data != piece.files[path].encode("utf-8"):
+            write.append(path)
+        digest = hashlib.sha256(data).hexdigest()
+        versions += [v for v, d in history.get(path, {}).items() if d == digest]
+    dropped = _dropped(repo_root, piece, history)
+    if candidates:
+        since = claimed_version(repo_root, piece, candidates[0])
+    else:
+        since = min(versions) if versions else None
+    return Plan(write, candidates, dropped, since)
+
+
+def pending(plan):
+    return bool(plan.write or plan.candidates or plan.dropped)
+
+
 def install_piece(repo_root, piece, state, history, merged=None):
     """Write `piece` at its current version; return the paths written or removed.
 
-    An edited file the new version ships is merged by hand: the first call
-    prepares the merge and raises NeedsMerge, the `merged` call completes the
-    piece. An edited file the new version dropped cannot be merged into
-    anything; it stays (see `kept_edits`)."""
+    The first edited shipped file that claims an older version is merged by
+    hand: the first call prepares the merge and raises NeedsMerge, the
+    `merged` call completes the piece. See `plan_piece` for the rest."""
+    plan = plan_piece(repo_root, piece, state, history)
     if merged is not None:
-        return _hand_back(repo_root, piece, state, history, merged)
-    root = pathlib.Path(repo_root)
-    shipped = [path for path in state.edited if path in piece.files]
-    if shipped:
-        _prepare_merge(repo_root, piece.name, shipped[0], piece.files[shipped[0]],
-                       _read_raw(root / shipped[0]))
-    written = [write_asset(repo_root, path, text) for path, text in sorted(piece.files.items())]
-    return written + _remove_dropped(repo_root, piece, history)
+        return _hand_back(repo_root, piece, plan, merged)
+    if plan.candidates:
+        path = plan.candidates[0]
+        _prepare_merge(repo_root, piece.name, path, piece.files[path],
+                       _read_raw(pathlib.Path(repo_root) / path))
+    written = [write_asset(repo_root, path, piece.files[path]) for path in plan.write]
+    return written + _remove(repo_root, plan.dropped)
 
 
-def _remove_dropped(repo_root, piece, history):
-    """Remove the files an older version shipped and this one does not, when
-    their bytes (stamp aside, as check reads them) are a published version."""
+def _dropped(repo_root, piece, history):
+    """The files an older version shipped and this one does not, when their
+    bytes (stamp aside, as check reads them) are a published version."""
     root = pathlib.Path(repo_root)
-    removed = []
+    found = []
     for path, versions in sorted(history.items()):
         target = root / path
         if path not in piece.files and target.is_file():
             digest = hashlib.sha256(unstamped(target.read_bytes())).hexdigest()
             if digest in versions.values():
-                target.unlink()
-                removed.append(path)
-    return removed
+                found.append(path)
+    return found
+
+
+def _remove(repo_root, paths):
+    for path in paths:
+        (pathlib.Path(repo_root) / path).unlink()
+    return list(paths)
 
 
 def kept_edits(piece, state):
@@ -191,19 +240,7 @@ def claimed_version(repo_root, piece, path):
     return next((m.version for m in parse_markers(text) if m.asset == piece.name), None)
 
 
-def needs_merge(repo_root, piece, state):
-    """True when an edited file the piece still ships claims an older version
-    than the piece (or none). A file claiming the current or a newer version
-    is not offered a merge: it would be a downgrade, or nothing to merge."""
-    for path in state.edited:
-        if path in piece.files:
-            claimed = claimed_version(repo_root, piece, path)
-            if claimed is None or claimed < piece.version:
-                return True
-    return False
-
-
-def _hand_back(repo_root, piece, state, history, merged):
+def _hand_back(repo_root, piece, plan, merged):
     """The merged file from --from, written where the refusal recorded, and
     then the rest of the piece as install_piece writes it."""
     scratch = _scratch_dir(repo_root)
@@ -227,11 +264,11 @@ def _hand_back(repo_root, piece, state, history, merged):
         raise ApplyError(f"{piece.name}: the merged file says v{got}, the piece is "
                          f"v{piece.version}")
     written = [write_asset(repo_root, path, text)]
-    written += [write_asset(repo_root, other, body) for other, body in sorted(piece.files.items())
-                if other != path and other not in state.edited]
+    written += [write_asset(repo_root, other, piece.files[other])
+                for other in plan.write if other != path]
     for suffix in ("new", "current", "path", "log"):
         (scratch / f"{piece.name}.{suffix}").unlink(missing_ok=True)
-    return written + _remove_dropped(repo_root, piece, history)
+    return written + _remove(repo_root, plan.dropped)
 
 
 def commit_piece(repo_root, name, version, paths, merged=False):

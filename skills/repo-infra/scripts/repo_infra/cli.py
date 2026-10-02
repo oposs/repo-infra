@@ -9,12 +9,12 @@ from .apply import (
     ApplyError,
     apply_admin_item,
     changed,
-    claimed_version,
     commit_piece,
     ensure_branch,
     install_piece,
     kept_edits,
-    needs_merge,
+    pending,
+    plan_piece,
     release_in_progress,
 )
 from .pieces import ASSETS, load_pieces, load_published, upgrade_notes
@@ -44,34 +44,23 @@ def check(args):
     return 1 if any(item.state in report.ATTENTION for item in items) else 0
 
 
-def _pending(root, pieces, states):
-    """The pieces a bare apply installs: outdated ones, edited ones with a file
-    to merge (those last, so the merge stop leaves the rest installed), absent
-    core pieces, and pieces an installed piece needs."""
-    names = [name for name, state in sorted(states.items())
-             if state.state == "outdated"
-             or (state.state == "absent" and pieces[name].core)]
+def _pending(root, pieces, states, published):
+    """The pieces a bare apply installs: those with a file to write, a file to
+    remove or a merge (merges last, so the merge stop leaves the rest
+    installed), absent core pieces, and pieces an installed piece needs."""
+    plans = {name: plan_piece(root, pieces[name], state, published.get(name, {}))
+             for name, state in sorted(states.items()) if state.state != "absent"}
+    names = [name for name, plan in plans.items() if pending(plan) and not plan.candidates]
+    names += [name for name, state in sorted(states.items())
+              if state.state == "absent" and pieces[name].core]
     names += [dep for dep, _ in checking.missing_dependencies(pieces, states)
               if dep not in names]
-    return names + [name for name, state in sorted(states.items())
-                    if state.state == "edited" and needs_merge(root, pieces[name], state)]
+    return names + [name for name, plan in plans.items() if plan.candidates]
 
 
 def _states(root, pieces, published):
     return {name: checking.piece_state(root, piece, published.get(name, {}))
             for name, piece in pieces.items()}
-
-
-def _since(root, piece, state):
-    """The version whose notes are the first not yet read, minus one: the
-    installed version, or what the edited file being merged claims."""
-    if state.state == "outdated":
-        return state.installed
-    if state.state == "edited":
-        merge = [path for path in state.edited if path in piece.files]
-        if merge:
-            return claimed_version(root, piece, merge[0])
-    return None
 
 
 def apply_command(args):
@@ -89,7 +78,7 @@ def apply_command(args):
     if args.item is not None and args.item not in pieces:
         raise ApplyError(f"{args.item}: not a piece and not an administration item")
     states = _states(args.root, pieces, published)
-    names = [args.item] if args.item else _pending(args.root, pieces, states)
+    names = [args.item] if args.item else _pending(args.root, pieces, states, published)
     if names:
         blocker = release_in_progress(args.root, facts)
         if blocker:
@@ -98,12 +87,12 @@ def apply_command(args):
         # The branch may carry other versions of the files than the one the
         # first look found, so what to install is decided on this one.
         states = _states(args.root, pieces, published)
-        names = [args.item] if args.item else _pending(args.root, pieces, states)
+        names = [args.item] if args.item else _pending(args.root, pieces, states, published)
     notes, kept = [], []
     try:
         for name in names:
             piece, state = pieces[name], states[name]
-            since = _since(args.root, piece, state)
+            since = plan_piece(args.root, piece, state, published.get(name, {})).since
             written = changed(args.root, install_piece(args.root, piece, state,
                                                        published.get(name, {}),
                                                        merged=args.from_file))
