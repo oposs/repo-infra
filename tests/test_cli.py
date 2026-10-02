@@ -2,6 +2,7 @@ import json
 import pathlib
 
 from repo_infra import cli
+from repo_infra.markers import strip_stamp
 from repo_infra.state import Item
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -125,4 +126,4 @@ def test_an_item_writes_only_the_files_an_earlier_item_left(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert out.count("applied by") == 1
     assert "Install by from the repo-infra standard\n\nb.yml\n" in log(root)
-    assert (root / "b.yml").read_text() == B
+    assert strip_stamp((root / "b.yml").read_text()) == B

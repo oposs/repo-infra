@@ -9,14 +9,24 @@ from repo_infra.apply import (
     ApplyError,
     NeedsMerge,
     apply_file_item,
-    base_version_of,
     write_asset,
 )
+from repo_infra.markers import pristine, stamp, strip_stamp
 from repo_infra.state import Item
 
 ASSET = "name: CI\n# repo-infra: ci v3\njobs:\n  fmt:\n"
 OLD = "name: CI\n# repo-infra: ci v1\njobs:\n  fmt:\n"
 RENDERED = {".github/workflows/ci.yml": ASSET}
+
+
+def git_repo(path):
+    subprocess.run(["git", "init", "-q", str(path)], check=True, capture_output=True)
+    return path
+
+
+def commit_all(path, message):
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", message], cwd=path, check=True, capture_output=True)
 
 
 def installed(tmp_path, text):
@@ -31,87 +41,141 @@ def test_writing_reads_the_file_back_and_asserts_it(tmp_path):
     assert (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8") == ASSET
 
 
-def test_a_missing_file_is_installed(tmp_path):
-    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "missing", "")], tmp_path)
+def test_a_missing_file_is_installed_stamped(tmp_path):
+    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "missing", "")])
     assert written == [".github/workflows/ci.yml"]
-    assert (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8") == ASSET
+    text = (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert strip_stamp(text) == ASSET and pristine(text) is True
 
 
 def test_an_item_that_is_already_ok_writes_nothing(tmp_path):
     installed(tmp_path, ASSET)
-    assert apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "ok", "")], tmp_path) == []
+    assert apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "ok", "")]) == []
 
 
-def test_an_outdated_file_with_no_local_edits_is_upgraded_in_place(tmp_path, plugin_checkout):
-    installed(tmp_path, OLD)
-    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
-                              plugin_checkout)
+def test_an_unedited_stamped_file_is_upgraded_in_place(tmp_path):
+    installed(tmp_path, stamp(OLD))
+    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
     assert written == [".github/workflows/ci.yml"]
+    text = (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert strip_stamp(text) == ASSET and pristine(text) is True
 
 
-def test_an_outdated_file_with_local_edits_refuses_and_hands_over_the_merge(tmp_path, plugin_checkout):
-    installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 30"))
-    (tmp_path / ".git").mkdir(exist_ok=True)
+def test_an_edited_stamped_file_hands_over_new_current_path_and_log(tmp_path):
+    git_repo(tmp_path)
+    installed(tmp_path, stamp(OLD))
+    commit_all(tmp_path, "Install ci from the repo-infra standard")
+    edited = stamp(OLD).replace("fmt:", "fmt:\n    timeout-minutes: 30")
+    installed(tmp_path, edited)
+    commit_all(tmp_path, "ci: longer timeout")
     with pytest.raises(NeedsMerge) as raised:
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+    scratch = tmp_path / ".git" / MERGE_DIR
     assert raised.value.new.read_text(encoding="utf-8") == ASSET
-    assert raised.value.base.read_text(encoding="utf-8") == OLD
+    assert raised.value.current.read_text(encoding="utf-8") == edited
+    assert (scratch / "ci.path").read_text(encoding="utf-8") == ".github/workflows/ci.yml\n"
+    log = raised.value.log.read_text(encoding="utf-8").splitlines()
+    assert [line.split(" ", 2)[2] for line in log] == [
+        "ci: longer timeout", "Install ci from the repo-infra standard"]
+    assert not (scratch / "ci.base").exists()
+    assert (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8") == edited
 
 
-def test_a_merged_file_handed_back_is_written_after_its_marker_is_checked(tmp_path, plugin_checkout):
-    # Local edits force the refusal, which is what records the snapshot that
-    # --from checks against.
+def test_an_unstamped_old_file_hands_over_the_merge(tmp_path):
+    # Files installed before D29 carry no stamp; the LLM decides from the log.
+    git_repo(tmp_path)
+    installed(tmp_path, OLD)
+    with pytest.raises(NeedsMerge):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+    assert (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8") == OLD
+
+
+def test_a_crlf_checkout_is_never_overwritten(tmp_path):
+    git_repo(tmp_path)
+    installed(tmp_path, stamp(OLD).replace("\n", "\r\n"))
+    with pytest.raises(NeedsMerge):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+
+
+def test_a_deleted_stamp_hands_over_the_merge(tmp_path):
+    git_repo(tmp_path)
+    installed(tmp_path, strip_stamp(stamp(OLD)))
+    with pytest.raises(NeedsMerge):
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+
+
+def test_without_git_history_the_log_says_so(tmp_path):
+    (tmp_path / ".git").mkdir()
+    installed(tmp_path, OLD)
+    with pytest.raises(NeedsMerge) as raised:
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+    assert raised.value.log.read_text(encoding="utf-8").startswith("(no history:")
+
+
+def test_a_file_no_commit_touches_yet_says_so_in_the_log(tmp_path):
+    git_repo(tmp_path)
+    installed(tmp_path, OLD)
+    with pytest.raises(NeedsMerge) as raised:
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+    assert raised.value.log.read_text(encoding="utf-8").startswith("(no history:")
+
+
+def test_a_merge_handed_back_is_written_without_a_stamp(tmp_path):
+    git_repo(tmp_path)
     installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
     with pytest.raises(NeedsMerge):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
-
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
     merged = tmp_path / "merged.yml"
-    merged.write_text(ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30"), encoding="utf-8")
-    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
-                              plugin_checkout, merged=merged)
-    assert written == [".github/workflows/ci.yml"]
-    assert "timeout-minutes: 30" in (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    # Carries a stamp copied from somewhere: apply must strip it.
+    merged.write_text(stamp(ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30")),
+                      encoding="utf-8")
+    apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], merged=str(merged))
+    text = (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert pristine(text) is None
+    assert "timeout-minutes: 30" in text
+    for suffix in ("new", "current", "path", "log"):
+        assert not (tmp_path / ".git" / MERGE_DIR / f"ci.{suffix}").exists()
 
 
-def test_a_successful_from_write_removes_its_own_scratch_files_but_not_anothers(
-        tmp_path, plugin_checkout):
+def test_a_successful_from_write_removes_its_own_scratch_files_but_not_anothers(tmp_path):
+    git_repo(tmp_path)
     installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
     with pytest.raises(NeedsMerge):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
 
     scratch = tmp_path / ".git" / MERGE_DIR
     # A different item's merge is in progress at the same time; only "ci"'s
     # files must be removed, not the whole directory.
-    for suffix in ("base", "new", "current"):
+    for suffix in ("new", "current", "path", "log"):
         (scratch / f"other.{suffix}").write_text("unrelated", encoding="utf-8")
 
     merged = tmp_path / "merged.yml"
     merged.write_text(ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30"), encoding="utf-8")
-    apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
-                    plugin_checkout, merged=merged)
+    apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], merged=merged)
 
-    for suffix in ("base", "new", "current"):
+    for suffix in ("new", "current", "path", "log"):
         assert not (scratch / f"ci.{suffix}").exists()
         assert (scratch / f"other.{suffix}").read_text(encoding="utf-8") == "unrelated"
 
 
-def test_a_merged_file_at_the_wrong_version_is_refused(tmp_path, plugin_checkout):
+def test_a_merged_file_at_the_wrong_version_is_refused(tmp_path):
+    git_repo(tmp_path)
     installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
     with pytest.raises(NeedsMerge):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
 
     merged = tmp_path / "merged.yml"
     merged.write_text(OLD, encoding="utf-8")   # still says v1
     with pytest.raises(ApplyError, match="v3"):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
-                        plugin_checkout, merged=merged)
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], merged=merged)
 
 
-def test_a_merge_prepared_against_a_now_stale_target_is_refused(tmp_path, plugin_checkout):
+def test_a_merge_prepared_against_a_now_stale_target_is_refused(tmp_path):
+    git_repo(tmp_path)
     edited = OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15")
     installed(tmp_path, edited)
     with pytest.raises(NeedsMerge):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
 
     # An unrelated edit lands on the target after the merge was prepared.
     changed = edited.replace("timeout-minutes: 15", "timeout-minutes: 20")
@@ -120,52 +184,24 @@ def test_a_merge_prepared_against_a_now_stale_target_is_refused(tmp_path, plugin
     merged = tmp_path / "merged.yml"
     merged.write_text(ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30"), encoding="utf-8")
     with pytest.raises(ApplyError, match="changed since the merge was prepared"):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
-                        plugin_checkout, merged=merged)
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], merged=merged)
 
     # Nothing was written: the target still has the unrelated edit, not the merge.
     assert (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8") == changed
 
 
-def test_from_without_a_prior_refusal_is_refused(tmp_path, plugin_checkout):
+def test_from_without_a_prior_refusal_is_refused(tmp_path):
     installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))
     merged = tmp_path / "merged.yml"
     merged.write_text(ASSET, encoding="utf-8")
     with pytest.raises(ApplyError, match="apply --item ci"):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
-                        plugin_checkout, merged=merged)
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], merged=merged)
 
 
 def test_a_conflict_is_never_applied(tmp_path):
     installed(tmp_path, "name: CI\njobs:\n  fmt:\n")
     with pytest.raises(ApplyError, match="conflict"):
-        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "conflict", "not managed")], tmp_path)
-
-
-def test_base_version_of_finds_the_base_when_the_plugin_root_is_a_subdirectory(
-        tmp_path_factory):
-    """The real plugin checkout is a git repository with `skills/repo-infra`
-    as a *subdirectory* of its root, not the root itself -- unlike
-    `plugin_checkout` above, where the fixture's root and the plugin root are
-    the same directory. `git show rev:path` resolves `path` from the
-    repository root, never from cwd, so calling it with the asset path alone
-    always failed to find a base that plainly exists in history."""
-    root = tmp_path_factory.mktemp("plugin-nested")
-    plugin_root = root / "skills/repo-infra"
-    assets = plugin_root / "assets/ci"
-    assets.mkdir(parents=True)
-
-    def run(*args):
-        subprocess.run(args, cwd=root, check=True, capture_output=True)
-
-    run("git", "init", "-q")
-    run("git", "config", "user.email", "test@example.com")
-    run("git", "config", "user.name", "Test")
-    (assets / "ci-frame.yml").write_text(OLD, encoding="utf-8")
-    run("git", "add", "-A")
-    run("git", "commit", "-qm", "v1")
-
-    assert base_version_of(plugin_root, "assets/ci/ci-frame.yml", 1) == OLD
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "conflict", "not managed")])
 
 
 def test_the_config_keeps_answers_that_are_already_recorded(tmp_path):
@@ -220,15 +256,13 @@ def test_a_missing_directory_asset_installs_every_file(tmp_path):
     name nine paths. Installing the first alone leaves `check` reporting
     `files disagree` on a conversion that just reported success."""
     written = apply_file_item(
-        tmp_path, "workflow-lib", LIB, [Item("workflow-lib", "missing", "")], tmp_path)
+        tmp_path, "workflow-lib", LIB, [Item("workflow-lib", "missing", "")])
     assert written == sorted(LIB)
     for path, text in LIB.items():
-        assert (tmp_path / path).read_text(encoding="utf-8") == text
+        assert strip_stamp((tmp_path / path).read_text(encoding="utf-8")) == text
 
 
-# A plugin whose history holds workflow-lib v1 (two files) and v2, which
-# changes both and adds a third. Each file's base is looked up under its own
-# path, so no file is ever compared against a sibling's history.
+# workflow-lib v1 (two files) and v2, which changes both and adds a third.
 LIB_V1 = {
     "bump.js": "// repo-infra: workflow-lib v1\nconst bump = 1;\n",
     "version.js": "// repo-infra: workflow-lib v1\nconst version = 1;\n",
@@ -242,26 +276,6 @@ LIB_TARGET = ".github/workflows/lib/"
 RENDERED_V2 = {LIB_TARGET + name: text for name, text in LIB_V2.items()}
 
 
-@pytest.fixture(scope="module")
-def lib_plugin(tmp_path_factory):
-    root = tmp_path_factory.mktemp("lib-plugin")
-    lib = root / "assets/workflows/lib"
-    lib.mkdir(parents=True)
-
-    def run(*args):
-        subprocess.run(args, cwd=root, check=True, capture_output=True)
-
-    run("git", "init", "-q")
-    run("git", "config", "user.email", "test@example.com")
-    run("git", "config", "user.name", "Test")
-    for generation in (LIB_V1, LIB_V2):
-        for name, text in generation.items():
-            (lib / name).write_text(text, encoding="utf-8")
-        run("git", "add", "-A")
-        run("git", "commit", "-qm", "generation")
-    return root
-
-
 def install(tmp_path, files):
     for name, text in files.items():
         target = tmp_path / LIB_TARGET / name
@@ -273,85 +287,73 @@ def on_disk(tmp_path, name):
     return (tmp_path / LIB_TARGET / name).read_text(encoding="utf-8")
 
 
-def upgrade(tmp_path, plugin, merged=None):
+def stamped(files):
+    return {name: stamp(text) for name, text in files.items()}
+
+
+def upgrade(tmp_path, merged=None):
     return apply_file_item(tmp_path, "workflow-lib", RENDERED_V2,
-                           [Item("workflow-lib", "outdated", "")], plugin, merged=merged)
+                           [Item("workflow-lib", "outdated", "")], merged=merged)
 
 
-def test_an_unedited_directory_asset_is_upgraded_file_by_file(tmp_path, lib_plugin):
-    install(tmp_path, LIB_V1)
-    written = upgrade(tmp_path, lib_plugin)
-    assert written == sorted(RENDERED_V2)
+def test_an_unedited_directory_asset_is_upgraded_file_by_file(tmp_path):
+    install(tmp_path, stamped(LIB_V1))
+    assert upgrade(tmp_path) == sorted(RENDERED_V2)
     for name, text in LIB_V2.items():
-        assert on_disk(tmp_path, name) == text
+        assert strip_stamp(on_disk(tmp_path, name)) == text
+        assert pristine(on_disk(tmp_path, name)) is True
 
 
-def test_a_file_already_at_the_new_generation_keeps_its_local_edits(tmp_path, lib_plugin):
+def test_a_file_already_at_the_new_generation_keeps_its_local_edits(tmp_path):
     # A local edit at the current version is healthy (conventions.md), so a
     # file that was merged by hand earlier must survive the rest of the upgrade.
     edited = LIB_V2["bump.js"] + "// local\n"
-    install(tmp_path, {"bump.js": edited, "version.js": LIB_V1["version.js"]})
-    written = upgrade(tmp_path, lib_plugin)
-    assert written == [LIB_TARGET + "assets.js", LIB_TARGET + "version.js"]
+    install(tmp_path, {"bump.js": edited, "version.js": stamp(LIB_V1["version.js"])})
+    assert upgrade(tmp_path) == [LIB_TARGET + "assets.js", LIB_TARGET + "version.js"]
     assert on_disk(tmp_path, "bump.js") == edited
 
 
-def test_an_edited_old_file_stops_the_upgrade_before_anything_is_written(tmp_path, lib_plugin):
-    (tmp_path / ".git").mkdir()
-    edited = LIB_V1["version.js"] + "// local\n"
-    install(tmp_path, {"bump.js": LIB_V1["bump.js"], "version.js": edited})
-    with pytest.raises(NeedsMerge) as raised:
-        upgrade(tmp_path, lib_plugin)
+def test_an_edited_old_file_stops_the_upgrade_before_anything_is_written(tmp_path):
+    git_repo(tmp_path)
+    install(tmp_path, {"bump.js": stamp(LIB_V1["bump.js"]) + "// local\n",
+                       "version.js": stamp(LIB_V1["version.js"])})
+    with pytest.raises(NeedsMerge):
+        upgrade(tmp_path)
     # Writing the unedited files first would leave a half-upgraded directory
     # behind a refusal; nothing moves until the merge is in.
-    assert on_disk(tmp_path, "bump.js") == LIB_V1["bump.js"]
+    assert on_disk(tmp_path, "version.js") == stamp(LIB_V1["version.js"])
     assert not (tmp_path / LIB_TARGET / "assets.js").exists()
-    scratch = tmp_path / ".git" / MERGE_DIR
-    assert (scratch / "workflow-lib.base").read_text(encoding="utf-8") == LIB_V1["version.js"]
-    assert (scratch / "workflow-lib.new").read_text(encoding="utf-8") == LIB_V2["version.js"]
-    assert (scratch / "workflow-lib.current").read_text(encoding="utf-8") == edited
-    assert str(raised.value.current).endswith(LIB_TARGET + "version.js")
 
 
-def test_a_merged_file_goes_back_to_the_file_the_merge_was_prepared_for(tmp_path, lib_plugin):
-    (tmp_path / ".git").mkdir()
-    install(tmp_path, {"bump.js": LIB_V1["bump.js"],
-                       "version.js": LIB_V1["version.js"] + "// local\n"})
+def test_a_merged_file_goes_back_to_the_file_the_merge_was_prepared_for(tmp_path):
+    git_repo(tmp_path)
+    install(tmp_path, {"bump.js": stamp(LIB_V1["bump.js"]),
+                       "version.js": stamp(LIB_V1["version.js"]) + "// local\n"})
     with pytest.raises(NeedsMerge):
-        upgrade(tmp_path, lib_plugin)
+        upgrade(tmp_path)
     merged = tmp_path / "merged.js"
     merged.write_text(LIB_V2["version.js"] + "// local\n", encoding="utf-8")
-    assert upgrade(tmp_path, lib_plugin, merged=str(merged)) == [LIB_TARGET + "version.js"]
+    assert upgrade(tmp_path, merged=str(merged)) == [LIB_TARGET + "version.js"]
     assert on_disk(tmp_path, "version.js").endswith("// local\n")
     assert list((tmp_path / ".git" / MERGE_DIR).iterdir()) == []
     # The next run finishes the directory and leaves the merged file alone.
-    assert upgrade(tmp_path, lib_plugin) == [LIB_TARGET + "assets.js", LIB_TARGET + "bump.js"]
+    assert upgrade(tmp_path) == [LIB_TARGET + "assets.js", LIB_TARGET + "bump.js"]
     assert on_disk(tmp_path, "version.js").endswith("// local\n")
 
 
-def test_a_merge_for_a_directory_asset_needs_a_prepared_merge(tmp_path, lib_plugin):
-    install(tmp_path, LIB_V1)
+def test_a_merge_for_a_directory_asset_needs_a_prepared_merge(tmp_path):
+    install(tmp_path, stamped(LIB_V1))
     merged = tmp_path / "merged.js"
     merged.write_text(LIB_V2["bump.js"], encoding="utf-8")
     with pytest.raises(ApplyError) as raised:
-        upgrade(tmp_path, lib_plugin, merged=str(merged))
+        upgrade(tmp_path, merged=str(merged))
     assert "no merge is in progress" in str(raised.value)
-
-
-def test_without_the_plugin_history_an_old_file_counts_as_edited(tmp_path):
-    # No history means no proof the file is unedited. Overwriting it anyway
-    # would be the guess D12 forbids.
-    (tmp_path / ".git").mkdir()
-    install(tmp_path, LIB_V1)
-    with pytest.raises(NeedsMerge):
-        upgrade(tmp_path, tmp_path / "not-a-plugin")
-    assert on_disk(tmp_path, "bump.js") == LIB_V1["bump.js"]
 
 
 def test_a_single_file_asset_still_reports_exactly_one_written_path(tmp_path):
     """The generalisation must not turn every item into a list of one that
     callers then mishandle -- commit_item stages whatever comes back."""
-    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "missing", "")], tmp_path)
+    written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "missing", "")])
     assert written == [".github/workflows/ci.yml"]
 
 

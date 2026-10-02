@@ -1,4 +1,5 @@
 from repo_infra.detect import DetectResult
+from repo_infra.markers import stamp
 from repo_infra.remote import Facts
 from repo_infra.state import Item, classify_ambiguities, classify_files, classify_remote
 
@@ -29,6 +30,19 @@ def test_matching_markers_and_matching_content_are_ok(tmp_path):
 
 def test_local_edits_at_the_current_version_stay_ok(tmp_path):
     rendered = write(tmp_path, ASSET.replace("fmt:", "fmt:\n    timeout-minutes: 30"))
+    items = {item.name: item for item in classify_files(tmp_path, rendered, MANIFEST)}
+    assert items["ci"].state == "ok"
+    assert "local edits" in items["ci"].detail
+
+
+def test_a_stamped_file_at_the_current_generation_is_ok_without_local_edits(tmp_path):
+    rendered = write(tmp_path, stamp(ASSET))
+    items = {item.name: item for item in classify_files(tmp_path, rendered, MANIFEST)}
+    assert (items["ci"].state, items["ci"].detail) == ("ok", "")
+
+
+def test_an_edited_stamped_file_at_the_current_generation_reports_local_edits(tmp_path):
+    rendered = write(tmp_path, stamp(ASSET) + "# mine\n")
     items = {item.name: item for item in classify_files(tmp_path, rendered, MANIFEST)}
     assert items["ci"].state == "ok"
     assert "local edits" in items["ci"].detail

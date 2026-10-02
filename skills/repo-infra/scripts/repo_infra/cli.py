@@ -160,7 +160,6 @@ def apply_command(args):
     blocker = _blocker(args.root, facts, items, rendered, args.item)
     if blocker:
         raise ApplyError(f"release-in-progress: {blocker.detail}")
-    plugin_root = ASSETS.parent
 
     ensure_branch(args.root)
     if migrations and (args.item is None or args.item in migrate.NAMES):
@@ -186,7 +185,7 @@ def apply_command(args):
         # acting, so a later block acts only on what still differs.
         current = _file_state(name, classify(args.root, rendered, manifest, facts))
         written = changed(args.root, apply_file_item(
-            args.root, name, rendered, current, plugin_root, merged=args.from_file))
+            args.root, name, rendered, current, merged=args.from_file))
         if not written:
             writers = sorted({written_by[p] for p, _ in targets_for(name, rendered)
                               if p in written_by})

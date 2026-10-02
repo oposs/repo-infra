@@ -16,7 +16,7 @@ import pathlib
 import re
 
 from .apply import CONFIG, TRAILER, ApplyError, config_text, git, write_asset
-from .markers import parse_markers
+from .markers import parse_markers, stamp
 from .state import Item, unmanaged
 
 D26_BUILD = ".github/workflows/release-build.yml"
@@ -156,7 +156,7 @@ def apply_migrations(repo_root, config, effective, rendered):
     root = pathlib.Path(repo_root)
     written = []
     if _is_d26_release_pr(root):
-        written.append(write_asset(root, RELEASE_PR, rendered[RELEASE_PR]))
+        written.append(write_asset(root, RELEASE_PR, stamp(rendered[RELEASE_PR])))
     if effective.get("release_build_local") and not config.get("release_build_local") \
             and _is_d26_build(root):
         git(root, "mv", D26_BUILD, LOCAL_BUILD)
