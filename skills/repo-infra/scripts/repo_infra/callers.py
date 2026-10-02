@@ -181,6 +181,76 @@ def ref_contract_problems(docs, piece_files):
     return list(dict.fromkeys(found))
 
 
+LEVELS = {"none": 0, "read": 1, "write": 2}
+_LEVEL_NAMES = {0: "none", 1: "read", 2: "write"}
+SCOPES = ("actions", "attestations", "checks", "contents", "deployments", "discussions",
+          "id-token", "issues", "models", "packages", "pages", "pull-requests",
+          "repository-projects", "security-events", "statuses")
+
+
+def grant(value):
+    """{scope: level} for a `permissions:` value, or None when there is none."""
+    if value is None:
+        return None
+    if value in ("read-all", "write-all"):
+        return dict.fromkeys(SCOPES, 1 if value == "read-all" else 2)
+    if isinstance(value, dict):
+        return {scope: LEVELS.get(str(level), 0) for scope, level in value.items()}
+    return {}
+
+
+def _own(doc, job):
+    mine = grant(job.get("permissions"))
+    return mine if mine is not None else grant(doc.get("permissions"))
+
+
+def needed(name, docs, seen=()):
+    """The permissions the jobs of workflow `name` ask for (D30). A job that
+    declares none asks for what the workflows it calls ask for."""
+    doc = docs.get(name)
+    if not isinstance(doc, dict) or name in seen:
+        return {}
+    total = {}
+    for job in jobs(doc).values():
+        want = _own(doc, job)
+        if want is None:
+            called = local_target(job.get("uses"))
+            want = needed(called, docs, seen + (name,)) if called else {}
+        for scope, level in want.items():
+            total[scope] = max(total.get(scope, 0), level)
+    return total
+
+
+def permission_text(levels):
+    ordered = sorted(levels.items(), key=lambda item: (-item[1], item[0]))
+    return ", ".join(f"{scope}: {_LEVEL_NAMES[level]}" for scope, level in ordered if level)
+
+
+def permission_problems(docs):
+    found = []
+    for name, doc in docs.items():
+        for job_id, job in jobs(doc).items():
+            called = local_target(job.get("uses"))
+            if called is None or not isinstance(docs.get(called), dict):
+                continue
+            want = needed(called, docs)
+            have = _own(doc, job)
+            if have is None:
+                # A called file inherits what its caller grants, and the
+                # caller is checked against this file's needs. A file that
+                # starts a run has nothing above it.
+                if want and workflow.interface(doc) is None:
+                    found.append((name, f"job {job_id} declares no permissions; {called} "
+                                        f"needs {permission_text(want)}. Grant them on the job"))
+                continue
+            short = {scope: level for scope, level in want.items() if have.get(scope, 0) < level}
+            if short:
+                found.append((name, f"job {job_id} grants {permission_text(have) or 'nothing'} "
+                                    f"and {called} needs {permission_text(short)}; GitHub "
+                                    "refuses to start the run"))
+    return found
+
+
 def validate(docs, pieces, assets=ASSETS):
     piece_files = {pathlib.PurePosixPath(p.target).name
                    for p in pieces.values() if p.workflow}
@@ -199,5 +269,6 @@ def validate(docs, pieces, assets=ASSETS):
             elif local_target(uses):
                 items += [Item("callers", name, "problem", p)
                           for p in call_problems(job_id, job, docs)]
-    found = closing_problems(docs, assets) + ref_contract_problems(docs, piece_files)
+    found = (closing_problems(docs, assets) + ref_contract_problems(docs, piece_files)
+             + permission_problems(docs))
     return items + [Item("callers", name, "problem", detail) for name, detail in found]
