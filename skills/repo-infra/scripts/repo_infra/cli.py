@@ -192,7 +192,7 @@ def apply_command(args):
             print(f"{name}: installed with {', '.join(writers)}" if writers
                   else f"{name}: already installed")
             continue
-        commit_item(args.root, name, written)
+        commit_item(args.root, name, written, merged=bool(args.from_file))
         written_by.update(dict.fromkeys(written, name))
         print(f"applied {name}")
     return 0

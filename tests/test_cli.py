@@ -1,6 +1,8 @@
 import json
 import pathlib
 
+import pytest
+
 from repo_infra import cli
 from repo_infra.markers import strip_stamp
 from repo_infra.state import Item
@@ -127,3 +129,18 @@ def test_an_item_writes_only_the_files_an_earlier_item_left(tmp_path, monkeypatc
     assert out.count("applied by") == 1
     assert "Install by from the repo-infra standard\n\nb.yml\n" in log(root)
     assert strip_stamp((root / "b.yml").read_text()) == B
+
+
+def test_a_hand_merge_handed_back_with_from_commits_as_a_merge(tmp_path, monkeypatch):
+    import subprocess
+
+    from repo_infra.apply import NeedsMerge
+
+    root = overlapping(tmp_path, monkeypatch, {"a.yml": "# repo-infra: fx v1\nlocal\n"})
+    argv = ["apply", "--repo", "o/r", "--root", str(root), "--item", "fx"]
+    with pytest.raises(NeedsMerge) as raised:
+        cli.main(argv)
+    assert cli.main(argv + ["--from", str(raised.value.new)]) == 0
+    subject = subprocess.run(["git", "log", "-1", "--format=%s"], cwd=root,
+                             capture_output=True, text=True, check=True).stdout.strip()
+    assert subject == "Merge fx from the repo-infra standard with local edits"

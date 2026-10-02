@@ -9,6 +9,7 @@ from repo_infra.apply import (
     ApplyError,
     NeedsMerge,
     apply_file_item,
+    commit_item,
     write_asset,
 )
 from repo_infra.markers import pristine, stamp, strip_stamp
@@ -380,3 +381,22 @@ def test_changed_reads_paths_git_would_quote(tmp_path):
     git(tmp_path, "add", "same.yml")
     git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed")
     assert changed(tmp_path, ["a b.yml", 'q"uote.yml', "same.yml"]) == ["a b.yml", 'q"uote.yml']
+
+
+def subject(path):
+    return subprocess.run(["git", "log", "-1", "--format=%s"], cwd=path,
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_a_hand_merge_is_committed_under_its_own_subject(tmp_path):
+    git_repo(tmp_path)
+    installed(tmp_path, ASSET)
+    commit_item(tmp_path, "ci", [".github/workflows/ci.yml"], merged=True)
+    assert subject(tmp_path) == "Merge ci from the repo-infra standard with local edits"
+
+
+def test_an_install_keeps_the_install_subject(tmp_path):
+    git_repo(tmp_path)
+    installed(tmp_path, ASSET)
+    commit_item(tmp_path, "ci", [".github/workflows/ci.yml"])
+    assert subject(tmp_path) == "Install ci from the repo-infra standard"

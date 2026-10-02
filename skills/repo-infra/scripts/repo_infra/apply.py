@@ -434,13 +434,18 @@ def ensure_branch(repo_root):
     return BRANCH
 
 
-def commit_item(repo_root, name, paths):
-    """One commit per item, so any single item can be dropped at review."""
+def commit_item(repo_root, name, paths, merged=False):
+    """One commit per item, so any single item can be dropped at review.
+
+    A hand merge gets its own subject: the next NeedsMerge hands the LLM the
+    file's log, and an Install commit there means "no local edits" (D29).
+    """
     if not paths:
         return None
+    subject = (f"Merge {name} from the repo-infra standard with local edits" if merged
+               else f"Install {name} from the repo-infra standard")
     git(repo_root, "add", *paths)
-    git(repo_root, "commit", "-m",
-         f"Install {name} from the repo-infra standard\n\n{TRAILER}")
+    git(repo_root, "commit", "-m", f"{subject}\n\n{TRAILER}")
     return git(repo_root, "rev-parse", "HEAD").strip()
 
 
