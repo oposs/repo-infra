@@ -36,13 +36,21 @@ def _digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-# Files installed by repo-infra v0.3.1 carry ` sha256=<hex>` after the marker on
-# the first line. The bytes of the published version have no such suffix.
-_STAMP = re.compile(rb"^([^\n]*?repo-infra: [a-z0-9-]+ v\d+) sha256=[0-9a-f]+(?=\r?(?:\n|$))")
+# Files installed by repo-infra v0.3.1 carry ` sha256=<hex>` on the first line
+# that is a marker (line 2 when the file starts with `name:`). The bytes of the
+# published version have no such suffix. The marker pattern mirrors markers.py.
+_MARKER_LINE = re.compile(
+    rb"^\s*(?:#|//|--|dnl\b)\s*repo-infra:\s+[a-z0-9][a-z0-9-]*\s+v\d+(?:\s.*)?$")
+_STAMP = re.compile(rb" sha256=[0-9a-f]+(?=\r?$)")
 
 
 def _unstamped(data):
-    return _STAMP.sub(rb"\1", data, count=1)
+    lines = data.split(b"\n")
+    for i, line in enumerate(lines):
+        if _MARKER_LINE.match(line.rstrip(b"\r")):
+            lines[i] = _STAMP.sub(b"", line, count=1)
+            break
+    return b"\n".join(lines)
 
 
 def piece_state(repo_root, piece, history):
@@ -124,9 +132,13 @@ def piece_items(repo_root, pieces, published):
         elif state.state == "current":
             items.append(Item("pieces", name, "current", f"v{piece.version}"))
         elif state.state == "outdated":
-            items.append(Item("pieces", name, "outdated",
-                              f"v{state.installed} installed, v{piece.version} available; "
-                              "apply replaces it"))
+            gone = [f for f in piece.files if not (pathlib.Path(repo_root) / f).is_file()]
+            if gone and state.installed == piece.version:
+                detail = f"{', '.join(gone)} is missing; apply restores it"
+            else:
+                detail = (f"v{state.installed} installed, v{piece.version} available; "
+                          "apply replaces it")
+            items.append(Item("pieces", name, "outdated", detail))
         else:
             items.append(Item("pieces", name, "edited", _edited(piece, state)))
     reported = {i.name for i in items if i.state == "missing"}
@@ -144,7 +156,8 @@ def refused_release_files(entries, version_files):
     anything under .github/ would let it rewrite the changelog, a version or a
     workflow. `finish` checks the same rule at run time (release.js).
     """
-    versions = {posixpath.normpath(f["path"]) for f in version_files or []}
+    versions = {posixpath.normpath(f["path"]) for f in version_files or []
+                if isinstance(f, dict) and isinstance(f.get("path"), str)}
     refused = []
     for entry in entries:
         if not isinstance(entry, str) or entry == "":
@@ -191,8 +204,18 @@ def config_items(repo_root, docs):
     if not config.get("version_files"):
         items.append(Item("config", "version_files", "problem",
                           "version_files is empty; Create release PR would bump no file"))
-    refused = refused_release_files(config.get("release_files", []),
-                                    config.get("version_files", []))
+    version_files = config.get("version_files", [])
+    if version_files and not (isinstance(version_files, list) and all(
+            isinstance(f, dict) and isinstance(f.get("path"), str) for f in version_files)):
+        items.append(Item("config", "version_files", "problem",
+                          "version_files must be a list of objects, each with a \"path\""))
+        version_files = []
+    release_files = config.get("release_files", [])
+    if not isinstance(release_files, list):
+        items.append(Item("config", "release_files", "problem",
+                          "release_files must be a list of paths"))
+        release_files = []
+    refused = refused_release_files(release_files, version_files)
     if refused:
         items.append(Item("config", "release_files", "problem",
                           "; ".join(f"{entry} {reason}" for entry, reason in refused)))

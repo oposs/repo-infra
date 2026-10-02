@@ -1,7 +1,8 @@
 import json
+from types import SimpleNamespace
 
 import pytest
-from piecekit import install, lib_file, make_assets, workflow_piece
+from piecekit import digest, install, lib_file, make_assets, workflow_piece
 
 from repo_infra import callers, check
 from repo_infra.pieces import load_pieces, load_published
@@ -163,7 +164,10 @@ def test_run_puts_the_sections_together(tmp_path, store):
     install(root, ".github/workflows/ri-x.yml", OLD)
     items = check.run(root, CONFORMING, store)
     assert {i.section for i in items} == {"pieces", "callers", "config", "administration"}
-    assert callers.read_workflows(root)
+    assert ("pieces", "ri-x", "outdated") in {(i.section, i.name, i.state) for i in items}
+    assert ("config", "repo-infra.json", "missing") in {
+        (i.section, i.name, i.state) for i in items}
+    assert "ri-x.yml" in callers.read_workflows(root)
 
 
 def test_a_copy_carrying_the_d29_stamp_of_an_old_version_is_outdated(tmp_path, store):
@@ -234,3 +238,37 @@ def test_a_ruleset_without_the_up_to_date_rule_is_outdated():
 def test_missing_contexts_win_over_the_up_to_date_rule():
     items = remote_states(remote(strict=False, required_contexts={"ci-passed"}))
     assert items["required-checks"] == "missing"
+
+
+def test_a_stamp_on_a_marker_below_a_name_line_is_stripped(tmp_path):
+    path = ".github/workflows/changelog.yml"
+    old = "name: Changelog\n# repo-infra: changelog v1 do not delete\n#\nbody: 1\n"
+    new = old.replace("v1", "v2").replace("1\n", "2\n")
+    piece = SimpleNamespace(name="changelog", version=2, files={path: new})
+    history = {path: {1: digest(old), 2: digest(new)}}
+    line = "# repo-infra: changelog v1 do not delete"
+    install(tmp_path, path, old.replace(line, f"{line} sha256=0123456789abcdef"))
+    assert check.piece_state(tmp_path, piece, history) == ("outdated", 1, [])
+
+
+def test_a_directory_piece_with_a_deleted_file_says_which_file(tmp_path, store):
+    root = tmp_path / "repo"
+    install(root, ".github/workflows/lib-x/a.js", LIB2["a.js"])
+    assert ("lib-x", "outdated", ".github/workflows/lib-x/b.js is missing; apply restores it"
+            ) in rows(root, store)
+
+
+@pytest.mark.parametrize("data", [
+    {"version_files": "pyproject.toml"},
+    {"version_files": [{"pattern": "x"}]},
+    {"version_files": ["a"]},
+])
+def test_malformed_version_files_are_a_problem_not_a_traceback(tmp_path, data):
+    found = config(tmp_path, data)
+    assert ("repo-infra.json", "problem") not in found
+    assert any(n == "version_files" and s == "problem" for n, s, _ in found)
+
+
+def test_a_string_release_files_is_a_problem_not_a_traceback(tmp_path):
+    found = config(tmp_path, {"version_files": VERSIONS, "release_files": "CHANGES.md"})
+    assert [(n, s) for n, s, _ in found] == [("release_files", "problem")]
