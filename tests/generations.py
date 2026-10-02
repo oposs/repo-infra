@@ -80,7 +80,17 @@ def scan(assets_root):
     return dict(sorted(found.items()))
 
 
+def vanished(record, scanned):
+    """The recorded paths `scan` no longer finds, with what to do about each."""
+    return [f"{path} is recorded but no longer scanned; if it was removed on "
+            "purpose, delete it from generations.json"
+            for path in sorted(record) if path not in scanned]
+
+
 def updated(record, scanned):
+    gone = vanished(record, scanned)
+    if gone:
+        raise ValueError("\n".join(gone))
     record = {path: dict(versions) for path, versions in record.items()}
     for path, (version, digest) in scanned.items():
         known = record.setdefault(path, {}).get(str(version))

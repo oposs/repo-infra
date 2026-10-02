@@ -1,6 +1,8 @@
 import json
 import pathlib
 
+import pytest
+
 import generations
 
 ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
@@ -18,18 +20,16 @@ def test_every_asset_text_is_recorded_under_its_version():
             problems.append(f"{path}: the text changed but its version is still "
                             f"v{version}; bump the marker (or, for a block, its "
                             "version in manifest.json), then run make generations")
+    scanned = generations.scan(ASSETS)
+    problems += generations.vanished(recorded, scanned)
     assert not problems, "\n".join(problems)
 
 
 def test_record_refuses_to_overwrite_a_version(tmp_path):
     (tmp_path / "a.yml").write_text("# repo-infra: a v1\nx\n", encoding="utf-8")
     record = {"a.yml": {"1": "0" * 64}}
-    try:
+    with pytest.raises(ValueError, match="bump the marker"):
         generations.updated(record, generations.scan(tmp_path))
-    except ValueError as error:
-        assert "bump the marker" in str(error)
-    else:
-        raise AssertionError("an existing version was overwritten")
 
 
 def test_record_adds_a_new_version_and_keeps_the_old(tmp_path):
@@ -70,3 +70,19 @@ def test_a_block_reworded_under_the_same_manifest_version_is_refused(tmp_path):
         assert "ci/ci-x.yml" in str(error)
     else:
         raise AssertionError("a reworded block kept its manifest version")
+
+
+def test_a_recorded_path_that_is_no_longer_scanned_is_reported(tmp_path):
+    (tmp_path / "a.yml").write_text("# repo-infra: a v1\nx\n", encoding="utf-8")
+    record = {"a.yml": {"1": generations.scan(tmp_path)["a.yml"][1]},
+              "gone.yml": {"1": "0" * 64}}
+    assert generations.vanished(record, generations.scan(tmp_path)) == [
+        "gone.yml is recorded but no longer scanned; if it was removed on "
+        "purpose, delete it from generations.json"]
+
+
+def test_record_refuses_to_drop_a_path_that_is_no_longer_scanned(tmp_path):
+    (tmp_path / "a.yml").write_text("# repo-infra: a v1\nx\n", encoding="utf-8")
+    record = {"gone.yml": {"1": "0" * 64}}
+    with pytest.raises(ValueError, match="gone.yml is recorded but no longer scanned"):
+        generations.updated(record, generations.scan(tmp_path))
