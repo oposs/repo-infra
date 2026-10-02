@@ -13,6 +13,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+### Changed
+
+### Fixed
+
+## 0.3.0 - 2026-10-02
+### New
 - **Create release PR** builds the release and runs the CI on the release branch before it opens the pull request, and writes the required checks itself, so the pull request can merge at once. The **Approve workflows to run** banner still appears on it, but nobody needs to approve those runs: publishing deletes them, and the next **Create release PR** deletes those of a closed release pull request.
 - `.github/workflows/release-build.yml` is now installed and kept up to date by `apply` in every repository. It runs the build add-ons listed in `release_build`, and with `"release_build_local": true` also the project's own `.github/workflows/release-build-local.yml`; files such as a Homebrew formula change in the pull request, and publishing tags the commit that was built.
 - The `release-source-tarball` build add-on attaches the `make dist` tarball, built before the merge. It replaces the `publish-source-tarball` publish add-on, and `apply` moves the setting.
@@ -21,7 +27,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The `publish-gitea-packages` add-on uploads a release's `.deb` and `.rpm` files to a Gitea package registry, which signs them; the release stays a draft until the upload succeeded.
 
 ### Changed
-
 - The branch ruleset now requires a pull request to be up to date with `main` before it merges; behind pull requests need **Update branch** first, and `check` reports `required-checks` as outdated until `apply` writes the rule. A release pull request that `main` moved past cannot merge and shows a red `ci-passed`: "main moved after vX.Y.Z was built; close this pull request and dispatch Create release PR again".
 - **Update branch** on a release pull request turns `ci-passed` and `changelog-updated` red with "the release branch changed after it was built (the Update branch button does this); close this pull request and dispatch Create release PR again".
 - `Create release PR` no longer waits for the checks on `main`; it refuses only a check that already failed. It also refuses while a release pull request is open or while the latest release in `CHANGES.md` has no tag.
@@ -35,7 +40,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `check` reports `container` as outdated; only a comment in `build/container.mk` changed.
 
 ### Fixed
-
 - `apply` without `--item` no longer stops with "git commit -m Install ci-lib from the repo-infra standard ... failed" when a workflow file has more than one block to install, as `ci.yml` and `release-build.yml` do. The first item writes the whole file; each further block of that file is reported as "installed with" that item instead of getting a commit of its own.
 - `changelog-updated` applies the changelog rules of `main`; a pull request that edits `.github/workflows/lib/changes.js` no longer decides its own verdict. The pull request that first installs the workflow library still uses its own copy, since `main` has none yet.
 - When a git command that `apply` runs fails, the error now includes what git printed on standard output, such as "nothing to commit". Before, those messages ended after "failed:".
