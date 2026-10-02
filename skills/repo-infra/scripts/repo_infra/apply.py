@@ -4,19 +4,20 @@ Everything mechanical is scripted and every write is read back and asserted --
 the pattern that exists because `|| true` once swallowed a failed version bump
 and shipped a tag whose Cargo.toml and Cargo.lock disagreed.
 
-There is exactly one thing this module refuses to do. A file that is not byte
-for byte what apply last wrote (D29: its stamp is missing or does not match)
-may carry local edits, and merging a new generation into those is judgement,
-not mechanism. It writes the new rendering, the current file and the file's git
-log out and raises NeedsMerge. The model merges; the script keeps the
-irreversible half.
+There is exactly one thing this module refuses to do. A piece whose bytes match no
+published version (D30: `edited`) carries local edits, and merging a new version
+into those is judgement, not mechanism. It writes the new version, the current
+file and the file's git log out and raises NeedsMerge. The model merges; the
+script keeps the irreversible half.
 """
 
+import hashlib
 import json
 import pathlib
+import re
 import subprocess
 
-from .markers import parse_markers, pristine, stamp, strip_stamp
+from .markers import parse_markers
 from .remote import protects_default_branch
 
 # Below the repository's git dir, which is `.git/` in a plain clone and
@@ -40,8 +41,8 @@ class ApplyError(Exception):
 class NeedsMerge(Exception):
     def __init__(self, name, new, current, log, target):
         super().__init__(
-            f"{name}: {target} is not what apply last wrote (no stamp, or edited "
-            f"since). Read {current}, {new} and the file's history in {log}, "
+            f"{name}: {target} matches no published version of the piece. "
+            f"Read {current}, {new} and the file's history in {log}, "
             f"merge, then re-run with --item {name} --from <merged file>")
         self.name, self.new, self.current, self.log, self.target = (
             name, new, current, log, target)
@@ -65,23 +66,6 @@ def git(cwd, *args):
     return result.stdout
 
 
-def targets_for(name, rendered):
-    """Every rendered path carrying this asset's marker, not just the first.
-
-    A directory asset ships one marker copied into each of its files, so
-    `workflow-lib` names nine paths under one item. Returning the first is how
-    `apply --item workflow-lib` came to install `bump.js` alone and leave the
-    next `check` reporting `files disagree` on a conversion that had just
-    succeeded -- silently, because one written file is indistinguishable from
-    nine at the moment of writing.
-    """
-    targets = sorted((path, text) for path, text in rendered.items()
-                     if any(m.asset == name for m in parse_markers(text)))
-    if not targets:
-        raise ApplyError(f"{name}: no rendered file carries that asset")
-    return targets
-
-
 def _git_dir(repo_root):
     """The git dir, read without running git so a bare `.git/` in a test
     still counts. In a linked worktree `.git` is a file saying
@@ -100,9 +84,9 @@ def _git_dir(repo_root):
 
 
 def _read_raw(path):
-    """The file with its line endings as they are: a CRLF checkout must reach
-    `pristine` as CRLF, or it would read as the stamped LF text and be
-    overwritten."""
+    """The file with its line endings as they are: a CRLF checkout must be
+    compared and snapshotted as CRLF, or the hand-back guard would see an LF
+    file that is not on disk."""
     with open(path, encoding="utf-8", newline="") as handle:
         return handle.read()
 
@@ -133,81 +117,6 @@ def changed(repo_root, paths):
     return [p for p in paths if p in dirty]
 
 
-def apply_file_item(repo_root, name, rendered, items, merged=None):
-    state = next((i.state for i in items if i.name == name), None)
-    if state is None:
-        raise ApplyError(f"{name}: not in the report")
-    if state == "ok":
-        return []
-    if state == "conflict":
-        detail = next(i.detail for i in items if i.name == name)
-        raise ApplyError(f"{name}: conflict: {detail}. This is a migration, not an upgrade.")
-
-    targets = targets_for(name, rendered)
-    path, expected = targets[0]
-    wanted = next(m.version for m in parse_markers(expected) if m.asset == name)
-
-    if merged is not None:
-        # A directory asset merges one file at a time; the refusal recorded
-        # which one (`{name}.path`). A single-file asset has only one choice.
-        recorded = _scratch_dir(repo_root) / f"{name}.path"
-        if recorded.is_file():
-            path = recorded.read_text(encoding="utf-8").strip()
-            if path not in dict(targets):
-                raise ApplyError(f"{name}: the prepared merge names {path}, which "
-                                 "this asset no longer ships; redo the merge")
-        elif len(targets) > 1:
-            raise ApplyError(f"{name}: no merge is in progress; run "
-                             f"`apply --item {name}` first to prepare one")
-        # The refusal that raised NeedsMerge recorded what was on disk at the
-        # time (`{name}.current`). Requiring that snapshot to still match
-        # before writing is what stops a merge prepared against one version
-        # of the file from being replayed over a different, newer edit --
-        # the two guard different mistakes, not the same one twice: this one
-        # catches staleness, the version check below catches a wrong merge.
-        snapshot_path = _scratch_dir(repo_root) / f"{name}.current"
-        if not snapshot_path.is_file():
-            raise ApplyError(f"{name}: no merge is in progress; run "
-                             f"`apply --item {name}` first to prepare one")
-        snapshot = snapshot_path.read_text(encoding="utf-8")
-        target = pathlib.Path(repo_root) / path
-        current = target.read_text(encoding="utf-8") if target.is_file() else None
-        if current != snapshot:
-            raise ApplyError(f"{path}: changed since the merge was prepared; "
-                             "redo the merge against the current file")
-
-        text = pathlib.Path(merged).read_text(encoding="utf-8")
-        got = next((m.version for m in parse_markers(text) if m.asset == name), None)
-        if got != wanted:
-            raise ApplyError(f"{name}: the merged file says v{got}, the asset is v{wanted}")
-        # Handed back unchanged, the file is what apply would write, and the
-        # stamp says so: a file installed before D29 stops once, not on every
-        # upgrade. Anything else carries local edits and stays unstamped.
-        bare = strip_stamp(text)
-        written = [write_asset(repo_root, path,
-                               stamp(bare) if bare == dict(targets)[path] else bare)]
-        # The staleness guard above fails closed even on a stale snapshot, so
-        # leaving these behind is untidy rather than unsafe -- but a finished
-        # merge has nothing left to guard, so clear this item's own scratch
-        # files. Other items may still have a merge in progress, so only
-        # `name`'s own files go, never the whole directory.
-        for suffix in ("new", "current", "path", "log"):
-            (_scratch_dir(repo_root) / f"{name}.{suffix}").unlink(missing_ok=True)
-        return written
-
-    if len(targets) > 1:
-        return _apply_dir_asset(repo_root, name, targets, wanted)
-
-    if state == "missing":
-        return [write_asset(repo_root, path, stamp(expected))]
-
-    # outdated
-    installed = _read_raw(pathlib.Path(repo_root) / path)
-    if pristine(installed):
-        return [write_asset(repo_root, path, stamp(expected))]
-    _prepare_merge(repo_root, name, path, expected, installed)
-
-
 def _prepare_merge(repo_root, name, path, expected, installed):
     scratch = _scratch_dir(repo_root)
     scratch.mkdir(parents=True, exist_ok=True)
@@ -236,30 +145,105 @@ def _prepare_merge(repo_root, name, path, expected, installed):
     raise NeedsMerge(name, new_path, current_path, log_path, pathlib.Path(repo_root) / path)
 
 
-def _apply_dir_asset(repo_root, name, targets, wanted):
-    """Install or upgrade a directory asset one file at a time.
+def install_piece(repo_root, piece, state, history, merged=None):
+    """Write `piece` at its current version; return the paths written or removed.
 
-    A missing file is written. A file at the current generation is left alone,
-    local edits included. A file at an older generation is overwritten only
-    when it carries a matching stamp (D29).
-    One edited file stops the whole run before anything is written, so a
-    refusal never leaves a half-upgraded directory behind it.
-    """
-    to_write = []
-    for path, expected in targets:
-        target = pathlib.Path(repo_root) / path
-        if not target.is_file():
-            to_write.append((path, stamp(expected)))
-            continue
-        installed = _read_raw(target)
-        have = next((m.version for m in parse_markers(installed) if m.asset == name), None)
-        if have == wanted:
-            continue
-        if pristine(installed):
-            to_write.append((path, stamp(expected)))
-            continue
-        _prepare_merge(repo_root, name, path, expected, installed)
-    return [write_asset(repo_root, path, text) for path, text in to_write]
+    A file an older version shipped and this one does not is removed when its
+    bytes are a published version; an edited one stays for the human (see
+    `kept_edits`). When the piece is edited, the merge is prepared for an
+    edited file the new version ships; edited files it dropped cannot be
+    merged into anything."""
+    if merged is not None:
+        return [_hand_back(repo_root, piece, merged)]
+    root = pathlib.Path(repo_root)
+    shipped = [path for path in state.edited if path in piece.files]
+    if shipped:
+        _prepare_merge(repo_root, piece.name, shipped[0], piece.files[shipped[0]],
+                       _read_raw(root / shipped[0]))
+    written = [write_asset(repo_root, path, text) for path, text in sorted(piece.files.items())]
+    for path, versions in sorted(history.items()):
+        target = root / path
+        if path not in piece.files and target.is_file():
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            if digest in versions.values():
+                target.unlink()
+                written.append(path)
+    return written
+
+
+def kept_edits(piece, state):
+    """The edited files the new version no longer ships. install_piece leaves
+    them where they are, and the caller says so."""
+    return [path for path in state.edited if path not in piece.files]
+
+
+def _hand_back(repo_root, piece, merged):
+    """The merged file from --from, written where the refusal recorded."""
+    scratch = _scratch_dir(repo_root)
+    recorded = scratch / f"{piece.name}.path"
+    snapshot = scratch / f"{piece.name}.current"
+    if not recorded.is_file() or not snapshot.is_file():
+        raise ApplyError(f"{piece.name}: no merge is in progress; run "
+                         f"`apply --item {piece.name}` first to prepare one")
+    path = recorded.read_text(encoding="utf-8").strip()
+    if path not in piece.files:
+        raise ApplyError(f"{piece.name}: the prepared merge names {path}, which this piece "
+                         "no longer ships; redo the merge")
+    target = pathlib.Path(repo_root) / path
+    current = _read_raw(target) if target.is_file() else None
+    if current != snapshot.read_text(encoding="utf-8"):
+        raise ApplyError(f"{path}: changed since the merge was prepared; redo the merge "
+                         "against the current file")
+    text = pathlib.Path(merged).read_text(encoding="utf-8")
+    got = next((m.version for m in parse_markers(text) if m.asset == piece.name), None)
+    if got != piece.version:
+        raise ApplyError(f"{piece.name}: the merged file says v{got}, the piece is "
+                         f"v{piece.version}")
+    write_asset(repo_root, path, text)
+    for suffix in ("new", "current", "path", "log"):
+        (scratch / f"{piece.name}.{suffix}").unlink(missing_ok=True)
+    return path
+
+
+def commit_piece(repo_root, name, version, paths, merged=False):
+    """One commit per piece, so any single piece can be dropped at review. A
+    merge with local edits says so: the next NeedsMerge hands the model the
+    file's log, and an Install commit there means "no local edits"."""
+    subject = (f"Merge {name} v{version} from the repo-infra standard with local edits"
+               if merged else f"Install {name} v{version} from the repo-infra standard")
+    git(repo_root, "add", "--all", "--", *paths)
+    git(repo_root, "commit", "-m", f"{subject}\n\n{TRAILER}")
+    return git(repo_root, "rev-parse", "HEAD").strip()
+
+
+_RELEASE = re.compile(r"^## (\d+\.\d+\.\d+) - \d{4}-\d{2}-\d{2}\s*$")
+
+
+def latest_release(text):
+    for line in text.splitlines():
+        match = _RELEASE.match(line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def release_in_progress(repo_root, facts):
+    """Why a piece cannot be installed right now, or None.
+
+    The release flow's pieces call each other, so replacing one while a
+    release started by the old copies is under way could leave it with
+    neither a draft nor the build record the new copy expects."""
+    if facts.release_prs:
+        number, branch = facts.release_prs[0]
+        return (f"release pull request #{number} ({branch}) is open. Merge or close it and "
+                "let its publish finish, then run apply: a new piece cannot finish a "
+                "release the old one started.")
+    changes = pathlib.Path(repo_root) / "CHANGES.md"
+    latest = latest_release(changes.read_text(encoding="utf-8")) if changes.is_file() else None
+    if latest and facts.tags is not None and f"v{latest}" not in facts.tags:
+        return (f"v{latest} is in CHANGES.md but has no tag: its publish has not finished. "
+                "Finish or abandon that release, then run apply.")
+    return None
 
 
 def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):

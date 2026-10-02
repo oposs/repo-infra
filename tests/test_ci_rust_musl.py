@@ -133,35 +133,6 @@ def test_an_addon_absent_from_the_manifest_is_refused():
         ci_addon_blocks(rust_result(), ["ci-nonexistent"], MANIFEST)
 
 
-def test_the_config_key_reaches_the_assembler(tmp_path):
-    """End to end through cli._load, not render_all directly.
-
-    The `ci` list is only useful if the thing a repository actually edits --
-    .github/repo-infra.json -- is what `check` and `apply` read. Nothing else
-    covers that hop, and a wrong key name there fails silently: the add-on
-    simply never appears.
-    """
-    from repo_infra import cli
-
-    (tmp_path / "Cargo.toml").write_text("[package]\nname = 'x'\n", encoding="utf-8")
-    (tmp_path / ".github").mkdir()
-    (tmp_path / ".github/repo-infra.json").write_text(
-        json.dumps({"ci": ["ci-rust-musl"], "publish": [], "build": []}),
-        encoding="utf-8")
-
-    _, _, rendered = cli._load(tmp_path)
-    doc = yaml.safe_load(rendered[CI_YML])
-    assert "rust-musl" in doc["jobs"]
-    assert "rust-musl" in doc["jobs"]["ci-passed"]["needs"]
-
-
-def test_a_repository_with_no_config_gets_no_addon(tmp_path):
-    # An unconverted repository has no config file and has chosen nothing.
-    from repo_infra import cli
-
-    (tmp_path / "Cargo.toml").write_text("[package]\nname = 'x'\n", encoding="utf-8")
-    _, _, rendered = cli._load(tmp_path)
-    assert "rust-musl" not in yaml.safe_load(rendered[CI_YML])["jobs"]
 
 
 def test_every_ci_block_is_either_detected_or_declared_optional():

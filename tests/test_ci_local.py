@@ -6,7 +6,6 @@ import pathlib
 import pytest
 import yaml
 
-from repo_infra import cli
 from repo_infra.assemble import AssemblyError, render_all
 from repo_infra.detect import Detection
 from repo_infra.state import classify_contracts
@@ -60,8 +59,3 @@ def test_a_present_ci_local_workflow_reports_nothing(tmp_path):
         "on:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\njobs: {}\n")
     assert classify_contracts(tmp_path, result, {"ci_local": True}) == []
 
-
-def test_load_reads_ci_local_from_the_config(tmp_path):
-    rust_repo(tmp_path, {"ci_local": True})
-    _manifest, _result, rendered = cli._load(tmp_path)
-    assert "ci-local" in ci_jobs(rendered)

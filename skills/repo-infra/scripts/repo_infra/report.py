@@ -1,15 +1,8 @@
-"""The report.
-
-`conflict` is the state that earns its keep. Everything else means "install a
-file". A conflict means adopting an item breaks something that already works,
-so it is spelled out at length rather than abbreviated to a status word.
-"""
+"""The report: rows grouped by the part of the repository they are about."""
 
 import json
 import textwrap
 from collections import namedtuple
-
-from .state import NEEDS_ATTENTION_STATES
 
 # D30. One row of the report: which part of the repository it is about, the
 # piece, file or setting, its state and what to do about it.
@@ -41,59 +34,26 @@ def _row(item, name_width, indent):
     return [head + wrapped[0]] + [indent + line for line in wrapped[1:]]
 
 
-def render_text(repo, result, items):
+def render_text(repo, items):
     lines = [f"repo-infra check: {repo}", ""]
-    lines.append(f"detected   {' · '.join(result.ecosystems) or 'nothing'}")
-    lines.append("")
     name_width = _compute_name_width(items)
     indent = " " * (2 + name_width + STATE_WIDTH)
-    for item in items:
-        lines.extend(_row(item, name_width, indent))
-    lines.append("")
-
-    # Ambiguities already appear above as `ambiguous` item rows (one per
-    # question, via state.classify_ambiguities) with the question as their
-    # detail -- a second "? question" block here would just repeat them.
-
-    if result.candidates:
-        lines.append("  candidates")
-        lines.append("  " + "  ".join(result.candidates))
+    for section in SECTIONS:
+        rows = [item for item in items if item.section == section]
+        if not rows:
+            continue
+        lines.append(section)
+        for item in rows:
+            lines.extend(_row(item, name_width, indent))
         lines.append("")
-
-    count = sum(1 for item in items if item.state in NEEDS_ATTENTION_STATES)
-
-    # No ecosystem matched, so no CI block can be selected and the file items
-    # below are conclusions drawn from a repository kind we do not have. Saying
-    # "N items need attention" here reads as a broken repository; the true
-    # statement is that the standard has never met this shape. Teaching it comes
-    # first, and `apply` is not the next step.
-    # An unresolved ambiguity means detection is incomplete, not that the shape
-    # is unrecognised. Once the operator answers the question, an ecosystem may
-    # yet match. Printing "does not recognise" here would be a false statement.
-    # The test `test_an_unresolved_ambiguity_keeps_the_count_honest` encodes this.
-    has_ambiguous = any(item.state == "ambiguous" for item in items)
-    if not result.ecosystems and not has_ambiguous:
-        lines.append("the standard does not recognise this repository.")
-        lines.append("")
-        lines.append("Teach it first: see references/teaching-the-standard.md in the")
-        lines.append("repo-infra skill. Running apply now would install the")
-        lines.append("repository-wide items and no CI for this repository's own code.")
-        return "\n".join(lines) + "\n"
-
+    count = sum(1 for item in items if item.state in ATTENTION)
     if count:
-        noun = "item" if count == 1 else "items"
-        verb = "needs" if count == 1 else "need"
-        lines.append(f"{count} {noun} {verb} attention.  /repo-infra:apply")
+        noun, verb = ("item", "needs") if count == 1 else ("items", "need")
+        lines.append(f"{count} {noun} {verb} attention.")
     else:
         lines.append("Up to date with the standard; nothing to do.")
     return "\n".join(lines) + "\n"
 
 
-def render_json(repo, result, items):
-    return json.dumps({
-        "repo": repo,
-        "ecosystems": result.ecosystems,
-        "candidates": result.candidates,
-        "ambiguities": result.ambiguities,
-        "items": [{"name": i.name, "state": i.state, "detail": i.detail} for i in items],
-    }, indent=2)
+def render_json(repo, items):
+    return json.dumps({"repo": repo, "items": [item._asdict() for item in items]}, indent=2)

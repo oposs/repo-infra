@@ -1,46 +1,29 @@
 """Command line entry point: `python3 -m repo_infra check|apply`."""
 
 import argparse
-import json
 import pathlib
 
-from . import migrate, report
+from . import callers, report
+from . import check as checking
 from .apply import (
     ApplyError,
     apply_admin_item,
-    apply_file_item,
     changed,
-    commit_item,
+    commit_piece,
     ensure_branch,
-    targets_for,
+    install_piece,
+    kept_edits,
+    release_in_progress,
 )
-from .assemble import render_all
-from .detect import Detection
-from .markers import pristine
+from .pieces import ASSETS, load_pieces, load_published, upgrade_notes
 from .remote import Facts, Gh
-from .state import (
-    NEEDS_ATTENTION_STATES,
-    classify,
-    classify_ambiguities,
-    classify_contracts,
-)
 
-ASSETS = pathlib.Path(__file__).resolve().parents[2] / "assets"
-
-# Administration items write repository settings through `remote.Gh` rather
-# than files, so they route to apply_admin_item instead of apply_file_item.
+# Administration items write repository settings through `remote.Gh`, and
+# each is outward-facing, so apply runs one only when it is named (D30).
 ADMIN = {"default-branch", "branch-protection", "required-checks",
          "no-changelog-label", "actions-open-pr"}
 
-# branch-protection and required-checks are two facts read off the *same*
-# ruleset (remote.py derives both from whichever ruleset protects the default
-# branch), so on a totally unconfigured repository both come back "missing"
-# together. Installing the ruleset once satisfies both -- collapsing them here
-# is what stops the default (--item-less) run from POSTing it twice.
-_RULESET_ALIASES = {"branch-protection", "required-checks"}
-_ADMIN_ORDER = {"no-changelog-label": 0, "actions-open-pr": 1}
-
-# Used by the tests to run `check` without a network. Never used at runtime.
+# Used by the tests to run without a network. Never used at runtime.
 CONFORMING_FACTS = Facts(default_branch="main", protected=True,
                          required_contexts={"ci-passed", "changelog-updated"},
                          labels={"no-changelog"}, workflow_permissions="write",
@@ -51,180 +34,95 @@ def read_facts(repo):
     return Gh().facts(repo)
 
 
-def _config(root):
-    """The repository's recorded decisions, or {} for an unconverted one."""
-    config = pathlib.Path(root) / ".github/repo-infra.json"
-    if not config.is_file():
-        return {}
-    return json.loads(config.read_text(encoding="utf-8"))
-
-
-def _prepare(root):
-    """Everything `check` and `apply` read, rendered from the migrated config (D28).
-
-    Detection cannot answer what a repository publishes, builds or runs of its
-    own; those are decisions it recorded in its config (D12, D16, D22, A1). An
-    unconverted repository has no config file and has chosen nothing.
-    """
-    manifest = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-    detection = Detection.load(ASSETS / "detection.json")
-    result = detection.detect(root)
-    config, migrations = migrate.migrated_config(root, _config(root), result, manifest)
-    ci = config.get("ci", [])
-    rendered = render_all(ASSETS, result, manifest,
-                          config.get("publish", []), config.get("build", []),
-                          ci, config.get("publish_local", []),
-                          ci_local=bool(config.get("ci_local")),
-                          release_build=config.get("release_build", []),
-                          release_build_local=bool(config.get("release_build_local")))
-    result.candidates = detection.open_candidates(
-        result.candidates, ci, config.get("release_build", []))
-    return manifest, result, rendered, config, migrations
-
-
-def _load(root):
-    return _prepare(root)[:3]
-
-
-def _blocker(root, facts, items, rendered, item=None):
-    """The release in progress that stops this run, or None.
-
-    `apply --item` is stopped only by a release in progress when that item
-    belongs to the release flow; any other run when an item it would apply does.
-    """
-    blocker = migrate.release_in_progress(root, facts)
-    if blocker is None:
-        return None
-    if item is not None:
-        return blocker if migrate.in_release_flow(item, rendered) else None
-    return blocker if migrate.touches_release_flow(items, rendered) else None
-
-
 def check(args):
-    manifest, result, rendered, config, migrations = _prepare(args.root)
     repo = args.repo or Gh().current_repo()
-    facts = read_facts(repo)
-    items = migrate.without_superseded(classify(args.root, rendered, manifest, facts),
-                                       migrations) + migrations
-    items += classify_ambiguities(result)
-    items += classify_contracts(args.root, result, config,
-                                pending_rename=migrate.renaming(migrations))
-    blocker = _blocker(args.root, facts, items, rendered)
-    if blocker:
-        items.append(blocker)
+    items = checking.run(args.root, read_facts(repo), ASSETS)
     renderer = report.render_json if args.json else report.render_text
-    print(renderer(repo, result, items))
-    return 1 if any(i.state in NEEDS_ATTENTION_STATES for i in items) else 0
+    print(renderer(repo, items))
+    return 1 if any(item.state in report.ATTENTION for item in items) else 0
 
 
-def _ordered_names(items):
-    """Files first, then the label, then the permissions, then the ruleset.
-
-    A required status check whose workflow does not exist blocks every pull
-    request in the repository, including the one that would install the
-    workflow -- so administration runs last, after the file items that put
-    ci.yml and changelog.yml on the default branch. apply_admin_item refuses
-    the ruleset anyway if they are not there yet, but this ordering makes
-    that refusal rare rather than routine.
-
-    default-branch never appears here: classify_remote reports it as `ok` or
-    `conflict`, never `missing`/`outdated`, and apply_admin_item refuses it
-    unconditionally besides (renaming is outward-facing, so it is never
-    automatic) -- excluded here too, so that stays true even if that contract
-    ever drifts.
-    """
-    names = [i.name for i in items if i.state in ("missing", "outdated")]
-    files = [n for n in names if n not in ADMIN]
-    admin = [n for n in names
-            if n in ADMIN and n not in _RULESET_ALIASES and n != "default-branch"]
-    admin.sort(key=lambda n: _ADMIN_ORDER.get(n, 2))
-    if any(n in _RULESET_ALIASES for n in names):
-        admin.append("required-checks")
-    return files + admin
+def _pending(pieces, states):
+    """The pieces a bare apply installs: outdated and edited ones, absent core
+    pieces, and pieces an installed piece needs."""
+    names = [name for name, state in sorted(states.items())
+             if state.state in ("outdated", "edited")
+             or (state.state == "absent" and pieces[name].core)]
+    return names + [dep for dep, _ in checking.missing_dependencies(pieces, states)
+                    if dep not in names]
 
 
 def apply_command(args):
-    manifest, result, rendered, config, migrations = _prepare(args.root)
-    if migrations and args.item and args.item not in migrate.NAMES:
-        # Every file is rendered from the migrated config; an item committed
-        # on top of the old one would ship a release flow that config does not
-        # describe.
-        pending = ", ".join(i.name for i in migrations)
-        raise ApplyError(
-            f"{args.item}: the migration to the one release flow is pending ({pending}). "
-            f"Run `apply --item {migrations[0].name}` first; it applies all of them in "
-            "one commit.")
     repo = args.repo or Gh().current_repo()
     facts = read_facts(repo)
-    items = migrate.without_superseded(classify(args.root, rendered, manifest, facts),
-                                       migrations) + migrations
-    blocker = _blocker(args.root, facts, items, rendered, args.item)
-    if blocker:
-        raise ApplyError(f"release-in-progress: {blocker.detail}")
-
-    ensure_branch(args.root)
-    if migrations and (args.item is None or args.item in migrate.NAMES):
-        # One config edit, one commit: the items are views of the same file.
-        written = migrate.apply_migrations(args.root, _config(args.root), config, rendered)
-        migrate.commit_migration(args.root, written)
-        print("applied " + ", ".join(i.name for i in migrations))
-        if args.item:
-            return 0
-        manifest, result, rendered, config, migrations = _prepare(args.root)
-        items = classify(args.root, rendered, manifest, facts)
-
-    names = [args.item] if args.item else _ordered_names(items)
-    # Which item of this run wrote each path, to name it when a later item
-    # finds nothing left to do.
-    written_by = {}
+    if args.item in ADMIN:
+        print(apply_admin_item(Gh(), repo, args.item, facts, ASSETS, args.root))
+        return 0
+    if args.from_file and not args.item:
+        raise ApplyError("--from needs --item: name the piece the merged file is for")
+    pieces, published = load_pieces(ASSETS), load_published(ASSETS)
+    if args.item is not None and args.item not in pieces:
+        raise ApplyError(f"{args.item}: not a piece and not an administration item")
+    states = {name: checking.piece_state(args.root, piece, published.get(name, {}))
+              for name, piece in pieces.items()}
+    names = [args.item] if args.item else _pending(pieces, states)
+    if names:
+        blocker = release_in_progress(args.root, facts)
+        if blocker:
+            raise ApplyError(f"release-in-progress: {blocker}")
+        ensure_branch(args.root)
+    notes, kept = [], []
     for name in names:
-        if name in ADMIN:
-            print(apply_admin_item(Gh(), repo, name, facts, ASSETS, args.root))
-            continue
-        # An assembled file carries a frame and its blocks, and the first of
-        # them to be applied writes the whole file. Re-read the files before
-        # acting, so a later block acts only on what still differs.
-        current = _file_state(name, classify(args.root, rendered, manifest, facts))
-        written = changed(args.root, apply_file_item(
-            args.root, name, rendered, current, merged=args.from_file))
+        piece, state = pieces[name], states[name]
+        written = changed(args.root, install_piece(args.root, piece, state,
+                                                   published.get(name, {}),
+                                                   merged=args.from_file))
+        kept += [f"{path}: carries local edits and {name} v{piece.version} no longer "
+                 "ships it; remove it by hand if nothing uses it"
+                 for path in kept_edits(piece, state)]
         if not written:
-            writers = sorted({written_by[p] for p, _ in targets_for(name, rendered)
-                              if p in written_by})
-            print(f"{name}: installed with {', '.join(writers)}" if writers
-                  else f"{name}: already installed")
+            print(f"{name}: already v{piece.version}")
             continue
-        # A hand-back that is the rendering came out stamped (D29), and its
-        # commit must not claim local edits the next upgrade would act on.
-        edited = bool(args.from_file) and not all(
-            pristine((pathlib.Path(args.root) / path).read_text(encoding="utf-8"))
-            for path in written)
-        commit_item(args.root, name, written, merged=edited)
-        written_by.update(dict.fromkeys(written, name))
-        print(f"applied {name}")
+        merged = args.from_file is not None and any(
+            (pathlib.Path(args.root) / path).is_file()
+            and (pathlib.Path(args.root) / path).read_text(encoding="utf-8")
+            != piece.files.get(path) for path in written)
+        commit_piece(args.root, name, piece.version, written, merged=merged)
+        print(f"installed {name} v{piece.version}")
+        if state.installed and state.state == "outdated":
+            notes += [(name, v, text) for v, text in
+                      upgrade_notes(name, state.installed, piece.version, ASSETS)]
+    for name, version, text in notes:
+        print(f"\n{name} v{version}\n{text}")
+    docs = callers.read_workflows(args.root)
+    findings = [f"{item.name}: {item.detail}" for item in
+                callers.validate(docs, pieces, ASSETS) + checking.config_items(args.root, docs)
+                if item.state in report.ATTENTION] + kept
+    if findings:
+        print("\nThe callers, the config and the files left behind need these changes:")
+        for line in findings:
+            print(f"  {line}")
+    print("\nChange the callers and the config from the notes and findings above, "
+          "then run check until it exits 0.")
     return 0
-
-
-def _file_state(name, items):
-    """One item for `name`: a block in several files is one row per file, and
-    it needs work while any of them does."""
-    own = [i for i in items if i.name == name]
-    return [next((i for i in own if i.state != "ok"), own[0])] if own else []
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="repo-infra")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    checker = sub.add_parser("check", help="report drift; never writes")
+    checker = sub.add_parser("check", help="report the state of the pieces, callers and "
+                                           "settings; never writes")
     checker.add_argument("--repo", help="owner/name; defaults to the current checkout")
     checker.add_argument("--root", default=".", help="repository root")
     checker.add_argument("--json", action="store_true")
     checker.set_defaults(run=check)
 
-    applier = sub.add_parser("apply", help="install the standard; writes on a branch")
+    applier = sub.add_parser("apply", help="install or replace pieces on a branch; "
+                                           "with --item, one piece or one setting")
     applier.add_argument("--repo")
     applier.add_argument("--root", default=".")
-    applier.add_argument("--item", help="apply one item; default is every actionable file item")
+    applier.add_argument("--item", help="one piece or administration item")
     applier.add_argument("--from", dest="from_file", help="take the merged file from here")
     applier.set_defaults(run=apply_command)
 

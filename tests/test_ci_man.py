@@ -122,18 +122,6 @@ def test_only_an_opt_in_block_carries_build_assets():
             assert meta.get("optional"), "%s carries build assets but is not optional" % name
 
 
-def test_the_config_key_reaches_the_assembler(tmp_path):
-    from repo_infra import cli
-
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs/manual.md").write_text("# NAME\n", encoding="utf-8")
-    (tmp_path / ".github").mkdir()
-    (tmp_path / ".github/repo-infra.json").write_text(
-        json.dumps({"ci": ["ci-man"], "publish": [], "build": []}), encoding="utf-8")
-    _, _, files = cli._load(tmp_path)
-    assert "man" in jobs(files)
-    assert "build/man.mk" in files
-
 
 # --- the warning check, run for real -------------------------------------------
 #
@@ -242,24 +230,6 @@ def _config(root, ci):
         json.dumps({"ci": ci, "publish": [], "build": []}), encoding="utf-8")
 
 
-def test_the_man_pages_hint_stands_until_the_block_is_chosen(tmp_path):
-    from repo_infra import cli
-
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs/manual.md").write_text("# NAME\n", encoding="utf-8")
-    assert cli._load(tmp_path)[1].candidates == ["man-pages"]
-    _config(tmp_path, ["ci-man"])
-    assert cli._load(tmp_path)[1].candidates == []
-
-
-def test_choosing_the_block_leaves_other_candidates_alone(tmp_path):
-    from repo_infra import cli
-
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs/manual.md").write_text("# NAME\n", encoding="utf-8")
-    (tmp_path / "book.toml").write_text("[book]\n", encoding="utf-8")
-    _config(tmp_path, ["ci-man"])
-    assert cli._load(tmp_path)[1].candidates == ["docs-site"]
 
 
 def test_a_candidate_that_names_a_block_names_an_optional_one():
@@ -271,13 +241,3 @@ def test_a_candidate_that_names_a_block_names_an_optional_one():
             meta = MANIFEST["ci_blocks"].get(entry["ci_block"])
             assert meta and meta.get("optional"), entry
 
-
-def test_the_report_no_longer_prints_an_answered_hint(tmp_path):
-    from repo_infra import cli, report
-
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs/manual.md").write_text("# NAME\n", encoding="utf-8")
-    _config(tmp_path, ["ci-man"])
-    _, result, _ = cli._load(tmp_path)
-    assert "man-pages" not in report.render_text("o/r", result, [])
-    assert json.loads(report.render_json("o/r", result, []))["candidates"] == []
