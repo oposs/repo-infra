@@ -337,6 +337,96 @@ rust-musl:
     ref: ${{ inputs.ref }}
 ```
 
+### ri-release-pr-current v1
+
+Installed at `.github/workflows/ri-release-pr-current.yml`.
+
+**Purpose:** Mark open release pull requests stale when main moves (D28).
+
+**Choose it when:** Always; ci.yml calls it.
+
+**The repository supplies:** Nothing.
+
+**Needs the pieces:** workflow-lib
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** checks: write, contents: read, pull-requests: read
+
+```yaml
+release-pr-current:
+  uses: ./.github/workflows/ri-release-pr-current.yml
+  permissions:
+    contents: read
+    pull-requests: read
+    checks: write
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+## Publish: called from release-publish.yml
+
+### ri-publish-finalize v1
+
+Installed at `.github/workflows/ri-publish-finalize.yml`.
+
+**Purpose:** Check the release carries every file, then publish it.
+
+**Choose it when:** Always; release-publish.yml calls it last.
+
+**The repository supplies:** release_assets in .github/repo-infra.json.
+
+**Needs the pieces:** workflow-lib
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `release_id` | string | yes |  | The draft release to publish, from ri-publish-tag. |
+| `tag` | string | yes |  | The release tag, from ri-publish-tag. |
+| `head` | string | yes |  | The commit the release was built from, from ri-publish-tag. |
+| `expected` | string | no | `[]` | JSON list of file name patterns the publish jobs attach, such as '["*.crate"]'. |
+
+**Permissions it needs:** actions: write, contents: write
+
+```yaml
+finalize:
+  needs: [publish]
+  if: needs.publish.outputs.release_id != ''
+  uses: ./.github/workflows/ri-publish-finalize.yml
+  permissions:
+    contents: write
+    actions: write
+  with:
+    release_id: ${{ needs.publish.outputs.release_id }}
+    tag: ${{ needs.publish.outputs.tag }}
+    head: ${{ needs.publish.outputs.head }}
+```
+
+### ri-publish-tag v1
+
+Installed at `.github/workflows/ri-publish-tag.yml`.
+
+**Purpose:** Tag the merged release and create its draft release (D28).
+
+**Choose it when:** Always; release-publish.yml calls it.
+
+**The repository supplies:** version_files and moving_major_tag in .github/repo-infra.json.
+
+**Needs the pieces:** workflow-lib
+
+**Outputs:** `version`, `tag`, `release_id`, `head`
+
+**Permissions it needs:** contents: write, pull-requests: read
+
+```yaml
+publish:
+  uses: ./.github/workflows/ri-publish-tag.yml
+  permissions:
+    contents: write
+    pull-requests: read
+```
+
 ## Release flow: installed, never called by hand
 
 ### changelog v5

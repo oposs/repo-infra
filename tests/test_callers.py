@@ -240,3 +240,18 @@ def test_ci_without_ci_passed_is_a_problem(tmp_path, store):
 def test_release_publish_without_finalize_is_a_problem(tmp_path, store):
     found = problems(tmp_path, store, release_publish=PUBLISH.split("  finalize:")[0])
     assert ("release-publish.yml", "problem", "has no finalize job") in found
+
+
+def test_the_shipped_ci_passed_pattern_is_accepted_in_a_ci_yml():
+    text = (callers.ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8")
+    ci = workflow.load(
+        "jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n"
+        + text.split("jobs:\n", 1)[1].replace("needs: []", "needs: [a]"))
+    assert callers.closing_problems({"ci.yml": ci}) == []
+    # The release-mode steps load the library of the base commit: the pattern
+    # keeps that checkout, which the ref contract exempts for ci-passed alone.
+    checkout = callers.jobs(ci)["ci-passed"]["steps"][0]
+    assert checkout["with"]["ref"] == "${{ github.event.pull_request.base.sha }}"
+    assert checkout["with"]["path"] == "repo-infra-base"
+    assert callers.ref_problems(ci, True) != []
+    assert callers.ref_problems(ci, True, skip=("ci-passed",)) == []

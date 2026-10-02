@@ -94,6 +94,21 @@
     "ri-ci-repo-infra-selftest": {
       "target": ".github/workflows/ri-ci-repo-infra-selftest.yml",
       "group": "ci"
+    },
+    "ri-release-pr-current": {
+      "target": ".github/workflows/ri-release-pr-current.yml",
+      "group": "ci",
+      "core": true
+    },
+    "ri-publish-tag": {
+      "target": ".github/workflows/ri-publish-tag.yml",
+      "group": "publish",
+      "core": true
+    },
+    "ri-publish-finalize": {
+      "target": ".github/workflows/ri-publish-finalize.yml",
+      "group": "publish",
+      "core": true
     }
   },
   "assets": {

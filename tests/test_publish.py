@@ -1,6 +1,9 @@
 import json
+import os
 import pathlib
+import re
 import shutil
+import subprocess
 
 import pytest
 import yaml
@@ -246,7 +249,26 @@ def test_an_asset_pattern_that_could_break_out_of_the_literal_is_refused():
                          [{"job": "x", "assets": ["'); throw new Error('"]}])
 
 
-def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT):
+def _piece_finalize():
+    piece = yaml.safe_load((ASSETS / "pieces/ri-publish-finalize/ri-publish-finalize.yml")
+                           .read_text(encoding="utf-8"))
+    return piece["jobs"]["finalize"]
+
+
+def _piece_scripts():
+    steps = _piece_finalize()["steps"]
+    return [s["with"]["script"] for s in steps if "github-script" in s.get("uses", "")]
+
+
+def _expand_inputs(script):
+    # The runner expands workflow expressions before node ever sees them.
+    values = {"release_id": "5", "tag": "v1.2.3", "head": "h"}
+    script = re.sub(r"\$\{\{\s*inputs\.(\w+)\s*\}\}", lambda m: values[m.group(1)], script)
+    assert "${{" not in script
+    return script
+
+
+def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT, expected=None):
     """Run the generated finalize script under node against a fake release.
 
     Substring assertions cannot answer the question that matters -- does this
@@ -256,17 +278,14 @@ def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT):
     this repository's own installed copy, which test_self_render.py pins to
     the asset.
     """
-    import os
-    import re
-    import subprocess
-
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
 
-    script = _finalize_script(local=local)
-    # The runner expands workflow expressions before node ever sees them.
-    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", script)
+    script = _expand_inputs(_piece_scripts()[0])
+    if expected is None:
+        # The caller passes the files its publish jobs attach as `expected`.
+        expected = json.dumps([p for entry in local for p in entry["assets"]])
 
     harness = """
 const assert = require('node:assert/strict');
@@ -300,7 +319,8 @@ const context = { repo: { owner: 'o', repo: 'r' } };
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run(
         [node, str(path)], capture_output=True, text=True, cwd=workspace,
-        env={"GITHUB_WORKSPACE": str(workspace), "PATH": os.environ.get("PATH", "")})
+        env={"GITHUB_WORKSPACE": str(workspace), "PATH": os.environ.get("PATH", ""),
+             "EXPECTED": expected})
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
 
@@ -332,6 +352,17 @@ def test_the_generated_finalize_publishes_when_nothing_is_expected(tmp_path):
     out = _run_finalize(tmp_path, [], local=())
     assert out["failures"] == []
     assert out["published"] == 1
+
+
+def test_an_expected_input_that_is_not_a_list_fails_the_job(tmp_path):
+    out = _run_finalize(tmp_path, ["x.deb"], expected='{"a": 1}')
+    assert out["published"] == 0
+    assert len(out["failures"]) == 1 and "must be a JSON list" in out["failures"][0]
+
+
+def test_an_expected_input_that_is_not_json_fails_the_job(tmp_path):
+    out = _run_finalize(tmp_path, ["x.deb"], expected="*.deb")
+    assert out["published"] == 0 and "is not JSON" in out["failures"][0]
 
 
 def _build_workspace(tmp_path, release_assets):
@@ -372,9 +403,6 @@ def _run_crates_publish(tmp_path, on_crates_io, status_other="404"):
     A fake cargo prints metadata and records `cargo publish` arguments; a fake
     curl answers 200 for every name/version in `on_crates_io`.
     """
-    import os
-    import subprocess
-
     if shutil.which("jq") is None:
         pytest.skip("jq is not installed")
     steps = _crates_io_job()["steps"]
@@ -464,19 +492,15 @@ def test_finalize_may_delete_runs():
 
 
 def _parked_step():
-    steps = _finalize()["steps"]
+    steps = _piece_finalize()["steps"]
     return next(s for s in steps if s.get("name") == "Delete the parked runs of the release branch")
 
 
 def _run_parked(tmp_path, runs, fail_list=False, fail_delete=()):
-    import os
-    import re
-    import subprocess
-
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
-    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", _parked_step()["with"]["script"])
+    script = _expand_inputs(_parked_step()["with"]["script"])
     # The helper under test is the installed copy of lib/release.js, driven
     # through a fake github: only the listing and the deletion are faked.
     harness = """

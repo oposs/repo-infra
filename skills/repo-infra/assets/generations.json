@@ -135,6 +135,15 @@
   "pieces/ri-ci-rust/ri-ci-rust.yml": {
     "1": "bc048855fa2f0f9f15ec07d3c66f60a440535448cf8347032deaf07259b27ebb"
   },
+  "pieces/ri-publish-finalize/ri-publish-finalize.yml": {
+    "1": "2d5f190d6f3dcc1c609452358280aee0f9257ac087067ab28fd5136c3398f745"
+  },
+  "pieces/ri-publish-tag/ri-publish-tag.yml": {
+    "1": "e53112b4c3db77c02e81588934e1c6719d2663154839ec09d645484a571a9340"
+  },
+  "pieces/ri-release-pr-current/ri-release-pr-current.yml": {
+    "1": "5ae40fc450e7f0534657805e2335401759c740be69a8554fffcd51d658d81397"
+  },
   "pieces/workflow-lib/lib/assets.js": {
     "6": "dad330962988bf07890d792172cf8db456c2a0fdd931473fa17880012c5408f0",
     "7": "713c6053ffe1adec0f083596cfa84f32405ecf1397d1fc031748a62d328b09fe"

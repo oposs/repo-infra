@@ -31,7 +31,9 @@ def workflow(addons=()):
 
 
 def publish_script():
-    steps = workflow()["jobs"]["publish"]["steps"]
+    piece = yaml.safe_load(
+        (ASSETS / "pieces/ri-publish-tag/ri-publish-tag.yml").read_text(encoding="utf-8"))
+    steps = piece["jobs"]["publish"]["steps"]
     return next(s["with"]["script"] for s in steps if s.get("id") == "publish")
 
 
