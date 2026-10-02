@@ -1,7 +1,7 @@
 # Pieces and callers: repo-infra as a toolbox the AI applies
 
 Date: 2026-10-02
-Status: design approved in conversation, spec awaiting review
+Status: approved; amended the same day with the decisions of the implementation plan (see "Amendment")
 Decision: D30 (supersedes the detection gate and the workflow assembler; the release flow of D28 stays, and D25's `ci-local.yml` stays as a file a caller calls)
 
 ## Why
@@ -211,7 +211,9 @@ a version bump without an entry fails a repo-infra test.
 | `release-build/release-source-tarball.yml` | piece `ri-release-source-tarball.yml` |
 | `release-build/release-build-frame.yml`, `release-build-local-job.yml` | the `release-build.yml` caller pattern |
 | `publish/publish-crates-io.yml`, `publish-gitea-packages.yml` | pieces `ri-publish-crates-io.yml`, `ri-publish-gitea.yml` |
-| `publish/publish-frame.yml`, `publish-finalize.yml` | the `release-publish.yml` caller pattern |
+| `publish/publish-frame.yml` | the `release-publish.yml` caller pattern; its publish job becomes piece `ri-publish-tag.yml` |
+| `publish/publish-finalize.yml` | piece `ri-publish-finalize.yml` |
+| the `release-pr-current` job of `ci-aggregator.yml` | piece `ri-release-pr-current.yml` |
 | `workflows/release-pr.yml`, `changelog.yml`, `dependabot.yml`, `lib/*.js` | pieces unchanged in role |
 | `build/*.mk`, `m4/*.m4` | pieces unchanged in role |
 
@@ -276,6 +278,55 @@ Smalti publishes to the Gitea registry through `ri-publish-gitea` with
 `gitea_packages.owner` `oposs` on `https://gitea.oetiker.ch`. `oetiker/smalti`
 belongs to a person, so it carries its own secret `GITEA_PACKAGE_TOKEN` and
 variable `GITEA_PACKAGE_USER`.
+
+## Amendment: decisions taken in the implementation plan
+
+The plan (`docs/superpowers/plans/2026-10-02-pieces-and-callers.md`) settles
+these points where this spec was silent or contradicted itself. They are part
+of the design.
+
+- The publish job, `finalize` and `release-pr-current` are pieces
+  (`ri-publish-tag`, `ri-publish-finalize`, `ri-release-pr-current`). Each holds
+  100 to 250 lines of github-script, which a caller could neither keep short
+  nor receive on update.
+- `ci-passed` stays an inline job in `ci.yml`. A job that calls a reusable
+  workflow reports its check as `ci-passed / <job>`, which the ruleset does not
+  match. Its text ships as `assets/callers/ci-passed.yml`, and `check` compares
+  the caller's job with it structurally, ignoring `needs:`.
+- `check` validates permissions. For every call, the calling job's grant must
+  cover what the jobs of the called file ask for, recursively. Create release
+  PR grants `ci.yml` a fixed set of permissions, so a caller that asks for more
+  breaks every release.
+- Header grammar: after the marker line, one empty comment line, then the
+  fields `Purpose:`, `Choose:`, `Supplies:` (required), `Pieces:`, `Produces:`
+  and `Call:` (optional). `Call:` is required for every piece a caller calls,
+  which excludes `changelog` and `release-pr`. A field continues on lines
+  indented by two more spaces. The first empty comment line or code line ends
+  the header. A test validates each `Call:` against its piece.
+- The D28 ref contract is checked on the YAML structure, for the inline jobs
+  of `ci.yml` (except `ci-passed`) and `release-build.yml` and for every
+  project-owned workflow called with `ref`. `seam.py` goes.
+- The D29 stamp goes. A piece is identified by its bytes against
+  `generations.json`. The merge procedure stays, triggered by `edited`. D11
+  ("markers, never content hashes") is superseded for pieces.
+- `rust` stays in `.github/repo-infra.json`, because `lib/rust-plan.js` reads
+  it.
+- `apply --item <piece>` installs a piece that is not there yet, so onboarding
+  copies pieces with the same code that upgrades them. Bare `apply` installs
+  outdated pieces, missing core pieces and missing dependencies.
+  Administration items run only with `--item`, one at a time, each confirmed
+  with the user.
+- A remote reusable-workflow reference (`owner/repo/.github/workflows/x.yml@ref`)
+  is reported as a problem.
+- `ri-publish-gitea` reads `gitea_packages` from the config and takes no owner
+  or URL input.
+- The default of the `python` input of `ri-ci-make` is settled in the Smalti
+  plan.
+- Carried-over pieces keep their history: `generations.json` lists the old
+  hashes of `changelog`, `release-pr` and the other carried-over files under
+  the new paths, so a repository on an older version reads `outdated`.
+- Obsolete config keys are reported as a problem, so a migrated repository is
+  told to remove them.
 
 ## Order of work
 
