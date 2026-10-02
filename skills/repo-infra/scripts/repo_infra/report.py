@@ -7,8 +7,17 @@ so it is spelled out at length rather than abbreviated to a status word.
 
 import json
 import textwrap
+from collections import namedtuple
 
 from .state import NEEDS_ATTENTION_STATES
+
+# D30. One row of the report: which part of the repository it is about, the
+# piece, file or setting, its state and what to do about it.
+Item = namedtuple("Item", "section name state detail")
+SECTIONS = ("pieces", "callers", "config", "administration")
+# check's exit code and the report's count both read this, so they cannot
+# disagree about what needs attention.
+ATTENTION = ("missing", "outdated", "edited", "unknown", "problem", "conflict")
 
 NAME_WIDTH = 22
 STATE_WIDTH = 11

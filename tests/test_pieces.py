@@ -3,11 +3,12 @@
 store, so a piece added later is checked the day it lands."""
 
 import json
+import pathlib
 import re
 
 import pytest
 
-from repo_infra import workflow
+from repo_infra import callers, workflow
 from repo_infra.pieces import ASSETS, load_pieces
 
 PIECES = load_pieces()
@@ -70,3 +71,19 @@ def test_actions_are_pinned_to_the_manifest(piece):
             if match and ACTIONS.get(match[1]) != match[2]:
                 wrong.append(step["uses"])
     assert wrong == []
+
+
+@pytest.mark.parametrize("piece", CALLED, ids=ids)
+def test_the_call_snippet_calls_this_piece_correctly(piece):
+    snippet = workflow.load(piece.header["Call"])
+    assert len(snippet) == 1, "Call: holds exactly one job"
+    (job_id, job), = snippet.items()
+    file = pathlib.PurePosixPath(piece.target).name
+    assert job["uses"] == f"./.github/workflows/{file}"
+    assert callers.call_problems(job_id, job, {file: doc_of(piece)}) == []
+
+
+@pytest.mark.parametrize("piece", [p for p in CALLED
+                                   if p.group in ("ci", "release-build")], ids=ids)
+def test_a_ci_or_build_piece_keeps_the_ref_contract(piece):
+    assert callers.ref_problems(doc_of(piece), reserved=piece.group == "ci") == []
