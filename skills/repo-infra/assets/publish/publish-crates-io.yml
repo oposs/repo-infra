@@ -14,10 +14,12 @@
     env:
       CARGO_TERM_COLOR: always
     steps:
-      # No ref: on a push event this is the commit the `publish` job just
-      # tagged, which is the commit whose Cargo.toml the release pull request
-      # bumped.
+      # The commit `publish` tagged: the head the release pull request built
+      # (D26). Its Cargo.toml and Cargo.lock carry the bumped version: the
+      # release pull request rewrites both through version_files (D28).
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.publish.outputs.head }}
 
       # @stable, matching ci-rust. The action publishes no floating major tag;
       # `stable` is its documented channel selector.
@@ -33,51 +35,38 @@
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
 
-      # The release pull request bumped Cargo.toml and cannot bump Cargo.lock:
-      # it has no Rust toolchain, and this is the only job that legitimately
-      # does. So at this commit the lock still carries the previous version of
-      # the workspace's own crates, and `cargo publish --locked` would fail on
-      # every release rather than occasionally.
-      #
-      # `--workspace` touches only the workspace's own entries. No dependency is
-      # re-resolved, which is what makes running it at publish time safe.
-      #
-      # Not `--offline`. This job never fetched the registry, so an offline
-      # resolve cannot find a single dependency and dies on the first one.
-      #
-      # And no `|| true`. Swallowing this step's failure is what turned a broken
-      # step into a broken release: mdmost v0.1.1 was tagged with Cargo.toml at
-      # 0.1.1 and Cargo.lock still at 0.1.0, and the publish failed 6 minutes
-      # later.
-      - name: Reconcile Cargo.lock with the bumped version
+      # A whole-workflow re-run repeats this job after a first attempt that
+      # already uploaded some or all crates, and `cargo publish` refuses a
+      # version crates.io already has. So ask crates.io first and exclude
+      # what is there. `publish = false` shows as an empty list in the
+      # metadata; such a crate is never asked about.
+      - name: Find the crates crates.io does not have yet
+        id: pending
         run: |
           set -euo pipefail
-          cargo update --workspace
-
-          # cargo refuses to publish from a tree with uncommitted changes, and
-          # the step above just rewrote Cargo.lock -- so without this the job
-          # dies with "1 files in the working directory contain changes that
-          # were not yet committed into git", after packaging, every time.
-          #
-          # Commit it locally. The runner is ephemeral and nothing is pushed:
-          # main is protected against direct pushes, which is the standard's own
-          # rule, so this commit exists only to make the tree clean for
-          # packaging. Its one visible consequence is that .cargo_vcs_info.json
-          # in the published crate names a commit that exists nowhere but this
-          # runner.
-          #
-          # Not --allow-dirty, which would also wave through a modified *source*
-          # file and publish something no tag ever pointed at.
-          #
-          # The `if` is a real condition, not a swallowed failure: a re-run
-          # against an already-reconciled lock has nothing to commit, and
-          # `git commit` treats that as an error.
-          if ! git diff --quiet -- Cargo.lock; then
-            git -c user.name='github-actions[bot]' \
-                -c user.email='github-actions[bot]@users.noreply.github.com' \
-                commit -q -m 'Reconcile Cargo.lock for ${{ needs.publish.outputs.tag }}' \
-                -- Cargo.lock
-          fi
+          crates=$(cargo metadata --format-version 1 --no-deps \
+            | jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"')
+          exclude=()
+          pending=0
+          while read -r name version; do
+            [ -n "$name" ] || continue
+            status=$(curl -sS -o /dev/null -w '%{http_code}' \
+              -A 'repo-infra publish-crates-io (https://github.com/oposs/repo-infra)' \
+              "https://crates.io/api/v1/crates/${name}/${version}")
+            case "$status" in
+              200)
+                echo "::notice::${name} ${version} is already on crates.io - not publishing it again."
+                exclude+=(--exclude "$name")
+                ;;
+              404) pending=$((pending + 1)) ;;
+              *)
+                echo "crates.io answered HTTP ${status} for ${name} ${version}" >&2
+                exit 1
+                ;;
+            esac
+          done <<< "$crates"
+          echo "pending=${pending}" >> "$GITHUB_OUTPUT"
+          echo "exclude=${exclude[*]}" >> "$GITHUB_OUTPUT"
 
       # One invocation for both the single-crate and the workspace case:
       # --workspace publishes every publishable member in dependency order, so
@@ -85,14 +74,21 @@
       # hand-rolled wait for the index to propagate. A helper crate opts out
       # with `publish = false` in its own manifest.
       #
-      # --locked still earns its keep after the update above: it guards every
-      # *dependency* pin against drift between the tag and the publish. What it
-      # no longer asserts is the workspace's own version, which is exactly the
-      # part the release pull request is authoritative for.
+      # --locked guards every pin in Cargo.lock: the release pull request
+      # bumped the workspace's own entries, and nothing here re-resolves.
       - name: Publish
-        run: cargo publish --workspace --locked
+        run: |
+          set -euo pipefail
+          if [ "$PENDING" -eq 0 ]; then
+            echo "::notice::Every crate of this release is already on crates.io."
+            exit 0
+          fi
+          read -ra exclude <<< "$EXCLUDE"
+          cargo publish --workspace --locked "${exclude[@]}"
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          PENDING: ${{ steps.pending.outputs.pending }}
+          EXCLUDE: ${{ steps.pending.outputs.exclude }}
 
       # This add-on deliberately attaches nothing to the draft release and adds
       # no summary step -- it publishes to an external registry, and `cargo

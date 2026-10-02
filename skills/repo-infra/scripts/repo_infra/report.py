@@ -12,23 +12,34 @@ from .state import NEEDS_ATTENTION_STATES
 
 NAME_WIDTH = 22
 STATE_WIDTH = 11
-INDENT = " " * (2 + NAME_WIDTH + STATE_WIDTH)
 
 
-def _row(item):
-    head = f"  {item.name:<{NAME_WIDTH}}{item.state:<{STATE_WIDTH}}"
+def _compute_name_width(items):
+    """Compute the name column width to fit the longest item name with at least
+    one space before the state column."""
+    if not items:
+        return NAME_WIDTH
+    max_name_len = max(len(item.name) for item in items)
+    # Ensure at least one space after the longest name
+    return max(NAME_WIDTH, max_name_len + 1)
+
+
+def _row(item, name_width, indent):
+    head = f"  {item.name:<{name_width}}{item.state:<{STATE_WIDTH}}"
     if not item.detail:
         return [head.rstrip()]
-    wrapped = textwrap.wrap(item.detail, width=78 - len(INDENT))
-    return [head + wrapped[0]] + [INDENT + line for line in wrapped[1:]]
+    wrapped = textwrap.wrap(item.detail, width=78 - len(indent))
+    return [head + wrapped[0]] + [indent + line for line in wrapped[1:]]
 
 
 def render_text(repo, result, items):
     lines = [f"repo-infra check: {repo}", ""]
     lines.append(f"detected   {' · '.join(result.ecosystems) or 'nothing'}")
     lines.append("")
+    name_width = _compute_name_width(items)
+    indent = " " * (2 + name_width + STATE_WIDTH)
     for item in items:
-        lines.extend(_row(item))
+        lines.extend(_row(item, name_width, indent))
     lines.append("")
 
     # Ambiguities already appear above as `ambiguous` item rows (one per
@@ -36,7 +47,7 @@ def render_text(repo, result, items):
     # detail -- a second "? question" block here would just repeat them.
 
     if result.candidates:
-        lines.append("  candidates (later specs)")
+        lines.append("  candidates")
         lines.append("  " + "  ".join(result.candidates))
         lines.append("")
 

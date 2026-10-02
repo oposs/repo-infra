@@ -1,4 +1,4 @@
-# repo-infra: container v1
+# repo-infra: container v2
 #
 # Autotools as a container driver (D18).
 #
@@ -93,7 +93,7 @@ test-dev: container-base
 # instead would let a host-built and an image-built tarball differ, and nobody
 # would notice until a user unpacked the wrong one. Exactly one tarball is
 # expected in /src afterwards (mirroring the same hazard and guard as
-# publish/publish-source-tarball.yml): none means the build failed silently,
+# release-build/release-source-tarball.yml): none means the build failed silently,
 # more than one means a stale tarball is sitting next to the fresh one and
 # nothing says which is which, and one that cannot be listed is `make dist`
 # reporting success over an archive it never actually wrote.

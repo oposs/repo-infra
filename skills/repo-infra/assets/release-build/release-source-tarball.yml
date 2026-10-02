@@ -1,13 +1,14 @@
-  publish-source-tarball:
-    name: Attach the source tarball
-    needs: [publish]
-    if: needs.publish.outputs.release_id != ''
+  # The make dist tarball, built from the release branch before the merge.
+  # These are publish-source-tarball's steps, moved in front of the merge
+  # (D28); finish attaches the file to the draft.
+  release-source-tarball:
+    name: Build the source tarball
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       # `make dist` is a container call in a repository that converted to the
       # D18 driver, and a plain automake dist in one that did not. The same two
@@ -29,7 +30,6 @@
       # expected; two means a stale tarball is committed and the upload would be
       # a coin toss.
       - name: Locate the tarball
-        id: tarball
         run: |
           set -euo pipefail
           mapfile -t found < <(find . -maxdepth 1 -name '*.tar.gz' -printf '%P\n' | sort)
@@ -42,35 +42,15 @@
             echo "remove the committed ones; this job cannot tell which to upload" >&2
             exit 1
           fi
-          # The name is interpolated into a github-script body below and
-          # appended to $GITHUB_OUTPUT -- reject anything that is not a plain
-          # tarball filename rather than trying to sanitise it.
           if ! [[ "${found[0]}" =~ ^[A-Za-z0-9._+-]+\.tar\.gz$ ]]; then
             echo "unexpected tarball name: ${found[0]@Q}" >&2
             exit 1
           fi
-          echo "name=${found[0]}" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/release-asset-source"
+          mv "${found[0]}" "$RUNNER_TEMP/release-asset-source/"
 
-      - name: Attach it to the draft release
-        uses: actions/github-script@v9
+      - uses: actions/upload-artifact@v7
         with:
-          script: |
-            const fs = require('fs');
-            const name = '${{ steps.tarball.outputs.name }}';
-            if (!name) {
-              core.setFailed('no tarball to upload');
-              return;
-            }
-            const data = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/${name}`);
-            const { data: asset } = await github.rest.repos.uploadReleaseAsset({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: Number('${{ needs.publish.outputs.release_id }}'),
-              name,
-              data,
-              headers: {
-                'content-type': 'application/gzip',
-                'content-length': data.length,
-              },
-            });
-            core.notice(`Attached ${asset.name} (${asset.size} bytes).`);
+          name: release-asset-source
+          path: ${{ runner.temp }}/release-asset-source/
+          if-no-files-found: error

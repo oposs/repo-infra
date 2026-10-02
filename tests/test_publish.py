@@ -1,5 +1,6 @@
 import json
 import pathlib
+import shutil
 
 import pytest
 import yaml
@@ -19,7 +20,7 @@ def test_with_no_addons_finalize_needs_only_publish():
 
 def test_the_frame_marker_survives_assembly():
     text = assemble_publish(ASSETS, [], MANIFEST)
-    assert ("release-publish", 3) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert ("release-publish", 5) in [(m.asset, m.version) for m in parse_markers(text)]
 
 
 def test_an_unknown_addon_is_an_assembly_error():
@@ -32,40 +33,6 @@ def test_the_placeholder_must_appear_exactly_once():
     # placeholder would silently publish a release before the add-ons ran.
     text = (ASSETS / "publish/publish-finalize.yml").read_text(encoding="utf-8")
     assert text.count("    needs: []") == 1
-
-
-def test_the_tarball_addon_lands_between_publish_and_finalize():
-    text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
-    assert "    needs: [publish, publish-source-tarball]" in text
-    assert text.index("  publish-source-tarball:") < text.index("  finalize:")
-
-
-def test_the_tarball_addon_carries_its_marker():
-    text = assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST)
-    assert ("publish-source-tarball", 2) in [
-        (m.asset, m.version) for m in parse_markers(text)]
-
-
-def test_the_tarball_addon_declares_exactly_the_job_it_contains():
-    from repo_infra.assemble import block_job_ids
-    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
-    assert block_job_ids(text) == MANIFEST["publish_blocks"]["publish-source-tarball"]["jobs"]
-
-
-def test_the_tarball_addon_refuses_to_upload_nothing():
-    # A `make dist` that produced no tarball must fail the job, not publish a
-    # release with no artifact. Guard the guard: this is the whole point of the
-    # add-on and it is one easily-deleted line.
-    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
-    assert "no tarball" in text
-
-
-def test_the_tarball_block_can_drive_a_container():
-    # `make dist` is a container call in driver mode (D18), so the runner needs
-    # an engine. Without it configure fails before dist is ever reached.
-    text = (ASSETS / "publish/publish-source-tarball.yml").read_text(encoding="utf-8")
-    assert "autoconf automake gettext podman" in text
-    assert "Known limit" not in text
 
 
 # --- publish-crates-io (D21) -------------------------------------------------
@@ -83,9 +50,8 @@ def _crates_io_job():
 def _shell_code(run):
     """A `run:` block with its shell comments removed.
 
-    The block explains in comments why it does NOT use `--allow-dirty` or
-    `|| true`. Those comments live inside the run string, so a plain substring
-    search cannot tell the explanation from the thing it warns against.
+    A comment inside the run string that names `--allow-dirty` or `|| true`
+    would otherwise read as a use of it.
     """
     return "\n".join(
         line for line in run.splitlines() if not line.strip().startswith("#"))
@@ -99,7 +65,7 @@ def test_the_crates_io_addon_lands_between_publish_and_finalize():
 
 def test_the_crates_io_addon_carries_its_marker():
     text = assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST)
-    assert ("publish-crates-io", 1) in [
+    assert ("publish-crates-io", 3) in [
         (m.asset, m.version) for m in parse_markers(text)]
 
 
@@ -155,26 +121,6 @@ def test_the_crates_io_token_comes_from_the_auth_action():
     assert publish[0]["env"]["CARGO_REGISTRY_TOKEN"] == "${{ steps.auth.outputs.token }}"
 
 
-def test_the_lock_is_reconciled_before_the_publish_not_after():
-    # Order is the whole fix. Reversed, `--locked` sees the release pull
-    # request's Cargo.toml bump against an unbumped Cargo.lock and fails on
-    # every release.
-    runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
-    update = next(i for i, r in enumerate(runs) if "cargo update" in r)
-    publish = next(i for i, r in enumerate(runs) if "cargo publish" in r)
-    assert update < publish
-
-
-def test_the_lock_reconciliation_moves_no_dependency():
-    # `cargo update` unscoped re-resolves every dependency, which would publish
-    # something the tag never locked. `--workspace` keeps it to the workspace's
-    # own entries -- that restriction is what makes the step safe here.
-    runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
-    update = next(r for r in runs if "cargo update" in r)
-    assert "--workspace" in update
-    assert "--offline" not in update
-
-
 def test_no_step_swallows_its_own_failure():
     # mdmost v0.1.1: a swallowed bump failure tagged 0.1.1 with the lock still
     # at 0.1.0, and the publish died 6 minutes later.
@@ -183,86 +129,18 @@ def test_no_step_swallows_its_own_failure():
 
 
 def test_the_publish_covers_the_whole_workspace_and_stays_locked():
-    # --workspace is what serves the multi-crate consumer in one invocation;
-    # --locked is what still guards dependency drift after the update above.
+    # --workspace publishes every crate in one invocation; --locked keeps the
+    # Cargo.lock the release pull request bumped instead of re-resolving it.
     runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
     publish = next(r for r in runs if "cargo publish" in r)
     assert "--workspace" in publish
     assert "--locked" in publish
 
 
-def test_the_reconciled_lock_is_committed_before_packaging():
-    # cargo refuses to publish from a tree with uncommitted changes, and the
-    # reconcile step rewrites Cargo.lock -- so the commit is what makes the
-    # publish reachable at all. Proven against oetiker/tvision-rs: without it
-    # the job packages both crates and then dies with "1 files in the working
-    # directory contain changes that were not yet committed into git".
-    runs = [s.get("run", "") for s in _crates_io_job()["steps"]]
-    reconcile = next(r for r in runs if "cargo update" in r)
-    assert "git" in reconcile and "commit" in reconcile
-
-
 def test_the_publish_never_waves_through_a_dirty_tree():
-    # --allow-dirty is the tempting one-word alternative to the commit above.
-    # It also publishes a modified *source* file that no tag ever pointed at.
+    # --allow-dirty would publish a modified source file no tag points at.
     for run in (s.get("run", "") for s in _crates_io_job()["steps"]):
         assert "--allow-dirty" not in _shell_code(run)
-
-
-def test_the_reconcile_step_actually_leaves_the_tree_clean():
-    """Run the block's own reconcile shell against a throwaway git tree.
-
-    The requirement is behavioural -- after this step `cargo publish` must find
-    nothing uncommitted -- and no substring assertion can check it: `true; git
-    commit ...` still contains the words. Proven necessary against
-    oetiker/tvision-rs, where the missing commit made the job package both
-    crates and then die on the dirty Cargo.lock.
-    """
-    import re
-    import shutil
-    import subprocess
-    import tempfile
-
-    run = next(r for r in (s.get("run", "") for s in _crates_io_job()["steps"])
-               if "cargo update" in r)
-    # The runner expands workflow expressions before bash ever sees them.
-    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", run)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tree = pathlib.Path(tmp) / "tree"
-        tree.mkdir()
-        git = ["git", "-c", "user.email=t@e", "-c", "user.name=t"]
-        subprocess.run(["git", "init", "-q", "-b", "main", str(tree)], check=True)
-        (tree / "Cargo.lock").write_text('version = "0.1.0"\n', encoding="utf-8")
-        subprocess.run(git + ["add", "Cargo.lock"], cwd=tree, check=True)
-        subprocess.run(git + ["commit", "-qm", "seed"], cwd=tree, check=True)
-
-        # A stand-in cargo that does what `cargo update --workspace` does to the
-        # tree: rewrite Cargo.lock. Nothing here needs the real toolchain.
-        bin_dir = pathlib.Path(tmp) / "bin"
-        bin_dir.mkdir()
-        fake = bin_dir / "cargo"
-        fake.write_text(
-            '#!/bin/sh\nprintf \'version = "1.2.3"\\n\' > Cargo.lock\n', encoding="utf-8")
-        fake.chmod(0o755)
-        env = {
-            "PATH": f"{bin_dir}:{shutil.which('git') and '/usr/bin'}:/bin:/usr/bin",
-            "HOME": tmp,
-        }
-
-        proc = subprocess.run(["bash", "-c", script], cwd=tree, env=env,
-                              capture_output=True, text=True)
-        assert proc.returncode == 0, proc.stderr
-
-        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=tree,
-                               capture_output=True, text=True, check=True).stdout
-        assert dirty == "", f"cargo publish would refuse this tree:\n{dirty}"
-
-        # And it is idempotent: a re-run has nothing to commit, which `git
-        # commit` reports as an error unless the step guards for it.
-        again = subprocess.run(["bash", "-c", script], cwd=tree, env=env,
-                               capture_output=True, text=True)
-        assert again.returncode == 0, again.stderr
 
 
 # --- finalize asserts what it is about to publish (A1) -----------------------
@@ -286,7 +164,7 @@ def _finalize(addons=(), local=()):
 def _finalize_script(addons=(), local=()):
     steps = _finalize(addons, local)["steps"]
     script = [s["with"]["script"] for s in steps if "github-script" in s.get("uses", "")]
-    assert len(script) == 1
+    assert len(script) == 2
     return script[0]
 
 
@@ -298,8 +176,8 @@ def test_a_repository_local_publish_job_joins_finalizes_needs():
 
 
 def test_a_local_job_lands_after_the_standard_addons_in_needs():
-    needs = _finalize(addons=["publish-source-tarball"], local=[DEB])["needs"]
-    assert needs == ["publish", "publish-source-tarball", "publish-deb-container"]
+    needs = _finalize(addons=["publish-crates-io"], local=[DEB])["needs"]
+    assert needs == ["publish", "publish-crates-io", "publish-deb-container"]
 
 
 def test_a_local_job_that_collides_with_a_generated_one_is_refused():
@@ -307,8 +185,8 @@ def test_a_local_job_that_collides_with_a_generated_one_is_refused():
     # believes it owns a job the assembler generates -- the next version of that
     # add-on would then fight the local block. Say so at assembly time.
     with pytest.raises(AssemblyError, match="already generated"):
-        assemble_publish(ASSETS, ["publish-source-tarball"], MANIFEST,
-                         [{"job": "publish-source-tarball", "assets": []}])
+        assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST,
+                         [{"job": "publish-crates-io", "assets": []}])
 
 
 def test_a_local_entry_without_a_job_id_is_refused():
@@ -317,8 +195,8 @@ def test_a_local_entry_without_a_job_id_is_refused():
 
 
 def test_finalize_expects_the_assets_the_installed_blocks_attach():
-    script = _finalize_script(addons=["publish-source-tarball"], local=[DEB])
-    assert "['*.tar.gz', '*.deb', 'smtp-proxy-*-musl']" in script
+    script = _finalize_script(addons=["publish-crates-io"], local=[DEB])
+    assert "['*.deb', 'smtp-proxy-*-musl']" in script
 
 
 def test_finalize_expects_nothing_from_a_block_that_attaches_nothing():
@@ -368,7 +246,7 @@ def test_an_asset_pattern_that_could_break_out_of_the_literal_is_refused():
                          [{"job": "x", "assets": ["'); throw new Error('"]}])
 
 
-def _run_finalize(tmp_path, attached, local=(DEB,)):
+def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT):
     """Run the generated finalize script under node against a fake release.
 
     Substring assertions cannot answer the question that matters -- does this
@@ -378,10 +256,8 @@ def _run_finalize(tmp_path, attached, local=(DEB,)):
     this repository's own installed copy, which test_self_render.py pins to
     the asset.
     """
-    import json as _json
     import os
     import re
-    import shutil
     import subprocess
 
     node = shutil.which("node")
@@ -397,10 +273,14 @@ const assert = require('node:assert/strict');
 const attached = %s;
 const published = [];
 const failures = [];
+const deleted = [];
+const order = [];
 const github = {
-  paginate: async () => attached.map((name) => ({ name })),
+  paginate: async () => attached.map((a, i) => (typeof a === 'string'
+    ? { name: a, id: i + 1, state: 'uploaded' } : { id: i + 1, ...a })),
   rest: { repos: { listReleaseAssets: 'listReleaseAssets',
-                   updateRelease: async (a) => { published.push(a); return { data: { html_url: 'u' } }; } } },
+                   deleteReleaseAsset: async (a) => { order.push('delete'); deleted.push(a.asset_id); },
+                   updateRelease: async (a) => { order.push('publish'); published.push(a); return { data: { html_url: 'u' } }; } } },
 };
 const core = {
   setFailed: (m) => failures.push(m),
@@ -412,17 +292,17 @@ const context = { repo: { owner: 'o', repo: 'r' } };
 (async () => {
 %s
 })().then(() => {
-  console.log(JSON.stringify({ published: published.length, failures }));
+  console.log(JSON.stringify({ published: published.length, failures, deleted, order }));
 });
-""" % (_json.dumps(list(attached)), script)
+""" % (json.dumps(list(attached)), script)
 
     path = tmp_path / "finalize.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run(
-        [node, str(path)], capture_output=True, text=True, cwd=ROOT,
-        env={"GITHUB_WORKSPACE": str(ROOT), "PATH": os.environ.get("PATH", "")})
+        [node, str(path)], capture_output=True, text=True, cwd=workspace,
+        env={"GITHUB_WORKSPACE": str(workspace), "PATH": os.environ.get("PATH", "")})
     assert proc.returncode == 0, proc.stderr
-    return _json.loads(proc.stdout)
+    return json.loads(proc.stdout)
 
 
 def test_the_generated_finalize_publishes_a_complete_release(tmp_path):
@@ -452,3 +332,222 @@ def test_the_generated_finalize_publishes_when_nothing_is_expected(tmp_path):
     out = _run_finalize(tmp_path, [], local=())
     assert out["failures"] == []
     assert out["published"] == 1
+
+
+def _build_workspace(tmp_path, release_assets):
+    ws = tmp_path / "ws"
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
+    (ws / ".github/repo-infra.json").write_text(json.dumps(
+        {"version_files": [], "release_assets": release_assets}))
+    return ws
+
+
+def test_finalize_asserts_release_assets_when_the_release_was_built(tmp_path):
+    ws = _build_workspace(tmp_path, ["*.rpm"])
+    out = _run_finalize(tmp_path, ["x_1.2.3_amd64.deb", "release-build.json"],
+                        local=(), workspace=ws)
+    assert out["published"] == 0 and "*.rpm" in out["failures"][0]
+    assert out["deleted"] == []
+
+
+def test_finalize_deletes_the_build_record_before_it_publishes(tmp_path):
+    ws = _build_workspace(tmp_path, ["*.deb"])
+    out = _run_finalize(tmp_path, ["x_1.2.3_amd64.deb", "release-build.json"],
+                        local=(), workspace=ws)
+    assert out["failures"] == [] and out["published"] == 1
+    assert out["deleted"] == [2]
+    assert out["order"] == ["delete", "publish"]
+
+
+CRATES = {"packages": [
+    {"name": "core-a", "version": "1.2.3", "publish": None},
+    {"name": "app-b", "version": "1.2.3", "publish": None},
+    {"name": "helper", "version": "0.0.0", "publish": []},
+]}
+
+
+def _run_crates_publish(tmp_path, on_crates_io, status_other="404"):
+    """Run the block's own shell for the crates.io check and the publish.
+
+    A fake cargo prints metadata and records `cargo publish` arguments; a fake
+    curl answers 200 for every name/version in `on_crates_io`.
+    """
+    import os
+    import subprocess
+
+    if shutil.which("jq") is None:
+        pytest.skip("jq is not installed")
+    steps = _crates_io_job()["steps"]
+    pending = next(s for s in steps if s.get("id") == "pending")["run"]
+    publish = next(s for s in steps if "cargo publish" in s.get("run", ""))["run"]
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "log"
+    (tmp_path / "metadata.json").write_text(json.dumps(CRATES), encoding="utf-8")
+    (bin_dir / "cargo").write_text(
+        '#!/bin/sh\n'
+        f'if [ "$1" = metadata ]; then cat {tmp_path}/metadata.json; exit 0; fi\n'
+        f'echo "cargo $*" >> {log}\n', encoding="utf-8")
+    (bin_dir / "curl").write_text(
+        '#!/bin/bash\n'
+        'url="${@: -1}"\n'
+        f'echo "curl $url" >> {log}\n'
+        'case " $ON_CRATES_IO " in *" ${url#https://crates.io/api/v1/crates/} "*) '
+        'printf 200;; *) printf "$STATUS_OTHER";; esac\n', encoding="utf-8")
+    for tool in ("cargo", "curl"):
+        (bin_dir / tool).chmod(0o755)
+    output = tmp_path / "github_output"
+    output.write_text("")
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "GITHUB_OUTPUT": str(output),
+           "ON_CRATES_IO": " ".join(on_crates_io), "STATUS_OTHER": status_other}
+
+    first = subprocess.run(["bash", "-c", pending], cwd=tmp_path, env=env,
+                           capture_output=True, text=True)
+    result = {"pending_rc": first.returncode, "stdout": first.stdout, "stderr": first.stderr}
+    if first.returncode == 0:
+        outputs = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        second = subprocess.run(
+            ["bash", "-c", publish], cwd=tmp_path, capture_output=True, text=True,
+            env={**env, "PENDING": outputs["pending"], "EXCLUDE": outputs["exclude"]})
+        result.update(publish_rc=second.returncode, publish_stdout=second.stdout)
+    result["log"] = log.read_text().splitlines() if log.exists() else []
+    return result
+
+
+def test_the_crates_io_addon_publishes_every_crate_on_a_first_run(tmp_path):
+    out = _run_crates_publish(tmp_path, [])
+    assert out["publish_rc"] == 0
+    assert "cargo publish --workspace --locked" in out["log"]
+
+
+def test_the_crates_io_addon_excludes_a_crate_an_earlier_attempt_published(tmp_path):
+    out = _run_crates_publish(tmp_path, ["core-a/1.2.3"])
+    assert out["publish_rc"] == 0
+    assert "cargo publish --workspace --locked --exclude core-a" in out["log"]
+    assert "core-a 1.2.3 is already on crates.io" in out["stdout"]
+    # publish = false is cargo's to skip; crates.io is never asked about it.
+    assert not any("helper" in line for line in out["log"])
+
+
+def test_the_crates_io_addon_skips_the_publish_when_every_crate_is_there(tmp_path):
+    out = _run_crates_publish(tmp_path, ["core-a/1.2.3", "app-b/1.2.3"])
+    assert out["publish_rc"] == 0
+    assert not any(line.startswith("cargo publish") for line in out["log"])
+    assert "already on crates.io" in out["publish_stdout"]
+
+
+def test_the_crates_io_addon_fails_when_crates_io_does_not_answer(tmp_path):
+    out = _run_crates_publish(tmp_path, [], status_other="503")
+    assert out["pending_rc"] != 0
+    assert "HTTP 503" in out["stderr"]
+
+
+def test_the_generated_finalize_refuses_an_asset_whose_upload_did_not_finish(tmp_path):
+    # GitHub lists a half-uploaded asset by name, so the name check passes it.
+    out = _run_finalize(tmp_path, ["a.tar.gz", {"name": "x_1_amd64.deb", "state": "starter"}],
+                        local=())
+    assert out["published"] == 0
+    assert len(out["failures"]) == 1
+    assert "x_1_amd64.deb" in out["failures"][0] and "a.tar.gz" not in out["failures"][0]
+
+
+def test_the_crates_io_addon_never_rewrites_the_lock():
+    # The release pull request bumps Cargo.lock through version_files (D28).
+    for run in (s.get("run", "") for s in _crates_io_job()["steps"]):
+        assert "cargo update" not in _shell_code(run)
+        assert "git" not in _shell_code(run).split()
+
+
+def test_finalize_may_delete_runs():
+    assert _finalize()["permissions"] == {"contents": "write", "actions": "write"}
+
+
+def _parked_step():
+    steps = _finalize()["steps"]
+    return next(s for s in steps if s.get("name") == "Delete the parked runs of the release branch")
+
+
+def _run_parked(tmp_path, runs, fail_list=False, fail_delete=()):
+    import os
+    import re
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    script = re.sub(r"\$\{\{[^}]*\}\}", "v1.2.3", _parked_step()["with"]["script"])
+    # The helper under test is the installed copy of lib/release.js, driven
+    # through a fake github: only the listing and the deletion are faked.
+    harness = """
+const runs = %s; const failList = %s; const failDelete = %s;
+const deleted = []; const warnings = []; const listed = [];
+const github = {
+  // As GitHub does, the listing returns the runs whose status or conclusion
+  // matches the `status` filter.
+  paginate: async (fn, a) => {
+    if (failList) throw new Error('Server Error');
+    listed.push(a);
+    return runs.filter((x) => x.status === a.status || x.conclusion === a.status);
+  },
+  rest: { actions: { listWorkflowRunsForRepo: 'list',
+    listJobsForWorkflowRun: async (a) => ({
+      data: { total_count: runs.find((x) => x.id === a.run_id).jobs } }),
+    deleteWorkflowRun: async (a) => {
+      if (failDelete.includes(a.run_id)) throw new Error(`Server Error on ${a.run_id}`);
+      deleted.push(a.run_id);
+    } } },
+};
+const core = { warning: (m) => warnings.push(m), setFailed: (m) => { throw new Error(m); } };
+const context = { repo: { owner: 'o', repo: 'r' } };
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ deleted, warnings, listed })));
+""" % (json.dumps(runs), "true" if fail_list else "false", json.dumps(list(fail_delete)),
+       script)
+    path = tmp_path / "parked.js"
+    path.write_text(harness, encoding="utf-8")
+    proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ROOT,
+                          env={"GITHUB_WORKSPACE": str(ROOT), "PATH": os.environ["PATH"]})
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def _parked(id, branch, conclusion="action_required", repo="o/r", jobs=0):
+    # `jobs` is what the fake listJobsForWorkflowRun answers for this run.
+    return {"id": id, "event": "pull_request", "head_branch": branch, "status": "completed",
+            "conclusion": conclusion, "head_repository": {"full_name": repo}, "jobs": jobs,
+            "actor": {"login": "github-actions[bot]"}}
+
+
+def test_finalize_deletes_only_the_parked_runs_of_its_release_branch(tmp_path):
+    out = _run_parked(tmp_path, [_parked(1, "release/v1.2.3"),
+                                 _parked(2, "release/v1.2.3", conclusion="success"),
+                                 _parked(3, "release/v1.2.2"),
+                                 _parked(4, "release/v1.2.3", repo="fork/r"),
+                                 # parked, then turned into failure by the merge
+                                 _parked(5, "release/v1.2.3", conclusion="failure"),
+                                 # approved, ran its jobs, failed: kept
+                                 _parked(6, "release/v1.2.3", conclusion="failure", jobs=2)])
+    assert out["deleted"] == [1, 5]
+    assert {a["branch"] for a in out["listed"]} == {"release/v1.2.3"}
+    assert {a["event"] for a in out["listed"]} == {"pull_request"}
+
+
+def test_a_failed_listing_is_a_warning(tmp_path):
+    out = _run_parked(tmp_path, [_parked(1, "release/v1.2.3")], fail_list=True)
+    assert out["deleted"] == [] and "Server Error" in out["warnings"][0]
+
+
+def test_a_failed_deletion_is_a_warning_and_the_others_are_deleted(tmp_path):
+    runs = [_parked(1, "release/v1.2.3"), _parked(2, "release/v1.2.3"),
+            _parked(3, "release/v1.2.3")]
+    out = _run_parked(tmp_path, runs, fail_delete=[1])
+    assert out["deleted"] == [2, 3]
+    assert len(out["warnings"]) == 1 and "Server Error on 1" in out["warnings"][0]
+
+
+def test_finalize_asserts_release_assets_for_every_repository(tmp_path):
+    ws = _build_workspace(tmp_path, ["*.tar.gz"])
+    out = _run_finalize(tmp_path, ["x.deb"], local=(), workspace=ws)
+    assert out["published"] == 0 and "*.tar.gz" in out["failures"][0]

@@ -189,15 +189,18 @@ def test_the_seam_names_the_one_path_the_contract_fixes(tmp_path):
     """A fixed path is the point (D20): no substitution token, no entry in
     .github/repo-infra.json, nothing for a repository to configure."""
     block = yaml.safe_load(BLOCK.read_text(encoding="utf-8"))
-    assert block["action-test"] == {"uses": "./.github/workflows/action-test.yml"}
+    assert block["action-test"] == {"uses": "./.github/workflows/action-test.yml",
+                                    "with": {"ref": "${{ inputs.ref }}"},
+                                    "secrets": "inherit"}
 
 
 def test_the_seam_job_carries_no_keys_a_uses_job_cannot_have():
     """`runs-on`, `steps` and `timeout-minutes` are all rejected by GitHub on a
     job that calls a reusable workflow -- which is why the contract makes the
-    timeout the project's business."""
+    timeout the project's business. `with` and `secrets` are the two keys a
+    calling job does carry: the ref and the inherited secrets."""
     block = yaml.safe_load(BLOCK.read_text(encoding="utf-8"))
-    assert set(block["action-test"]) == {"uses"}
+    assert set(block["action-test"]) == {"uses", "with", "secrets"}
 
 
 def test_the_block_declares_both_jobs():
@@ -252,7 +255,8 @@ def test_check_reports_a_missing_action_test_workflow(tmp_path):
 
 
 def test_a_present_action_test_workflow_reports_nothing(tmp_path):
-    result = action_repo_result(tmp_path, seam="on: [workflow_call]\njobs: {}\n")
+    result = action_repo_result(tmp_path, seam=(
+        "on:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\njobs: {}\n"))
     assert classify_contracts(tmp_path, result) == []
 
 

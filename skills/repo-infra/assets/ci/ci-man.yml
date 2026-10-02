@@ -4,6 +4,8 @@
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       # pandoc converts the manual; groff and man-db render the result, which
       # is the only way to find out whether roff can lay the page out.

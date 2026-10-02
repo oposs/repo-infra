@@ -8,13 +8,17 @@ is the version for a model operating one of these repositories.
 ## The two steps, and why a push cannot do this
 
 **1. Dispatch `Create release PR`** (bugfix / feature / major). It refuses
-unless every check on the current `main` commit is green, computes the next
-version, rolls `CHANGES.md`, bumps every version file, and opens a
-`release/vX.Y.Z` pull request. Nothing is tagged yet; closing the PR cancels
-the release.
+when a check on the current `main` commit has already failed, when a release
+pull request is open, or when the latest release in `CHANGES.md` has no tag.
+Otherwise it computes the next version from the tags (and refuses if that tag
+exists), rolls `CHANGES.md`, sets every version file, builds the release
+(`release-build.yml`) and runs the repository's CI (`ci.yml`) on the
+`release/vX.Y.Z` branch, drafts the release with every built file and opens
+the pull request. Nothing is tagged yet; closing the PR cancels the release.
 
-**2. Merge that pull request.** The merge triggers the publish workflow, which
-re-reads the version out of `CHANGES.md`, tags, and publishes the release.
+**2. Merge that pull request.** Nothing needs approving. The merge triggers
+the publish workflow, which tags the commit that was built and publishes the
+draft.
 
 The reason it is two steps and not `git push` from a workflow: `main` is
 protected by a ruleset whose `bypass_actors` is empty, and the bypass list only
@@ -26,53 +30,95 @@ missing feature. Do not try to route around it by adding an `on: push` trigger
 on the release branch; a push made with `GITHUB_TOKEN` does not fire workflow
 triggers either.
 
-## The approval-required banner is expected
+## Built and tested before the pull request exists (D28)
 
-A pull request opened by `GITHUB_TOKEN` does not skip its `pull_request`
-workflow runs. It parks them in an **approval-required** state, shown as a
-banner in the merge box. Anyone with write access approves them once, and both
-`ci-passed` and `changelog-updated` then report for real. Seeing that banner on
-a release PR is the system working, not a stuck release.
+`Create release PR` runs four jobs:
 
-The runs can be approved without the browser. List the runs of the release
-branch, then approve each parked one by its ID (`gh` fills in `{owner}/{repo}`
-from the current repository):
+- `prepare`: the guard, the refusals (a release pull request is open; the
+  latest release in `CHANGES.md` has no tag), the removal of stale drafts and
+  of the parked runs of closed release branches, the roll, the version bump
+  and the commit of `release/vX.Y.Z`. It outputs `version`, `date`, `head` and
+  `base`, the dispatched `main` commit.
+- `build`: calls `.github/workflows/release-build.yml` with `version` and
+  `ref: head`.
+- `test`: calls `.github/workflows/ci.yml` with `ref: head`, in parallel with
+  `build`.
+- `finish`: needs the other three. It checks and commits the `release_files`,
+  checks the assets against `release_assets`, creates the draft release with
+  every asset and `release-build.json` (`{version, base, head, assets}`), sets
+  the commit status `release-built` on the head, creates the check run
+  `changelog-updated` (success) on the head and opens the pull request. Then
+  it compares the head with `main` and creates the check run `ci-passed`:
+  success when the branch is not behind `main`, failure with the stale message
+  below when `main` moved after `base`. The pull request is opened before this
+  comparison, so a release that went stale while it built is visible and says
+  why.
 
-```sh
-gh run list --branch release/vX.Y.Z
-gh api --method POST repos/{owner}/{repo}/actions/runs/<id>/approve
-```
+The ruleset requires `ci-passed` and `changelog-updated` by context only, with
+no app (`integration_id`), so the two check runs `finish` writes with
+`GITHUB_TOKEN` satisfy it, and the pull request merges at once.
 
-Approving is a write to GitHub; ask before doing it. The **Approve workflows to
-run** button in the merge box stays the fallback.
+A pull request opened by `GITHUB_TOKEN` still parks its own `pull_request`
+runs in an **approval-required** state, shown as a banner in the merge box.
+Nobody needs to approve them, and publish deletes them after the release. If
+someone approves them anyway, or presses **Update branch** (a user event, so
+the runs start without approval), the release mode of `ci-passed` and
+`changelog-updated` gives the same verdict as `release-pr-current` below: red
+unless the head carries `release-built` and is not behind `main`.
 
-The alternative (opening the PR with a stored PAT or GitHub App so the runs
-start unattended) was rejected: it is a credential to create, store and
-rotate, to save one approval that already happens on a PR someone reviews
-anyway.
+`main` must not move under a release. A release built from `main` at X is not
+merged after another pull request moved `main` to Y; it is abandoned and
+dispatched again. Three layers enforce this:
+
+- **The ruleset** sets `strict_required_status_checks_policy: true`. GitHub
+  refuses to merge a pull request whose head is behind `main`, with `the head
+  branch is not up to date with the base branch`. This applies to every pull
+  request into `main`: one that is behind needs **Update branch** and a new CI
+  run before it merges.
+- **`release-pr-current`**, a job in `ci.yml` that runs on `push` to `main`
+  only. For each open release pull request that is behind `main`, it creates a
+  failed check run `ci-passed` on its head with `main moved after vX.Y.Z was
+  built; close this pull request and dispatch Create release PR again`. The
+  ruleset already blocks the merge; this check says why. The job never fails
+  itself, and an API error is a warning: a failed job is a failed check run on
+  the `main` commit, and the guard would refuse the next dispatch from it.
+- **Publish compares trees**, in its `create` path only, before it tags;
+  never in `resume` or `done`. It finds the release pull request by its branch
+  (closed pull requests with head `<owner>:release/vX.Y.Z`, the merged one)
+  and compares the tree of its `merge_commit_sha` with the tree of the
+  recorded head. It does not look the pull request up from the head commit:
+  for a commit off the default branch GitHub lists only open pull requests, so
+  a squash or rebase merge would never publish. When no merged release pull
+  request is found, or the trees differ, publish tags nothing and fails. A
+  mismatch means the up-to-date rule was off at the merge:
+  `main at <sha> does not match the release built from <head>; merge a pull request that moves the vX.Y.Z entries in CHANGES.md back under [Unreleased], then dispatch Create release PR again`.
 
 ## The guard fails fast, and is not redundant with the required checks
 
-`Create release PR`'s `guard` job reads every check run on the current `main`
-commit (`checks.listForRef`) and refuses if any failed, any is still running
-past its timeout, or none ran at all. This is not standing in for the ruleset's
-required checks. It runs *before* a branch, a commit, a pull request or an
-approval exists. Without it, a release dispatched against a red `main`
-still rolls the changelog, bumps every version file, pushes a branch and opens
-a PR, and only then parks on a check someone has to approve in order to watch
-it fail. The guard turns that into an immediate refusal with nothing to clean
-up. Do not remove it because "the ruleset already requires checks": the
-ruleset gates the merge; the guard gates the dispatch.
+`Create release PR`'s guard reads every check run on the current `main` commit
+(`checks.listForRef`) and refuses when one has already failed, naming it:
+`Failing checks on this commit: <names>`. It does not wait for running checks
+and does not refuse a commit without checks, because the `test` job runs the
+same `ci.yml` on that commit plus the release changes, and `finish` opens a
+pull request only when that run is green.
 
-## `ignoreCheckRunIds`: a job that waits on its own commit's checks waits for itself
+This is not standing in for the ruleset's required checks. It runs *before* a
+branch, a build or a pull request exists. Without it, a release dispatched
+against a `main` with a known failure still rolls the changelog, bumps every
+version file, pushes a branch and spends a full build and CI run, only to
+fail. The guard turns that into an immediate refusal with nothing to clean up.
+Do not remove it because "the ruleset already requires checks": the ruleset
+gates the merge; the guard gates the dispatch.
 
-The guard's own job run is one of the check runs on the commit it is
-inspecting. Without excluding its own run, it polls for every check to
-complete, including the one that is currently doing the polling, and times
-out. A check run's id is its Actions job id, so the guard reads the job ids off
-this workflow's runs and passes them as `ignoreCheckRunIds` before it starts
-waiting. Any new job added to `release-pr.yml` needs no special handling for
-this; only the guard job itself, because only it waits on checks at all.
+## `ignoreCheckRunIds`: the guard ignores every job of this workflow on its commit
+
+The guard's own job is one of the check runs on the commit it inspects, and
+so is every job of every earlier attempt on that commit. Since D28 those
+include the `build` and `test` jobs of an earlier dispatch: when they failed,
+they left failed check runs on that same `main` commit. A check run's id is
+its Actions job id, so the guard reads the job ids off this workflow's runs
+and passes them as `ignoreCheckRunIds`. A new job added to `release-pr.yml`
+needs no special handling; it is ignored with the rest.
 
 **Every earlier attempt counts, not just the current run.** This is the half
 that was missing, and the failure it caused is permanent. A release attempt that
@@ -112,12 +158,146 @@ A failed publish run is re-run from the Actions UI (Actions â†’ the failed run â
 not something started from a dropdown), and none is needed for recovery: the
 version comes from `CHANGES.md` in the repository, not from run inputs, so a
 re-run reads the same version and does exactly what the original attempt would
-have done. The one case this does not cover: if a failed run got as far as
-creating the tag before dying, the tag-exists check at the top of the job
-returns early on the re-run, before tagging *or* creating the release, so a
-failure between those two steps needs the tag removed by hand
-(`git push origin --delete vX.Y.Z`, confirmed with the user first) before a
-re-run can finish the job.
+have done.
+
+Both **Re-run failed jobs** and a whole-workflow re-run finish a stopped
+publish. Publish add-ons skip what an earlier attempt uploaded:
+`publish-crates-io` asks crates.io and publishes only the workspace crates
+whose version is not there yet, and `publish-gitea-packages` counts a file
+Gitea already holds as uploaded (below). A whole-workflow re-run finishes a
+stopped release only when every `publish_local` job does the same.
+
+The one failure a re-run cannot fix is the tree comparison. A publish that
+failed with `main at <sha> does not match the release built from <head>`
+tagged nothing, and every re-run fails the same way. Abandon the release with
+a pull request that moves its entries back under `[Unreleased]`, then dispatch
+again.
+
+## What the build may do
+
+`release-build.yml` is assembled like `ci.yml` and `release-publish.yml`. Its
+frame triggers on `workflow_call` with the inputs `version` and `ref` and has
+`contents: read`. It runs:
+
+- the build add-ons named in `release_build`, by id. `release-source-tarball`
+  runs `./bootstrap`, `./configure` and `make dist` at `ref` and uploads the
+  tarball as the artifact `release-asset-source`.
+- with `"release_build_local": true`, the project's own
+  `.github/workflows/release-build-local.yml`, called with `version` and
+  `ref`.
+
+A repository with nothing to build gets a valid file and a release without
+assets. The build uploads the files the release ships as `release-asset-*`
+artifacts, and the repository files it rewrote as the artifact
+`release-files`; `references/conventions.md` has the contract.
+
+`finish` checks every asset against `release_assets` and commits the files
+listed in `release_files` onto the release branch. It refuses an entry under
+`.github/`, `CHANGES.md`, a version file and non-UTF-8 content, after
+normalising the path. A Homebrew formula change is part of the pull request
+diff, so reviewers see it. `finish` first removes its own earlier drafts for
+the same version, including a bot-created draft that a failed upload left
+without `release-build.json`.
+
+Publish tags the head recorded in `release-build.json`, not the merge commit.
+If that commit does not exist in the repository, publish fails with
+`release-build.json names <sha>, which does not exist in this repository`.
+Repository-owned `publish_local` jobs check out
+`ref: ${{ needs.publish.outputs.head }}`, the tagged commit, like the add-ons
+do.
+
+Publish also fails on every run while the tag for the newest released version
+in `CHANGES.md` exists but has no GitHub release, as after a tag pushed by
+hand. It stays red until the next release creates one; other tags are never
+looked at.
+
+Between the merge and `finalize` the Homebrew formula on `main` points at
+release URLs that answer 404, because the release is still a draft. Usually
+that lasts the few minutes publish takes. A failed add-on keeps the release a
+draft and `brew install` fails until it is public. Recovery is **Re-run failed
+jobs** on the publish run.
+
+`Create release PR` refuses in two cases:
+
+- A release pull request is already open (from a `release/*` branch of this
+  repository, opened by `github-actions[bot]`). The message names it.
+- The latest release in `CHANGES.md` on `main` has no tag:
+  `vX.Y.Z is in CHANGES.md on main but has no tag`. The ways out are
+  **Re-run failed jobs** on its publish run, when that run failed for another
+  reason than the tree comparison; for a release that is already out under
+  another tag, pushing `vX.Y.Z` by hand (the ruleset covers the branch, not
+  tags); or, to abandon it, a pull request that moves its entries back under
+  `[Unreleased]`.
+
+**Update branch** on a release pull request moves the branch after the build.
+The new head carries no `release-built` status, so `ci-passed` and
+`changelog-updated` turn red with `the release branch changed after it was
+built (the Update branch button does this); close this pull request and
+dispatch Create release PR again`, and adding `no-changelog` does not help.
+Close the pull request and dispatch `Create release PR` again. The next
+dispatch deletes stale drafts (drafts with a `release-build.json` whose tag
+does not exist and whose version is not the latest release in `CHANGES.md` on
+`main`) and the parked runs of closed release branches.
+
+## Gitea packages (publish-gitea-packages)
+
+The add-on uploads every `.deb` and `.rpm` release asset to a Gitea package
+registry, which signs them with its own key. No repository holds a signing
+key. The release stays a draft until the upload succeeded. `check` reports a
+conflict when `gitea_packages` lacks `url` or `owner`.
+
+    "publish": ["publish-gitea-packages"],
+    "gitea_packages": {
+      "url": "https://gitea.oetiker.ch",
+      "owner": "oposs",
+      "debian": {"distribution": "stable", "component": "main"},
+      "rpm": {"group": ""}
+    }
+
+- `url`, `owner`: the Gitea server and the organisation that owns the
+  packages.
+- `debian.distribution`, `debian.component`: the channel for `.deb` files.
+  The default is `stable` and `main`.
+- `rpm.group`: the RPM group. Empty by default.
+
+The job fails when no asset matches. It fails before the first upload when
+`GITEA_PACKAGE_TOKEN` or `GITEA_PACKAGE_USER` is empty, naming the missing
+one, and when a release carries a `.deb` or `.rpm` whose file name it cannot
+parse, naming the file. The expected shapes are `name_version_arch.deb` and
+`name-version-release.arch.rpm`.
+
+The credential is the first stored one in the standard:
+
+- A dedicated Gitea user, member of the owner organisation only, in a team
+  with package write permission and nothing else.
+- Token scope `write:package` only.
+- The GitHub organisation secret `GITEA_PACKAGE_TOKEN` and the organisation
+  variable `GITEA_PACKAGE_USER`. A repository under a personal GitHub account
+  cannot see organisation secrets and carries its own copy as a repository
+  secret and variable.
+- Gitea tokens do not expire. Rotation is manual: once for the organisation
+  secret and once per personal-account copy.
+
+Gitea answers 409 for a version that already exists, which a **Re-run failed
+jobs** meets for files that went up the first time. For a `.deb`, 409 counts
+as success only when the stored file's SHA-256 equals the asset's. For an
+`.rpm`, Gitea stores the signed file, so the hashes never match. There, 409
+counts as success when a file with the same name, version-release and
+architecture exists, and the job log says the content was not compared.
+
+What users type on Debian and Ubuntu:
+
+    sudo install -d -m 0755 /etc/apt/keyrings
+    sudo curl -o /etc/apt/keyrings/gitea-oposs.asc https://gitea.oetiker.ch/api/packages/oposs/debian/repository.key
+    echo "deb [signed-by=/etc/apt/keyrings/gitea-oposs.asc] https://gitea.oetiker.ch/api/packages/oposs/debian stable main" | sudo tee /etc/apt/sources.list.d/oposs.list
+
+On Fedora 41 and later (dnf5):
+
+    sudo dnf config-manager addrepo --from-repofile=https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
+
+On RHEL, Rocky and Alma, and Fedora before 41 (dnf4):
+
+    sudo dnf config-manager --add-repo https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
 
 ## Check these still hold
 
@@ -125,10 +305,15 @@ The prose above has no automatic test; if GitHub changes one of these
 behaviours, nothing fails loudly. The workflow just stops doing what this file
 says it does.
 
-- **`GITHUB_TOKEN`-opened pull requests park runs rather than skip them.**
-  Open a release PR and look for the approval banner. If runs are not created
-  at all, neither required check can ever report, and the ruleset needs to
-  drop them.
+- **A check run written by `GITHUB_TOKEN` satisfies a required context that
+  names no app.** Open a release pull request and look at the merge box:
+  `ci-passed` and `changelog-updated` must read as required and passed. If
+  GitHub starts to demand the app, the ruleset needs `integration_id` for
+  GitHub Actions.
+- **The up-to-date rule refuses a merge whose head is behind.** Merge an
+  unrelated pull request while a release pull request is open: the release
+  pull request must show `the head branch is not up to date with the base
+  branch`.
 - **A job-level `if:` reports Success on skip; a workflow-level filter stays
   Pending.** Open a PR that touches nothing a filter would match and watch the
   check. If this reverses, the changelog gate's escape hatch stops working and

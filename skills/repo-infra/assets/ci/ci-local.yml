@@ -1,0 +1,13 @@
+  # The project brings the jobs, the standard brings the seam (D25, D20's
+  # shape). .github/workflows/ci-local.yml is the project's own file: it
+  # triggers on workflow_call only, sets timeout-minutes on each of its jobs,
+  # and keeps its conditions inside steps, never on a job -- a reusable
+  # workflow whose every job is skipped reports ci-local as skipped, and
+  # ci-passed counts skipped as green. references/conventions.md.
+  # The file declares the workflow_call input ref and checks it out in every
+  # actions/checkout (D28); Create release PR passes the release branch here.
+  ci-local:
+    uses: ./.github/workflows/ci-local.yml
+    with:
+      ref: ${{ inputs.ref }}
+    secrets: inherit

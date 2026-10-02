@@ -9,10 +9,12 @@ local edit at the current generation is a perfectly healthy `ok`.
 
 import json
 import pathlib
+import posixpath
 import re
 from collections import namedtuple
 
 from .markers import parse_markers
+from .seam import seam_advice, seam_problems
 
 Item = namedtuple("Item", "name state detail")
 
@@ -43,6 +45,36 @@ def carries_a_path_filter(text):
         if _PATH_FILTER_KEY.match(stripped):
             return True
     return False
+
+
+# The JS `refusedReleaseFiles` in workflows/lib/release.js enforces the same rule; change both.
+def refused_release_files(entries, version_files):
+    """release_files entries that would reopen the channel D26 closes.
+
+    The read-only build writes the repository only through the files `finish`
+    commits. A path that is, after normalising, CHANGES.md, a version file or
+    anything under .github/ would let it rewrite the changelog, a version or a
+    workflow. `finish` checks the same rule at run time (release.js).
+    """
+    versions = {posixpath.normpath(f["path"]) for f in version_files or []}
+    refused = []
+    for entry in entries:
+        if not isinstance(entry, str) or entry == "":
+            refused.append((entry, "is empty"))
+            continue
+        if entry.startswith("/"):
+            refused.append((entry, "is an absolute path"))
+            continue
+        path = posixpath.normpath(entry)
+        if path == ".." or path.startswith("../"):
+            refused.append((entry, "points outside the repository"))
+        elif path == "CHANGES.md":
+            refused.append((entry, "is CHANGES.md, which the release pull request rolls"))
+        elif path in versions:
+            refused.append((entry, "is a version file, which the release pull request bumps"))
+        elif path == ".github" or path.startswith(".github/"):
+            refused.append((entry, "is under .github/"))
+    return refused
 
 
 def _dir_asset_names(manifest):
@@ -109,6 +141,13 @@ def _collapse_dir_asset(name, entries):
     return Item(name, "conflict", f"files disagree: {summary}")
 
 
+def unmanaged(path):
+    """The detail of a file at a rendered path that carries no marker of ours.
+
+    migrate.py recognises the D26 build by it."""
+    return f"{path} exists but is not managed by repo-infra"
+
+
 def classify_files(repo_root, rendered, manifest):
     dir_assets = _dir_asset_names(manifest)
     per_path = []
@@ -131,8 +170,7 @@ def classify_files(repo_root, rendered, manifest):
                                   "every unmatched pull request pending forever. Move "
                                   "the condition into the job.")))
             elif have is None:
-                per_path.append((path, Item(marker.asset, "conflict",
-                                  f"{path} exists but is not managed by repo-infra")))
+                per_path.append((path, Item(marker.asset, "conflict", unmanaged(path))))
             elif have < marker.version:
                 per_path.append((path, Item(marker.asset, "outdated",
                                   f"v{have} installed, v{marker.version} available")))
@@ -183,9 +221,17 @@ def classify_remote(facts):
 
     wanted = {"ci-passed", "changelog-updated"}
     missing = sorted(wanted - facts.required_contexts)
-    items.append(Item(
-        "required-checks", "ok" if not missing else "missing",
-        "" if not missing else "the ruleset does not require " + " or ".join(missing)))
+    if missing:
+        items.append(Item("required-checks", "missing",
+                          "the ruleset does not require " + " or ".join(missing)))
+    elif not facts.strict:
+        items.append(Item(
+            "required-checks", "outdated",
+            "the ruleset lets a pull request merge while its branch is behind main "
+            "(strict_required_status_checks_policy is off); a release built from an "
+            "older main could then merge (D28)"))
+    else:
+        items.append(Item("required-checks", "ok", ""))
 
     has_label = "no-changelog" in facts.labels
     items.append(Item("no-changelog-label", "ok" if has_label else "missing",
@@ -209,7 +255,7 @@ def classify_ambiguities(result):
     return [Item(a["id"], "ambiguous", a["question"]) for a in result.ambiguities]
 
 
-def classify_contracts(repo_root, result):
+def classify_contracts(repo_root, result, config=None, pending_rename=False):
     """Project-owned files an installed block depends on but cannot ship.
 
     The counterpart of an ambiguity: not a question about this repository, but
@@ -219,6 +265,7 @@ def classify_contracts(repo_root, result):
     without it does not merely leave a gap, it makes ci.yml invalid so that no
     job in the repository runs at all.
     """
+    config = config or {}
     items = []
     if "github-action" in result.ecosystems:
         seam = pathlib.Path(repo_root) / ".github/workflows/action-test.yml"
@@ -229,6 +276,66 @@ def classify_contracts(repo_root, result):
                 "and this repository has no such file; GitHub rejects the whole "
                 "workflow, so every check stops reporting. Write it as the "
                 "project's own test (references/conventions.md)."))
+    if config.get("ci_local"):
+        seam = pathlib.Path(repo_root) / ".github/workflows/ci-local.yml"
+        if not seam.is_file():
+            items.append(Item(
+                "ci-local-workflow", "conflict",
+                "ci.yml's ci-local job calls .github/workflows/ci-local.yml "
+                "and this repository has no such file; GitHub rejects the whole "
+                "workflow, so every check stops reporting. Write it as the "
+                "project's own jobs (references/conventions.md), or remove "
+                "\"ci_local\" from .github/repo-infra.json."))
+    root = pathlib.Path(repo_root)
+    local_build = ".github/workflows/release-build-local.yml"
+    if config.get("release_build_local") and not pending_rename:
+        if not (root / local_build).is_file():
+            items.append(Item(
+                "release-build-local", "conflict",
+                "release_build_local is set and .github/workflows/release-build-local.yml "
+                "does not exist; release-build.yml calls it and GitHub rejects the whole "
+                "release workflow. Write it (references/conventions.md), or remove "
+                "\"release_build_local\" from .github/repo-infra.json."))
+    # D28: each seam declares `ref` and checks it out; only the build may
+    # upload release-asset-* and release-files. While the D26 rename is
+    # pending, the build is still release-build.yml.
+    seams = []
+    if "github-action" in result.ecosystems:
+        seams.append(("action-test-seam", ".github/workflows/action-test.yml", True))
+    if config.get("ci_local"):
+        seams.append(("ci-local-seam", ".github/workflows/ci-local.yml", True))
+    if config.get("release_build_local"):
+        seams.append(("release-build-local-seam",
+                      ".github/workflows/release-build.yml" if pending_rename else local_build,
+                      False))
+    for name, rel, reserved in seams:
+        path = root / rel
+        if not path.is_file():
+            continue
+        problems = seam_problems(path.read_text(encoding="utf-8"), reserved)
+        if problems:
+            items.append(Item(
+                name, "conflict",
+                f"{rel} " + "; ".join(problems) + ". apply does not edit this file: "
+                + seam_advice(problems) + " (references/conventions.md)."))
+    if "publish-gitea-packages" in config.get("publish", []):
+        gitea = config.get("gitea_packages")
+        gitea = gitea if isinstance(gitea, dict) else {}
+        absent = [k for k in ("url", "owner") if not gitea.get(k)]
+        if absent:
+            items.append(Item(
+                "gitea-packages-config", "conflict",
+                "publish-gitea-packages reads \"gitea_packages\" in "
+                ".github/repo-infra.json and it lacks " + " and ".join(absent)
+                + "; set \"url\" (the Gitea base URL) and \"owner\" "
+                "(references/conventions.md)."))
+    refused = refused_release_files(config.get("release_files", []),
+                                    config.get("version_files", []))
+    if refused:
+        items.append(Item(
+            "release-files", "conflict",
+            "release_files in .github/repo-infra.json: "
+            + "; ".join(f"{path} {reason}" for path, reason in refused)))
     return items
 
 

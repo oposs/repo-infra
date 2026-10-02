@@ -1144,11 +1144,11 @@ upload to the draft release, and `apply` adds the job to `finalize`'s `needs:` l
 | **OS packages** | **nfpm** — one static Go binary, one YAML file, emits deb/rpm/apk for *any* language. `cargo-deb`/`cargo-generate-rpm` read `Cargo.toml` and would work only for Rust. |
 | Windows | portable zip (proven in mdmost) plus a winget manifest — no code-signing certificate needed |
 | containers | multi-arch to `ghcr.io` from **pre-built static musl binaries** via `FROM scratch`, byonk's approach: nothing compiles inside Docker, so no compiler runs under QEMU. Tags `latest`, `x.y.z`, `x.y`, `x`. |
-| Homebrew | formula + bottles, ported from mdmost; the formula and bottle commits must move off `main` to satisfy D1 |
+| Homebrew | formula + bottles, ported from mdmost; the formula and bottle commits must move off `main` to satisfy D1. D26 moves them into the release pull request (2026-09-29-mdmost-conversion-design.md). |
 
 Artifacts attach to the GitHub release. No apt/yum repository is hosted — that would need
 a GPG key per organisation, stored and rotated, and would be the first credential this
-design introduces.
+design introduces. Reversed by D27 for Gitea's registry, where Gitea holds the signing key; the upload token is the first stored credential (2026-09-29-mdmost-conversion-design.md).
 
 Cross-compilation: `Cross.toml` pinning `ghcr.io/cross-rs/*-musl` images with `RUSTFLAGS`
 passthrough, and `cross` itself pinned (`--version 0.2.5 --locked`) because the static

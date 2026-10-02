@@ -76,20 +76,23 @@ cannot be read off them. Nothing writes it at runtime -- `write_config` exists
 for `apply` to call one day, but nothing calls it yet, so today it is
 hand-authored and hand-edited. `check` and `apply` only read it.
 
-- `ecosystems` -- the detected list, recorded so a later run can tell "still
+- `ecosystems`: the detected list, recorded so a later run can tell "still
   this" from "detection changed underneath me". Not itself a lever to pull.
-- `moving_major_tag` -- whether publishing also moves a floating `vN` tag
+- `moving_major_tag`: whether publishing also moves a floating `vN` tag
   alongside the exact `vN.N.N` one. Off by default; most consumers pin exact
   tags, and a floating major tag is a promise to keep it working forever.
-- `version_files` -- where the release workflow writes the version, and what
+- `version_files`: where the release workflow writes the version, and what
   it reads back to confirm the write took (D5/D6 and the module docstring in
-  `apply.py`).
-- `publish` -- which publish add-ons this repository's release workflow
-  assembles, by id (`manifest.json` `publish_blocks`). This branch makes the
-  key meaningful: `["publish-source-tarball"]` attaches the `make dist`
-  tarball to the release, and it is a **blocking prerequisite** for converting
-  any autotools repository that already publishes one -- convert without it
-  and the tarball a project ships today silently stops shipping.
+  `apply.py`). In a Rust repository with a `Cargo.lock`, detection adds one
+  `Cargo.lock` entry for the root package and for every workspace member with
+  `version.workspace = true`; the release PR commits only these paths, so a
+  lockfile left out keeps the old version.
+- `publish`: which publish add-ons this repository's release workflow
+  assembles, by id (`manifest.json` `publish_blocks`). `publish-crates-io` and
+  `publish-gitea-packages` are the publish add-ons. The `make dist` tarball is
+  no longer a publish add-on: it is the build add-on `release-source-tarball`
+  (see `release_build`), a blocking prerequisite for converting any autotools
+  repository that already publishes one.
   `["publish-crates-io"]` publishes the whole cargo workspace to crates.io
   (D21). It carries a prerequisite that lives outside the repository: crates.io
   pins a Trusted Publisher to a *(repository, workflow filename)* pair, and the
@@ -100,7 +103,7 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   per publishable crate before the first converted release, or the release
   stays a draft and the crate never ships. `check` queries GitHub, not
   crates.io, and cannot see this for you.
-- `publish_local` -- publish jobs the repository writes **itself**, which
+- `publish_local`: publish jobs the repository writes **itself**, which
   `finalize` must wait for and whose assets `finalize` must find. Each entry is
   `{"job": "<job id>", "assets": ["<name pattern>", ...]}`. This exists because
   some repositories run a publish job the standard does not ship yet --
@@ -119,7 +122,18 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   asserts against the real release before publishing it -- ordering cannot
   report its own absence, an assertion can. Declaring a job the assembler
   already generates is refused at assembly.
-- `build` -- which build assets this repository's Makefile and `configure.ac`
+- `release_build`: the build add-ons the assembled `release-build.yml`
+  runs on the release branch before the pull request exists (D28), by id
+  (`manifest.json` `release_build_blocks`). `["release-source-tarball"]`
+  builds the `make dist` tarball. Each add-on declares the asset name
+  patterns it produces, and `release_assets` must list them: `finish` is a
+  copied file and cannot know which add-ons are installed. `check` reports a
+  missing pattern and `apply` adds it.
+- `release_build_local`: `true` adds the project's own
+  `.github/workflows/release-build-local.yml` to `release-build.yml`.
+- `release_assets`, `release_files`: every file the release must carry, as
+  name patterns, and the repository paths the build may rewrite (D26).
+- `build`: which build assets this repository's Makefile and `configure.ac`
   install, by id (`manifest.json` `build_assets`). A containerized autotools
   repository names both: `["container-m4", "container"]` installs
   `m4/repo-infra-container.m4` and `build/container.mk`, which together make
@@ -128,7 +142,7 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   A CI block may carry build assets of its own (D23): choosing `ci-man`
   installs `build/man.mk` and `build/man-deflist.lua` as if they were listed
   here, and listing them here as well is allowed.
-- `ci` -- which **opt-in** CI blocks this repository's `ci.yml` assembles, by id
+- `ci`: which **opt-in** CI blocks this repository's `ci.yml` assembles, by id
   (`manifest.json` `ci_blocks`, the entries marked `"optional": true`). Every
   other CI block arrives by detection; these are the ones detection cannot
   answer, because the repository's files do not state the intent.
@@ -147,9 +161,9 @@ hand-authored and hand-edited. `check` and `apply` only read it.
   does not have, or one detection already installs, is refused at assembly
   rather than rendered -- the second would emit a duplicate job id, which makes
   the whole of `ci.yml` invalid so that *no* job runs at all.
-- `skip` -- items a human deliberately declined, name to reason. `check` reads
+- `skip`: items a human deliberately declined, name to reason. `check` reads
   this to stop nagging about a considered "no" instead of an oversight.
-- `answers` -- resolved ambiguities, id to the answer given. Recorded so
+- `answers`: resolved ambiguities, id to the answer given. Recorded so
   `apply` never has to guess on the next run.
 
 ## The Containerfile contract (D18)
@@ -239,7 +253,7 @@ correctly -- native runs the real suite, driver delegates to podman.
 `DESTDIR` refuses with a usage message rather than mounting the host's
 `$(prefix)` read-write into the container.
 
-## The action-test contract (D20)
+## Project-owned workflows behind a fixed seam (D20, D25, D28)
 
 Same shape as the Containerfile contract, one layer over: repo-infra owns the
 *seam*, the project owns the *test*. An action's real test is `uses: ./` with
@@ -254,7 +268,7 @@ fixed path:
 shipped, not versioned, not drift-checked, and **not** assembler output despite
 living beside files that are. What it must do:
 
-1. **Trigger on `workflow_call` and nothing else.** `on: [workflow_call]`. Add
+1. **Trigger on `workflow_call` and nothing else.** `on: workflow_call:`. Add
    `push` or `pull_request` beside it and every run happens twice -- once here
    and once through `ci.yml` -- which reads as flakiness rather than as a
    duplicated trigger.
@@ -266,6 +280,22 @@ living beside files that are. What it must do:
    `ci.yml` invalid, so *no* job runs and the pull request blocks on a check
    that never reports -- loud, but the message names YAML rather than this
    contract. `check` reports it as its own line for that reason.
+4. **Declare the input `ref` and check it out.** `on: workflow_call: inputs:
+   ref`, and `ref: ${{ inputs.ref }}` on every `actions/checkout`, directly
+   under that step's own `with:`. `Create release PR` runs `ci.yml` on the
+   release branch and passes that commit here; a checkout without it tests
+   `main` and reports the release as tested. `check` reads these files as
+   text, so every step is block-style YAML: `- uses: ...` with its keys on the
+   lines below, without flow mappings, anchors or aliases. A step it cannot
+   read counts as a violation (`cannot read`). `check` reports a missing
+   input, a checkout without `ref` and an unreadable step as `conflict`
+   (`action-test-seam`, `ci-local-seam`, `release-build-local-seam`), naming
+   the file, and `apply` does not edit these files.
+
+These files get the repository's secrets (`secrets: inherit`) and must not ask
+for more permissions than `contents: read`; `ci.yml`'s callers grant no more.
+The artifact names `release-asset-*` and `release-files` are reserved for the
+build (see release-build-local below).
 
 The path is fixed rather than configurable on purpose: a name in
 `.github/repo-infra.json` would be one more thing per repository to get wrong,
@@ -282,6 +312,86 @@ that hits either one is green while testing nothing.
 The manifest is `action.yml`. GitHub also accepts `action.yaml`; the standard
 does not, and a repository spelling it the other way renames the file during
 conversion.
+
+### ci-local (D25)
+
+`"ci_local": true` in `.github/repo-infra.json` adds
+`ci-local: uses: ./.github/workflows/ci-local.yml` to `ci.yml` and `ci-local`
+to `ci-passed`'s `needs:`. The four action-test rules apply unchanged: the
+file triggers on `workflow_call` only, every job in it sets `timeout-minutes`,
+the file exists, and it declares the input `ref` and checks it out. `check`
+reports a missing file as `conflict` under the item `ci-local-workflow`, and a
+file without `ref` under `ci-local-seam`.
+
+One more rule: conditions go inside steps, never on a job. A reusable workflow
+whose every job is skipped reports `ci-local` as skipped, and `ci-passed`
+counts a skipped need as green.
+
+### release-build-local (D28)
+
+`"release_build_local": true` makes the assembled `release-build.yml` call
+`.github/workflows/release-build-local.yml`, the project's own build. What it
+must do:
+
+- Trigger on `workflow_call` with the string inputs `version` and `ref`, and
+  check out `inputs.ref` in every `actions/checkout`.
+- Upload each file the release ships as an artifact whose name starts with
+  `release-asset-`.
+- Upload the repository files the build rewrote, for example a Homebrew
+  formula, as one artifact named `release-files`. Its paths are repository
+  paths, and each one is listed in `release_files`.
+- Ask for no more than `contents: read`.
+
+`check` reports a missing file as `conflict` under the item
+`release-build-local`, and a file that does not declare or check out `ref`
+under `release-build-local-seam`.
+
+Upload `release-files` from a staging directory whose tree holds the
+repository paths, because `upload-artifact` strips the common parent
+directory: uploading `Formula/mdmost.rb` directly yields `mdmost.rb`, which is
+refused as undeclared. Files with the same name in several `release-asset-*`
+artifacts overwrite each other.
+
+`build` and `test` run in the same workflow run and share one artifact
+namespace, so `release-asset-*` and `release-files` are reserved for the
+build: `check` reports a `conflict` when `ci-local.yml` or `action-test.yml`
+uploads an artifact with such a name. A file named `release-build.json` is
+refused: that name is the build record `finish` writes itself.
+
+The build and the CI run get the repository's secrets. No repository secret
+may carry write access to the repository; a classic personal access token
+with `repo` scope breaks that rule.
+
+### The `rust` key (D24)
+
+    "rust": {
+      "lint": ["mdmost"],
+      "test": ["mdmost", "pulldown-latex"],
+      "tested_elsewhere": ["syntect"]
+    }
+
+- `lint`: crates that `rust-check` runs `cargo fmt --check -p` and
+  `cargo clippy --all-targets -p <name> --no-deps -- -D warnings` on.
+  Leaving `lint` out lints the whole workspace.
+- `test`: crates that `rust-test` runs `cargo test -p` on, one matrix leg per
+  crate. Required whenever the key is present.
+- `tested_elsewhere`: workspace members whose tests run outside `rust-test`,
+  for example in `ci-local.yml`. The standard runs nothing for them and cannot
+  confirm that anything else does.
+
+`rust-plan` reads the key at run time and fails, naming the crates involved,
+when:
+
+- a listed name is not a workspace member;
+- a workspace member is in neither `test` nor `tested_elsewhere`;
+- `lint` or `test` is present and empty, or `test` is missing;
+- the key is absent and the workspace's default members differ from its
+  members (a root `[package]`, or `default-members` in any workspace).
+
+Without the key, a workspace whose default members equal its members runs
+the workspace-wide commands as before. A repository whose default members
+differ from its members must set the key. `ci-rust` v2 fails on the upgrade
+pull request, with a message naming the members and the key, until it does.
 
 ## Markers record a generation, never a content hash
 

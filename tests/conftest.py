@@ -9,6 +9,20 @@ OLD = "name: CI\n# repo-infra: ci v1\njobs:\n  fmt:\n"
 NEW = "name: CI\n# repo-infra: ci v3\njobs:\n  fmt:\n"
 
 
+@pytest.fixture(autouse=True)
+def git_identity(monkeypatch):
+    """Give every git commit an author, including the ones apply makes.
+
+    A GitHub runner has no git identity and no host name git can build one
+    from, so "git commit" fails there with "Author identity unknown". A
+    developer machine guesses one, which hid six such tests until the
+    PR #44 run.
+    """
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.com")
+
+
 @pytest.fixture
 def plugin_checkout(tmp_path_factory):
     """A git checkout of the plugin whose history contains the v1 asset.

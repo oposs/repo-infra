@@ -4,6 +4,8 @@
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: oven-sh/setup-bun@v2
 

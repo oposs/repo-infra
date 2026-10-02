@@ -65,3 +65,18 @@ def test_an_unresolved_ambiguity_keeps_the_count_honest():
     text = render_text("oetiker/mdmost", result, items)
     assert "1 item needs attention" in text
     assert "nothing to do" not in text
+
+
+def test_long_item_name_leaves_space_before_state():
+    """A long item name like publish-gitea-packages (22 chars) should leave
+    at least one space before the state, not run directly into it."""
+    long_name_items = [
+        Item("publish-gitea-packages", "ok", ""),
+    ]
+    text = render_text("oetiker/mdmost", RESULT, long_name_items)
+    lines = text.split("\n")
+    # Find the line with the item
+    item_line = [line for line in lines if "publish-gitea-packages" in line][0]
+    # Check that there is whitespace between the name and the state
+    # The state "ok" should not directly follow "s" from "packages"
+    assert "packages ok" in item_line or "packages " in item_line.split("ok")[0]

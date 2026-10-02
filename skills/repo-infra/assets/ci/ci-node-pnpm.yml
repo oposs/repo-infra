@@ -4,6 +4,8 @@
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       # corepack provisions pnpm from the `packageManager` field in
       # package.json, and must run before setup-node so `cache: pnpm` finds it.

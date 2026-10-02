@@ -57,9 +57,10 @@ differences are gaps and which are just migration work.
 
 2. **`apply` refuses to merge a file that has local edits.** It writes
    `{name}.base`, `{name}.new` and `{name}.current` under
-   `.git/repo-infra/merge/` and stops. Merge `.base` and `.new` into the local
+   `repo-infra/merge/` in the git dir (`.git/` in a plain clone; the error
+   prints the full paths) and stops. Merge `.base` and `.new` into the local
    edits yourself, save the result anywhere, and hand it back:
-   `apply --item ci --from .git/repo-infra/merge/ci.merged.yml`. If the target
+   `apply --item ci --from <path to your merge>`. If the target
    changed since the refusal, the re-run refuses again rather than clobbering
    the newer edit.
 

@@ -1,0 +1,1 @@
+[{"number": 12, "user": {"login": "github-actions[bot]"}, "head": {"ref": "release/v0.3.0", "repo": {"full_name": "oposs/repo-infra"}}}, {"number": 13, "user": {"login": "oetiker"}, "head": {"ref": "release/x", "repo": {"full_name": "oposs/repo-infra"}}}]

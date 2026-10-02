@@ -13,12 +13,35 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+- **Create release PR** builds the release and runs the CI on the release branch before it opens the pull request, and writes the required checks itself, so the pull request can merge at once. The **Approve workflows to run** banner still appears on it, but nobody needs to approve those runs: publishing deletes them, and the next **Create release PR** deletes those of a closed release pull request.
+- `.github/workflows/release-build.yml` is now installed and kept up to date by `apply` in every repository. It runs the build add-ons listed in `release_build`, and with `"release_build_local": true` also the project's own `.github/workflows/release-build-local.yml`; files such as a Homebrew formula change in the pull request, and publishing tags the commit that was built.
+- The `release-source-tarball` build add-on attaches the `make dist` tarball, built before the merge. It replaces the `publish-source-tarball` publish add-on, and `apply` moves the setting.
+- A Rust workspace can list which crates `ci-rust` lints and which it tests, in a `rust` key of `.github/repo-infra.json`; each crate gets its own check. A workspace where a plain `cargo test` would skip some crates now fails the `Rust workspace plan` check until the key says where their tests run.
+- `"ci_local": true` makes the jobs in `.github/workflows/ci-local.yml` part of the required `ci-passed` check.
+- The `publish-gitea-packages` add-on uploads a release's `.deb` and `.rpm` files to a Gitea package registry, which signs them; the release stays a draft until the upload succeeded.
+
 ### Changed
-- When a release pull request shows the "Approve workflows to run" banner,
-  Claude now knows the parked runs can be approved from the terminal with
-  `gh api`, and asks before doing so. The button stays the fallback.
+
+- The branch ruleset now requires a pull request to be up to date with `main` before it merges; behind pull requests need **Update branch** first, and `check` reports `required-checks` as outdated until `apply` writes the rule. A release pull request that `main` moved past cannot merge and shows a red `ci-passed`: "main moved after vX.Y.Z was built; close this pull request and dispatch Create release PR again".
+- **Update branch** on a release pull request turns `ci-passed` and `changelog-updated` red with "the release branch changed after it was built (the Update branch button does this); close this pull request and dispatch Create release PR again".
+- `Create release PR` no longer waits for the checks on `main`; it refuses only a check that already failed. It also refuses while a release pull request is open or while the latest release in `CHANGES.md` has no tag.
+- Publish refuses to tag when `main` does not match the release that was built: "main at <sha> does not match the release built from <head>; merge a pull request that moves the vX.Y.Z entries in CHANGES.md back under [Unreleased], then dispatch Create release PR again".
+- Publish refuses to tag when it finds no merged release pull request for the version: "vX.Y.Z: no merged release pull request from release/vX.Y.Z, so publish cannot compare main with the release that was built. Nothing was tagged."
+- Re-running the publish workflow no longer fails on a crate an earlier attempt already uploaded, and both **Re-run failed jobs** and a whole-workflow re-run finish a stopped release.
+- Publishing to crates.io uses the `Cargo.lock` of the release pull request as it is (`cargo publish --locked`) and no longer runs `cargo update --workspace` first. For a Rust repository whose `version_files` lacks the `Cargo.lock` entries, `check` reports `cargo-lock-version-files` and `apply` adds them.
+- `apply` refuses with `release-in-progress` while a release pull request is open or the latest release in `CHANGES.md` has no tag. Merge and publish that release, or close it, then run `apply` again; `apply --item` still applies administration items and files outside the release workflows.
+- The release build and the CI run get the repository's secrets. No repository secret may carry write access to the repository.
+- `check` reports `ci-local.yml`, `action-test.yml` and `release-build-local.yml` as a conflict when they do not declare the input `ref` or do not check it out. It also reports `ci-local.yml` and `action-test.yml` when they upload an artifact named `release-asset-*` or `release-files` in any letter case, names the release build keeps for itself.
+- `check` reports `container` as outdated; only a comment in `build/container.mk` changed.
 
 ### Fixed
+
+- `apply` without `--item` no longer stops with "git commit -m Install ci-lib from the repo-infra standard ... failed" when a workflow file has more than one block to install, as `ci.yml` and `release-build.yml` do. The first item writes the whole file; each further block of that file is reported as "installed with" that item instead of getting a commit of its own.
+- `changelog-updated` applies the changelog rules of `main`; a pull request that edits `.github/workflows/lib/changes.js` no longer decides its own verdict. The pull request that first installs the workflow library still uses its own copy, since `main` has none yet.
+- When a git command that `apply` runs fails, the error now includes what git printed on standard output, such as "nothing to commit". Before, those messages ended after "failed:".
+- When `apply` first writes `.github/repo-infra.json` for a Rust repository with a `Cargo.lock`, `version_files` now lists `Cargo.lock` too: one entry for the main crate and one for each workspace crate with `version.workspace = true`. Before, the release pull request left `Cargo.lock` at the old version unless someone added the entry by hand.
+- `apply` works in a linked git worktree. It stopped there with `NotADirectoryError` when it installed the branch ruleset or prepared a merge of a locally edited file.
+- The changelog check no longer fails with "CHANGES.md has no '## [Unreleased]' heading" on the pull request that introduces that heading. A pull request that removes the heading fails with a message naming it.
 
 ## 0.2.0 - 2026-09-28
 ### New

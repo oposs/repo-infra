@@ -17,7 +17,9 @@ import subprocess
 from .markers import parse_markers
 from .remote import protects_default_branch
 
-MERGE_DIR = pathlib.Path(".git/repo-infra/merge")
+# Below the repository's git dir, which is `.git/` in a plain clone and
+# `.git/worktrees/<name>/` of the main checkout in a linked worktree.
+MERGE_DIR = pathlib.Path("repo-infra/merge")
 
 # Reported as `conflict` by state.py when absent; required here so the ruleset
 # is never enabled before the checks it requires can actually report.
@@ -50,10 +52,12 @@ def write_asset(repo_root, path, content):
     return path
 
 
-def _git(cwd, *args):
+def git(cwd, *args):
     result = subprocess.run(("git",) + args, cwd=str(cwd), capture_output=True, text=True)
     if result.returncode != 0:
-        raise ApplyError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+        # `git commit` says "nothing to commit" on stdout and nothing on stderr.
+        said = "\n".join(t for t in (result.stderr.strip(), result.stdout.strip()) if t)
+        raise ApplyError(f"git {' '.join(args)} failed: {said}")
     return result.stdout
 
 
@@ -84,7 +88,7 @@ def base_version_of(plugin_root, asset_path, version):
     rather than failing.
     """
     try:
-        revisions = _git(plugin_root, "log", "--format=%H", "--", asset_path).split()
+        revisions = git(plugin_root, "log", "--format=%H", "--", asset_path).split()
     except ApplyError:
         return None
     for revision in revisions:
@@ -93,7 +97,7 @@ def base_version_of(plugin_root, asset_path, version):
             # from cwd -- the leading `./` is what tells git to resolve it
             # relative to `plugin_root` instead, which is a subdirectory of the
             # real plugin checkout (`skills/repo-infra`), never its root.
-            text = _git(plugin_root, "show", f"{revision}:./{asset_path}")
+            text = git(plugin_root, "show", f"{revision}:./{asset_path}")
         except ApplyError:
             continue
         found = parse_markers(text)
@@ -102,7 +106,7 @@ def base_version_of(plugin_root, asset_path, version):
     return None
 
 
-def _targets_for(name, rendered):
+def targets_for(name, rendered):
     """Every rendered path carrying this asset's marker, not just the first.
 
     A directory asset ships one marker copied into each of its files, so
@@ -119,8 +123,43 @@ def _targets_for(name, rendered):
     return targets
 
 
+def _git_dir(repo_root):
+    """The git dir, read without running git so a bare `.git/` in a test
+    still counts. In a linked worktree `.git` is a file saying
+    `gitdir: <path>`, and writing below it fails with NotADirectoryError."""
+    dot_git = pathlib.Path(repo_root) / ".git"
+    if dot_git.is_file():
+        line = dot_git.read_text(encoding="utf-8").strip()
+        if not line.startswith("gitdir:"):
+            raise ApplyError(f"{dot_git}: not a gitdir pointer")
+        return (pathlib.Path(repo_root) / line[len("gitdir:"):].strip()).resolve()
+    return dot_git
+
+
 def _scratch_dir(repo_root):
-    return pathlib.Path(repo_root) / MERGE_DIR
+    return _git_dir(repo_root) / MERGE_DIR
+
+
+def changed(repo_root, paths):
+    """The paths among `paths` whose content differs from the last commit.
+
+    A block of an assembled file finds its file already written by the item
+    before it; writing the rendering again changes nothing, and `git commit`
+    would fail with "nothing to commit".
+    """
+    if not paths:
+        return []
+    # -z: a path with a space or a quote is written as is, not quoted.
+    entries = iter(git(repo_root, "status", "--porcelain", "-z", "--untracked-files=all",
+                       "--", *paths).split("\0"))
+    dirty = set()
+    for entry in entries:
+        if not entry:
+            continue
+        dirty.add(entry[3:])
+        if entry[0] in "RC":
+            next(entries, None)  # the path it was renamed or copied from
+    return [p for p in paths if p in dirty]
 
 
 def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
@@ -133,7 +172,7 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         detail = next(i.detail for i in items if i.name == name)
         raise ApplyError(f"{name}: conflict: {detail}. This is a migration, not an upgrade.")
 
-    targets = _targets_for(name, rendered)
+    targets = targets_for(name, rendered)
     path, expected = targets[0]
     wanted = next(m.version for m in parse_markers(expected) if m.asset == name)
 
@@ -188,9 +227,9 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
 
     # outdated
     installed = (pathlib.Path(repo_root) / path).read_text(encoding="utf-8")
-    have = next(m.version for m in parse_markers(installed) if m.asset == name)
-    source = _asset_source(plugin_root, name)
-    base = base_version_of(plugin_root, source, have) if source else None
+    found = parse_markers(installed)
+    source = _asset_source(plugin_root, found[0].asset)
+    base = base_version_of(plugin_root, source, found[0].version) if source else None
     if base is not None and base == installed:
         return [write_asset(repo_root, path, expected)]
 
@@ -410,6 +449,15 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 f"server may have rejected or altered part of the payload -- "
                 f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
                 "by hand.")
+        strict = any(rule.get("parameters", {}).get("strict_required_status_checks_policy")
+                     is True for rule in created.get("rules", [])
+                     if rule.get("type") == "required_status_checks")
+        if not strict:
+            raise ApplyError(
+                f"{name}: wrote the ruleset but it read back with "
+                "strict_required_status_checks_policy off, so a pull request whose "
+                "branch is behind main can still merge. Check it in Settings -> Rules "
+                f"-> Rulesets on repos/{repo} by hand.")
         if created.get("bypass_actors"):
             raise ApplyError(
                 f"{name}: created the ruleset but it read back with "
@@ -417,14 +465,14 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "ruleset that grants a bypass is not the one we shipped -- "
                 f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
                 "by hand.")
-        return "enabled the branch ruleset with both required checks"
+        return "enabled the branch ruleset with both required checks and up-to-date branches"
 
     raise ApplyError(f"{name}: not an administration item")
 
 
 def _stage_ruleset_payload(repo_root, payload):
     """`gh api --input` takes a path, not a string, so the payload is staged
-    under .git/, like every other scratch file."""
+    under the git dir, like every other scratch file."""
     scratch = _scratch_dir(repo_root)
     scratch.mkdir(parents=True, exist_ok=True)
     target = scratch / "ruleset.json"
@@ -434,13 +482,17 @@ def _stage_ruleset_payload(repo_root, payload):
 
 BRANCH = "repo-infra/apply"
 
+# Ends every commit apply makes in the target repository, one item or the
+# D28 migration.
+TRAILER = "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+
 
 def ensure_branch(repo_root):
-    current = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    current = git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     if current == BRANCH:
         return BRANCH
-    existing = _git(repo_root, "branch", "--list", BRANCH).strip()
-    _git(repo_root, "checkout", BRANCH) if existing else _git(repo_root, "checkout", "-b", BRANCH)
+    existing = git(repo_root, "branch", "--list", BRANCH).strip()
+    git(repo_root, "checkout", BRANCH) if existing else git(repo_root, "checkout", "-b", BRANCH)
     return BRANCH
 
 
@@ -448,14 +500,33 @@ def commit_item(repo_root, name, paths):
     """One commit per item, so any single item can be dropped at review."""
     if not paths:
         return None
-    _git(repo_root, "add", *paths)
-    _git(repo_root, "commit", "-m",
-         f"Install {name} from the repo-infra standard\n\n"
-         "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>")
-    return _git(repo_root, "rev-parse", "HEAD").strip()
+    git(repo_root, "add", *paths)
+    git(repo_root, "commit", "-m",
+         f"Install {name} from the repo-infra standard\n\n{TRAILER}")
+    return git(repo_root, "rev-parse", "HEAD").strip()
 
 
 CONFIG = ".github/repo-infra.json"
+
+
+def config_text(data, original=None):
+    """`data` as JSON in the layout of `original`, the file it replaces.
+
+    A plain json.dumps(indent=2) rewrote every line of a repo-infra.json that
+    was indented by four spaces, so the migration's one-key change showed up
+    as a diff of the whole file. The indent and the final newline are read
+    from the file; key order is the order of `data`.
+    """
+    indent, newline = 2, "\n"
+    if original is not None:
+        newline = "\n" if original.endswith("\n") else ""
+        for line in original.splitlines()[1:]:
+            stripped = line.lstrip(" \t")
+            if stripped and stripped != line:
+                lead = line[:len(line) - len(stripped)]
+                indent = lead if "\t" in lead else len(lead)
+                break
+    return json.dumps(data, indent=indent) + newline
 
 
 def write_config(repo_root, result, answers=None):
@@ -467,9 +538,11 @@ def write_config(repo_root, result, answers=None):
     without it the checker nags about the same item forever.
     """
     existing = {}
+    original = None
     target = pathlib.Path(repo_root) / CONFIG
     if target.is_file():
-        existing = json.loads(target.read_text(encoding="utf-8"))
+        original = target.read_text(encoding="utf-8")
+        existing = json.loads(original)
 
     if result.ambiguities:
         answered = (answers or {}).keys() | existing.get("answers", {}).keys()
@@ -492,5 +565,4 @@ def write_config(repo_root, result, answers=None):
     if answers:
         config.setdefault("answers", {}).update(answers)
 
-    body = json.dumps(config, indent=2) + "\n"
-    return write_asset(repo_root, CONFIG, body)
+    return write_asset(repo_root, CONFIG, config_text(config, original))

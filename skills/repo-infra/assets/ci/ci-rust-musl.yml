@@ -14,6 +14,8 @@
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
 
       # No `targets:` on purpose. cross compiles inside its own image, which
       # already carries the musl std for the target; the runner's toolchain is

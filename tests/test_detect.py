@@ -310,3 +310,64 @@ def test_a_skills_directory_alone_does_not_get_the_selftest(tmp_path):
     result = Detection.load(REAL).detect(tmp_path)
     assert "repo-infra" not in result.ecosystems
     assert "ci-repo-infra-selftest" not in result.blocks
+
+
+def lock_entries(result):
+    return [f for f in result.version_files if f["path"] == "Cargo.lock"]
+
+
+def real(tmp_path, files):
+    for name, body in files.items():
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+    return Detection.load(REAL).detect(tmp_path)
+
+
+def test_a_rust_package_with_a_lockfile_gets_the_lockfile_bumped_too(tmp_path):
+    """mdmost v0.1.1 was tagged with Cargo.toml at 0.1.1 and Cargo.lock at
+    0.1.0; both converted Rust repos then added this entry by hand."""
+    result = real(tmp_path, {
+        "Cargo.toml": '[package]\nname = "mdmost"\nversion = "0.1.0"\n',
+        "Cargo.lock": 'version = 4\n\n[[package]]\nname = "mdmost"\nversion = "0.1.0"\n'})
+    assert [f["path"] for f in result.version_files] == ["Cargo.toml", "Cargo.lock"]
+    assert lock_entries(result) == [{
+        "path": "Cargo.lock",
+        "pattern": '^name = "mdmost"\nversion = "[^"]*"',
+        "replacement": 'name = "mdmost"\nversion = "$VERSION"',
+        "verify": '^name = "mdmost"\nversion = "$VERSION"'}]
+
+
+def test_a_rust_package_without_a_lockfile_gets_no_lockfile_entry(tmp_path):
+    result = real(tmp_path, {"Cargo.toml": '[package]\nname = "lib"\nversion = "1.0.0"\n'})
+    assert lock_entries(result) == []
+
+
+def test_workspace_members_that_inherit_the_version_are_bumped_in_the_lockfile(tmp_path):
+    result = real(tmp_path, {
+        "Cargo.toml": '[workspace]\nmembers = ["crates/*", "tool"]\n\n'
+                      '[workspace.package]\nversion = "2.0.0"\n',
+        "Cargo.lock": "version = 4\n",
+        "crates/core/Cargo.toml": '[package]\nname = "ws-core"\nversion.workspace = true\n',
+        "crates/vendored/Cargo.toml": '[package]\nname = "vendored"\nversion = "0.3.1"\n',
+        "tool/Cargo.toml": '[package]\nname = "ws-tool"\nversion = { workspace = true }\n'})
+    assert [f["replacement"].split('"')[1] for f in lock_entries(result)] == ["ws-core", "ws-tool"]
+
+
+def test_an_unreadable_cargo_toml_proposes_no_lockfile_entry(tmp_path):
+    result = real(tmp_path, {"Cargo.toml": "[package\n", "Cargo.lock": "version = 4\n"})
+    assert result.ecosystems == ["rust"]
+    assert lock_entries(result) == []
+
+
+def test_an_autotools_perl_repository_is_proposed_the_source_tarball():
+    detection = Detection.load(REAL)
+    result = detection.detect(HERE / "fixtures/repo-perl-autotools")
+    assert "release-source-tarball" in result.candidates
+    assert "release-source-tarball" not in detection.open_candidates(
+        result.candidates, [], ["release-source-tarball"])
+
+
+def test_a_python_repository_is_not_proposed_the_source_tarball():
+    result = Detection.load(REAL).detect(HERE / "fixtures/repo-python")
+    assert "release-source-tarball" not in result.candidates

@@ -12,6 +12,7 @@ what forces one assembled ci.yml rather than one workflow per ecosystem (D2).
 import copy
 import json
 import pathlib
+import tomllib
 from dataclasses import dataclass, field
 
 
@@ -41,6 +42,50 @@ def _matches(repo_root, signals):
     return True
 
 
+def _cargo_lock_entries(repo_root):
+    """A version_files entry per crate whose version Cargo.lock records.
+
+    The release PR rewrites files with regexes and commits exactly the
+    version_files paths, so a Cargo.lock left out keeps the old version:
+    mdmost v0.1.1 was tagged with Cargo.toml at 0.1.1 and Cargo.lock at
+    0.1.0, and `cargo --locked` failed in the publish. The crate name is
+    part of the pattern, which is why a fixed entry in detection.json cannot
+    carry it. The root package counts, and every workspace member that
+    takes its version from `[workspace.package]`; a member with a version of
+    its own (a vendored crate) is not released with the repository.
+    """
+    root = pathlib.Path(repo_root)
+    if not (root / "Cargo.lock").is_file():
+        return []
+
+    def read(path):
+        try:
+            return tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+            return None
+
+    manifest = read(root / "Cargo.toml")
+    if manifest is None:
+        return []
+    names = []
+    if isinstance(manifest.get("package", {}).get("name"), str):
+        names.append(manifest["package"]["name"])
+    for member in manifest.get("workspace", {}).get("members", []):
+        for directory in sorted(root.glob(member)):
+            package = (read(directory / "Cargo.toml") or {}).get("package", {})
+            version = package.get("version")
+            if (isinstance(version, dict) and version.get("workspace") is True
+                    and isinstance(package.get("name"), str)
+                    and package["name"] not in names):
+                names.append(package["name"])
+    return [{
+        "path": "Cargo.lock",
+        "pattern": f'^name = "{name}"\nversion = "[^"]*"',
+        "replacement": f'name = "{name}"\nversion = "$VERSION"',
+        "verify": f'^name = "{name}"\nversion = "$VERSION"',
+    } for name in names]
+
+
 class Detection:
     def __init__(self, data):
         self.data = data
@@ -56,6 +101,8 @@ class Detection:
                 continue
             result.ecosystems.append(entry["id"])
             result.version_files.extend(copy.deepcopy(entry.get("version_files", [])))
+            if entry.get("cargo_lock"):
+                result.version_files.extend(_cargo_lock_entries(repo_root))
         for entry in self.data.get("candidates", []):
             if _matches(repo_root, entry["signals"]):
                 result.candidates.append(entry["id"])
@@ -71,15 +118,17 @@ class Detection:
         result.ecosystems.sort()
         return result
 
-    def open_candidates(self, candidates, chosen_ci):
-        """The candidates a repository has not acted on yet (D23).
+    def open_candidates(self, candidates, chosen_ci, chosen_release_build=()):
+        """The candidates a repository has not acted on yet (D23, D28).
 
         A candidate is a hint that more of the standard fits this repository.
-        Once the repository has chosen the CI block that answers it -- `ci-man`
-        for `man-pages` -- the hint has been acted on, and repeating it on
-        every `check` would read as advice still open. Detection cannot see
-        the choice, so the caller passes the `ci` list in.
+        Once the repository has chosen what answers it -- the CI block `ci-man`
+        for `man-pages`, the build add-on `release-source-tarball` for an
+        autotools tree -- the hint has been acted on. Detection cannot see the
+        choice, so the caller passes the `ci` and `release_build` lists in.
         """
         served = {entry["id"] for entry in self.data.get("candidates", [])
-                  if entry.get("ci_block") in chosen_ci}
+                  if (entry.get("ci_block") and entry["ci_block"] in chosen_ci)
+                  or (entry.get("release_build")
+                      and entry["release_build"] in chosen_release_build)}
         return [c for c in candidates if c not in served]

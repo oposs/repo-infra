@@ -42,6 +42,7 @@ RECORDED = {
     "/rulesets": "rulesets.json",
     "/labels": "labels.json",
     "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
     "oposs/repo-infra": "repo.json",
 }
 
@@ -86,6 +87,7 @@ def test_pagination_labels_includes_items_from_all_pages():
         "/rulesets": "rulesets.json",
         "/labels": "labels-paginated.json",  # Two-page slurped response
         "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
         "oposs/repo-infra": "repo.json",
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
@@ -102,6 +104,7 @@ def test_ruleset_with_all_scope_protects_default_branch():
         "/rulesets": "rulesets.json",
         "/labels": "labels.json",
         "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
         "oposs/repo-infra": "repo.json",
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
@@ -115,6 +118,7 @@ def test_ruleset_with_explicit_branch_protects_default_branch():
         "/rulesets": "rulesets.json",
         "/labels": "labels.json",
         "permissions/workflow": "workflow-permissions.json",
+    "/pulls?state=open": "pulls-open.json",
         "oposs/repo-infra": "repo.json",
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
@@ -131,3 +135,57 @@ def test_current_repo_reads_the_checkout_gh_is_run_from():
     assert Gh(run=run).current_repo() == "oposs/repo-infra"
     assert calls == [["gh", "repo", "view", "--json", "nameWithOwner",
                       "-q", ".nameWithOwner"]]
+
+
+def test_reads_the_up_to_date_rule():
+    assert facts().strict is False  # the recorded ruleset predates D28
+
+
+def test_reads_the_up_to_date_rule_when_it_is_on():
+    recorded = fake_run(RECORDED)
+
+    def run(args):
+        text = recorded(args)
+        if args[2].endswith("rulesets/21037721"):
+            text = text.replace('"strict_required_status_checks_policy":false',
+                                '"strict_required_status_checks_policy":true')
+            assert "policy\":true" in text
+        return text
+    assert Gh(run=run).facts("oposs/repo-infra").strict is True
+
+
+def test_reads_the_open_release_pull_requests_of_the_bot_only():
+    assert facts().release_prs == ((12, "release/v0.3.0"),)
+
+
+def tag_run(missing="v9.9.9", status="404"):
+    """The recorded fakes, plus one tag GitHub answers with an error."""
+    recorded = fake_run({**RECORDED, "git/ref/tags/v0.2.0": "tag-ref.json"})
+
+    def run(args):
+        if any(a.endswith(f"git/ref/tags/{missing}") for a in args):
+            raise GhError(f"{' '.join(args)} failed: gh: Not Found (HTTP {status})")
+        return recorded(args)
+    return run
+
+
+def test_looks_up_one_tag_instead_of_listing_them_all():
+    calls = []
+    run = tag_run()
+
+    def counting(args):
+        calls.append(args)
+        return run(args)
+
+    tags = Gh(run=counting).facts("oposs/repo-infra").tags
+    assert "v0.2.0" in tags and "v9.9.9" not in tags
+    assert "v0.2.0" in tags  # asked once, answered from memory
+    assert [c for c in calls if any("tags" in a for a in c)] == [
+        ["gh", "api", "repos/oposs/repo-infra/git/ref/tags/v0.2.0"],
+        ["gh", "api", "repos/oposs/repo-infra/git/ref/tags/v9.9.9"]]
+
+
+def test_a_tag_lookup_that_fails_otherwise_is_an_error():
+    tags = Gh(run=tag_run(status="502")).facts("oposs/repo-infra").tags
+    with pytest.raises(GhError, match="502"):
+        assert "v9.9.9" not in tags

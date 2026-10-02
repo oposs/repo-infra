@@ -11,7 +11,9 @@ from collections import namedtuple
 
 Facts = namedtuple(
     "Facts",
-    "default_branch protected required_contexts labels workflow_permissions can_approve_pr")
+    "default_branch protected required_contexts labels workflow_permissions can_approve_pr "
+    "strict release_prs tags",
+    defaults=(False, (), None))
 
 
 class GhError(Exception):
@@ -33,6 +35,22 @@ def protects_default_branch(ruleset, default_branch):
     includes = ruleset.get("conditions", {}).get("ref_name", {}).get("include", [])
     branch_ref = f"refs/heads/{default_branch}"
     return "~ALL" in includes or "~DEFAULT_BRANCH" in includes or branch_ref in includes
+
+
+class Tags:
+    """The repository's tags, each looked up when it is asked about.
+
+    `check` needs one tag, the latest release in CHANGES.md. Listing them all
+    paginated through every tag of the repository on every run.
+    """
+
+    def __init__(self, gh, repo):
+        self._gh, self._repo, self._known = gh, repo, {}
+
+    def __contains__(self, tag):
+        if tag not in self._known:
+            self._known[tag] = self._gh.tag_exists(self._repo, tag)
+        return self._known[tag]
 
 
 def _subprocess_run(args):
@@ -86,6 +104,16 @@ class Gh:
         except GhError as error:
             return False if "404" in str(error) else None
 
+    def tag_exists(self, repo, tag):
+        """A 404 is a missing tag; any other failure is raised, never guessed."""
+        try:
+            self.run(["gh", "api", f"repos/{repo}/git/ref/tags/{tag}"])
+            return True
+        except GhError as error:
+            if "404" in str(error):
+                return False
+            raise
+
     def current_repo(self):
         return self.run(["gh", "repo", "view", "--json", "nameWithOwner",
                          "-q", ".nameWithOwner"]).strip()
@@ -111,6 +139,7 @@ class Gh:
 
         protected = False
         contexts = set()
+        strict = False
         for summary in self._api_paginated_list(f"repos/{repo}/rulesets"):
             ruleset = self.api(f"repos/{repo}/rulesets/{summary['id']}")
             if ruleset.get("enforcement") != "active":
@@ -120,11 +149,20 @@ class Gh:
             protected = True
             for rule in ruleset.get("rules", []):
                 if rule.get("type") == "required_status_checks":
-                    for check in rule["parameters"]["required_status_checks"]:
+                    parameters = rule["parameters"]
+                    strict = strict or parameters.get(
+                        "strict_required_status_checks_policy") is True
+                    for check in parameters["required_status_checks"]:
                         contexts.add(check["context"])
 
         labels = {label["name"] for label in self._api_paginated_list(f"repos/{repo}/labels")}
         permissions = self.api(f"repos/{repo}/actions/permissions/workflow")
+        release_prs = tuple(
+            (pr["number"], pr["head"]["ref"])
+            for pr in self._api_paginated_list(f"repos/{repo}/pulls?state=open")
+            if pr["head"]["ref"].startswith("release/")
+            and (pr["head"].get("repo") or {}).get("full_name") == repo
+            and pr["user"]["login"] == "github-actions[bot]")
 
         return Facts(
             default_branch=default_branch,
@@ -133,4 +171,7 @@ class Gh:
             labels=labels,
             workflow_permissions=permissions["default_workflow_permissions"],
             can_approve_pr=permissions["can_approve_pull_request_reviews"],
+            strict=strict,
+            release_prs=release_prs,
+            tags=Tags(self, repo),
         )

@@ -4,8 +4,16 @@ import argparse
 import json
 import pathlib
 
-from . import report
-from .apply import apply_admin_item, apply_file_item, commit_item, ensure_branch
+from . import migrate, report
+from .apply import (
+    ApplyError,
+    apply_admin_item,
+    apply_file_item,
+    changed,
+    commit_item,
+    ensure_branch,
+    targets_for,
+)
 from .assemble import render_all
 from .detect import Detection
 from .remote import Facts, Gh
@@ -35,45 +43,74 @@ _ADMIN_ORDER = {"no-changelog-label": 0, "actions-open-pr": 1}
 CONFORMING_FACTS = Facts(default_branch="main", protected=True,
                          required_contexts={"ci-passed", "changelog-updated"},
                          labels={"no-changelog"}, workflow_permissions="write",
-                         can_approve_pr=True)
+                         can_approve_pr=True, strict=True)
 
 
 def read_facts(repo):
     return Gh().facts(repo)
 
 
-def _chosen(root, key):
-    """A list the repository recorded in its own config, or nothing.
-
-    Detection cannot answer these: whether a repository publishes a tarball,
-    builds in a container, ships a static binary, or runs a publish job of its
-    own that finalize must wait for is a decision (D12, D16, D22, A1). An
-    unconverted repository has no config file and has chosen nothing.
-    """
+def _config(root):
+    """The repository's recorded decisions, or {} for an unconverted one."""
     config = pathlib.Path(root) / ".github/repo-infra.json"
     if not config.is_file():
-        return []
-    return json.loads(config.read_text(encoding="utf-8")).get(key, [])
+        return {}
+    return json.loads(config.read_text(encoding="utf-8"))
 
 
-def _load(root):
+def _prepare(root):
+    """Everything `check` and `apply` read, rendered from the migrated config (D28).
+
+    Detection cannot answer what a repository publishes, builds or runs of its
+    own; those are decisions it recorded in its config (D12, D16, D22, A1). An
+    unconverted repository has no config file and has chosen nothing.
+    """
     manifest = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
     detection = Detection.load(ASSETS / "detection.json")
     result = detection.detect(root)
-    ci = _chosen(root, "ci")
+    config, migrations = migrate.migrated_config(root, _config(root), result, manifest)
+    ci = config.get("ci", [])
     rendered = render_all(ASSETS, result, manifest,
-                          _chosen(root, "publish"), _chosen(root, "build"),
-                          ci, _chosen(root, "publish_local"))
-    result.candidates = detection.open_candidates(result.candidates, ci)
-    return manifest, result, rendered
+                          config.get("publish", []), config.get("build", []),
+                          ci, config.get("publish_local", []),
+                          ci_local=bool(config.get("ci_local")),
+                          release_build=config.get("release_build", []),
+                          release_build_local=bool(config.get("release_build_local")))
+    result.candidates = detection.open_candidates(
+        result.candidates, ci, config.get("release_build", []))
+    return manifest, result, rendered, config, migrations
+
+
+def _load(root):
+    return _prepare(root)[:3]
+
+
+def _blocker(root, facts, items, rendered, item=None):
+    """The release in progress that stops this run, or None.
+
+    `apply --item` is stopped only by a release in progress when that item
+    belongs to the release flow; any other run when an item it would apply does.
+    """
+    blocker = migrate.release_in_progress(root, facts)
+    if blocker is None:
+        return None
+    if item is not None:
+        return blocker if migrate.in_release_flow(item, rendered) else None
+    return blocker if migrate.touches_release_flow(items, rendered) else None
 
 
 def check(args):
-    manifest, result, rendered = _load(args.root)
+    manifest, result, rendered, config, migrations = _prepare(args.root)
     repo = args.repo or Gh().current_repo()
-    items = classify(args.root, rendered, manifest, read_facts(repo))
+    facts = read_facts(repo)
+    items = migrate.without_superseded(classify(args.root, rendered, manifest, facts),
+                                       migrations) + migrations
     items += classify_ambiguities(result)
-    items += classify_contracts(args.root, result)
+    items += classify_contracts(args.root, result, config,
+                                pending_rename=migrate.renaming(migrations))
+    blocker = _blocker(args.root, facts, items, rendered)
+    if blocker:
+        items.append(blocker)
     renderer = report.render_json if args.json else report.render_text
     print(renderer(repo, result, items))
     return 1 if any(i.state in NEEDS_ATTENTION_STATES for i in items) else 0
@@ -106,23 +143,67 @@ def _ordered_names(items):
 
 
 def apply_command(args):
-    manifest, result, rendered = _load(args.root)
+    manifest, result, rendered, config, migrations = _prepare(args.root)
+    if migrations and args.item and args.item not in migrate.NAMES:
+        # Every file is rendered from the migrated config; an item committed
+        # on top of the old one would ship a release flow that config does not
+        # describe.
+        pending = ", ".join(i.name for i in migrations)
+        raise ApplyError(
+            f"{args.item}: the migration to the one release flow is pending ({pending}). "
+            f"Run `apply --item {migrations[0].name}` first; it applies all of them in "
+            "one commit.")
     repo = args.repo or Gh().current_repo()
     facts = read_facts(repo)
-    items = classify(args.root, rendered, manifest, facts)
+    items = migrate.without_superseded(classify(args.root, rendered, manifest, facts),
+                                       migrations) + migrations
+    blocker = _blocker(args.root, facts, items, rendered, args.item)
+    if blocker:
+        raise ApplyError(f"release-in-progress: {blocker.detail}")
     plugin_root = ASSETS.parent
 
-    names = [args.item] if args.item else _ordered_names(items)
     ensure_branch(args.root)
+    if migrations and (args.item is None or args.item in migrate.NAMES):
+        # One config edit, one commit: the items are views of the same file.
+        written = migrate.apply_migrations(args.root, _config(args.root), config, rendered)
+        migrate.commit_migration(args.root, written)
+        print("applied " + ", ".join(i.name for i in migrations))
+        if args.item:
+            return 0
+        manifest, result, rendered, config, migrations = _prepare(args.root)
+        items = classify(args.root, rendered, manifest, facts)
+
+    names = [args.item] if args.item else _ordered_names(items)
+    # Which item of this run wrote each path, to name it when a later item
+    # finds nothing left to do.
+    written_by = {}
     for name in names:
         if name in ADMIN:
             print(apply_admin_item(Gh(), repo, name, facts, ASSETS, args.root))
             continue
-        written = apply_file_item(args.root, name, rendered, items, plugin_root,
-                                  merged=args.from_file)
+        # An assembled file carries a frame and its blocks, and the first of
+        # them to be applied writes the whole file. Re-read the files before
+        # acting, so a later block acts only on what still differs.
+        current = _file_state(name, classify(args.root, rendered, manifest, facts))
+        written = changed(args.root, apply_file_item(
+            args.root, name, rendered, current, plugin_root, merged=args.from_file))
+        if not written:
+            writers = sorted({written_by[p] for p, _ in targets_for(name, rendered)
+                              if p in written_by})
+            print(f"{name}: installed with {', '.join(writers)}" if writers
+                  else f"{name}: already installed")
+            continue
         commit_item(args.root, name, written)
+        written_by.update(dict.fromkeys(written, name))
         print(f"applied {name}")
     return 0
+
+
+def _file_state(name, items):
+    """One item for `name`: a block in several files is one row per file, and
+    it needs work while any of them does."""
+    own = [i for i in items if i.name == name]
+    return [next((i for i in own if i.state != "ok"), own[0])] if own else []
 
 
 def main(argv=None):

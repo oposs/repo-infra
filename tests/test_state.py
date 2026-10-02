@@ -144,7 +144,8 @@ def test_single_file_assets_are_unaffected_by_directory_collapsing(tmp_path):
 def facts(**overrides):
     base = dict(default_branch="main", protected=True,
                 required_contexts={"ci-passed", "changelog-updated"},
-                labels={"no-changelog"}, workflow_permissions="write", can_approve_pr=True)
+                labels={"no-changelog"}, workflow_permissions="write", can_approve_pr=True,
+                strict=True)
     base.update(overrides)
     return Facts(**base)
 
@@ -234,3 +235,14 @@ def test_an_unresolved_ambiguity_becomes_an_ambiguous_item():
 
 def test_no_ambiguities_means_no_items():
     assert classify_ambiguities(DetectResult()) == []
+
+
+def test_a_ruleset_without_the_up_to_date_rule_is_outdated():
+    item = next(i for i in classify_remote(facts(strict=False)) if i.name == "required-checks")
+    assert item.state == "outdated"
+    assert "strict_required_status_checks_policy" in item.detail
+
+
+def test_missing_contexts_win_over_the_up_to_date_rule():
+    items = states(classify_remote(facts(strict=False, required_contexts={"ci-passed"})))
+    assert items["required-checks"] == "missing"

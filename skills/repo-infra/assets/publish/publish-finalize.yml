@@ -17,9 +17,14 @@
     timeout-minutes: 5
     permissions:
       contents: write
+      # D28: deleting the parked pull_request runs of the release branch.
+      actions: write
     steps:
       # For .github/workflows/lib/assets.js, below.
+      # The tagged head: a re-run reads release_assets the same way.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.publish.outputs.head }}
 
       - uses: actions/setup-node@v7
         with:
@@ -30,6 +35,10 @@
           script: |
             const lib = `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib`;
             const assetsLib = require(`${lib}/assets.js`);
+            const fs = require('fs');
+            const releaseLib = require(`${lib}/release.js`);
+            const config = JSON.parse(fs.readFileSync(
+              `${process.env.GITHUB_WORKSPACE}/.github/repo-infra.json`, 'utf8'));
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -40,6 +49,9 @@
             // assembler, from the same declarations the `needs:` list above
             // comes from. Never a literal typed a second time by hand.
             const expected = [];
+            // D26, D28: the release must carry every file the repository
+            // declared, read at the tagged head.
+            const declared = config.release_assets || [];
 
             // The `needs:` list above is ordering, and ordering cannot report
             // its own absence: reverted, it does not fail, it stops waiting.
@@ -52,7 +64,7 @@
               { owner, repo, release_id, per_page: 100 },
             );
             const names = attached.map((a) => a.name);
-            const missing = assetsLib.missingAssets(names, expected);
+            const missing = assetsLib.missingAssets(names, [...expected, ...declared]);
             if (missing.length > 0) {
               core.setFailed(
                 `${{ needs.publish.outputs.tag }} is missing ${missing.join(', ')}`
@@ -65,6 +77,29 @@
               return;
             }
 
+            // A name check passes an asset whose upload broke half way, so
+            // check that every attached file is complete as well.
+            const unfinished = assetsLib.unfinishedAssets(attached);
+            if (unfinished.length > 0) {
+              core.setFailed(
+                `${{ needs.publish.outputs.tag }} carries ${unfinished.join(', ')}`
+                + ` whose upload did not finish -- it stays a draft. Delete`
+                + ` the asset and re-run the job that attached it.`
+              );
+              return;
+            }
+
+            // The build record is never public. Deleting it after publishing
+            // would be impossible with GitHub's immutable releases on.
+            const record = attached.find((a) => a.name === releaseLib.BUILD_RECORD);
+            if (record) {
+              try {
+                await github.rest.repos.deleteReleaseAsset({ owner, repo, asset_id: record.id });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+
             const { data: released } = await github.rest.repos.updateRelease({
               owner, repo, release_id, draft: false,
             });
@@ -74,3 +109,29 @@
               .addRaw(`Assets: ${names.join(', ') || 'none'}`)
               .addLink('Release', released.html_url)
               .write();
+
+      # The release pull request's own pull_request runs parked for an
+      # approval nobody needed to give (D28). Nothing depends on them.
+      - name: Delete the parked runs of the release branch
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = 'release/${{ needs.publish.outputs.tag }}';
+            let parked;
+            try {
+              const releaseLib = require(
+                `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/release.js`);
+              parked = await releaseLib.fetchParkedRuns(github, { owner, repo, branch });
+            } catch (error) {
+              core.warning(`Could not list the parked runs of the release branch: ${error.message}`);
+              return;
+            }
+            // One failed deletion does not keep the others.
+            for (const run of parked) {
+              try {
+                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+              } catch (error) {
+                core.warning(`Could not delete the parked run ${run.id}: ${error.message}`);
+              }
+            }

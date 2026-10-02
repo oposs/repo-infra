@@ -52,6 +52,14 @@ Split it instead:
    git push -u origin repo-infra/apply
    gh pr create --fill --base main --label no-changelog
    ```
+   When the upgrade installs `release-pr` v5 (D28), write the body with
+   `--body` instead of `--fill`, and include this sentence: "From this
+   change on, the release build and the CI run inside Create release PR see
+   every repository secret; no secret may carry write access to this
+   repository." When `check` reported `ci-local-seam`, `action-test-seam` or
+   `release-build-local-seam`, say in the body what the file needs:
+   `on: workflow_call: inputs: ref` and `ref: ${{ inputs.ref }}` on every
+   `actions/checkout`. `apply` never edits those files.
    Label at creation, not after: GitHub keeps only the latest check run per
    context, so adding the label once the changelog check has already failed
    produces a fresh, skipped, green run and waves the merge through with no
@@ -68,10 +76,49 @@ Split it instead:
 On a repository that is already onboarded, an upgrade run has no administration
 item pending, and a bare `apply` followed by push and PR is enough.
 
+## Migration to the one release flow (D28)
+
+`apply` refuses while a release is in progress (`release-in-progress`): let
+the open release pull request merge and publish, or close it, first. `apply
+--item` refuses only the migration items and the items that write a release
+workflow: `release-pr.yml`, `changelog.yml`, `ci.yml` (its frame and every
+block), `release-publish.yml`, `release-build.yml` and the workflow library.
+Administration items and other files apply. The
+migration items (`release-build-rename`, `release-build-config`,
+`publish-source-tarball`, `release-assets`, `cargo-lock-version-files`,
+`release-pr-replace`) are one commit: they edit `.github/repo-infra.json`,
+`release-build-rename` renames D26's `release-build.yml` to
+`release-build-local.yml` with `git mv` and no content change, and
+`release-pr-replace` replaces a `release-pr.yml` whose only marker is
+`release-pr-build v1` (D26) whole with the current `release-pr` asset. A
+`release-pr.yml` with any other marker `check` does not know stays a
+`conflict`. After it, `apply` installs the assembled
+`release-build.yml`. The ruleset gains the up-to-date rule through
+`required-checks`: a bare `apply` writes it in the same run, after the file
+items and before their pull request merges; with `--item`, apply it on its own
+(confirm first). The rule on its own breaks nothing in the old flow.
+
+`release-pr`, `ci` and `workflow-lib` work only together: `Create release PR`
+calls `ci.yml` with the input `ref`, which only the new `ci` frame declares,
+and both call functions only the new `workflow-lib` has. `apply --item ci`
+alone, or a run that stops at `NeedsMerge`, leaves the pull request with some
+of them old. Before that pull request merges, run `check` and apply each of
+the three it still reports.
+
+The migration comes before every other item. While a migration item is
+pending, `apply --item <name>` for any other item refuses and names the
+migration items; `apply --item` with any one migration item applies all of
+them and stops there. A bare `apply` commits the migration first and then the
+file items, rendered from the migrated configuration. The migration items act
+even when `check` shows them as `conflict`, since they only edit the
+configuration: `release-assets` is reported as `conflict` and `apply` adds the
+missing patterns.
+
 ## If it exits with `NeedsMerge`
 
 The file it names carries local edits. Read the three files it wrote under
-`.git/repo-infra/merge/` (`{name}.base`, `{name}.new`, `{name}.current`), merge
+`repo-infra/merge/` in the git dir (`{name}.base`, `{name}.new`,
+`{name}.current`; the error prints their full paths), merge
 the new asset into the local edits by hand, save the result anywhere, and hand
 it back: `apply --item <name> --from <path to your merge>`. The merged file must
 carry the new marker version. For an asset that ships several files, such as

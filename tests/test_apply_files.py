@@ -79,7 +79,7 @@ def test_a_successful_from_write_removes_its_own_scratch_files_but_not_anothers(
     with pytest.raises(NeedsMerge):
         apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")], plugin_checkout)
 
-    scratch = tmp_path / MERGE_DIR
+    scratch = tmp_path / ".git" / MERGE_DIR
     # A different item's merge is in progress at the same time; only "ci"'s
     # files must be removed, not the whole directory.
     for suffix in ("base", "new", "current"):
@@ -306,7 +306,7 @@ def test_an_edited_old_file_stops_the_upgrade_before_anything_is_written(tmp_pat
     # behind a refusal; nothing moves until the merge is in.
     assert on_disk(tmp_path, "bump.js") == LIB_V1["bump.js"]
     assert not (tmp_path / LIB_TARGET / "assets.js").exists()
-    scratch = tmp_path / MERGE_DIR
+    scratch = tmp_path / ".git" / MERGE_DIR
     assert (scratch / "workflow-lib.base").read_text(encoding="utf-8") == LIB_V1["version.js"]
     assert (scratch / "workflow-lib.new").read_text(encoding="utf-8") == LIB_V2["version.js"]
     assert (scratch / "workflow-lib.current").read_text(encoding="utf-8") == edited
@@ -323,7 +323,7 @@ def test_a_merged_file_goes_back_to_the_file_the_merge_was_prepared_for(tmp_path
     merged.write_text(LIB_V2["version.js"] + "// local\n", encoding="utf-8")
     assert upgrade(tmp_path, lib_plugin, merged=str(merged)) == [LIB_TARGET + "version.js"]
     assert on_disk(tmp_path, "version.js").endswith("// local\n")
-    assert list((tmp_path / MERGE_DIR).iterdir()) == []
+    assert list((tmp_path / ".git" / MERGE_DIR).iterdir()) == []
     # The next run finishes the directory and leaves the merged file alone.
     assert upgrade(tmp_path, lib_plugin) == [LIB_TARGET + "assets.js", LIB_TARGET + "bump.js"]
     assert on_disk(tmp_path, "version.js").endswith("// local\n")
@@ -353,3 +353,24 @@ def test_a_single_file_asset_still_reports_exactly_one_written_path(tmp_path):
     callers then mishandle -- commit_item stages whatever comes back."""
     written = apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "missing", "")], tmp_path)
     assert written == [".github/workflows/ci.yml"]
+
+
+def test_a_failed_git_command_says_what_git_printed_on_stdout(tmp_path):
+    # `git commit` reports "nothing to commit" on stdout, not stderr.
+    from repo_infra.apply import git
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    with pytest.raises(ApplyError, match="nothing to commit"):
+        git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "x")
+
+
+def test_changed_reads_paths_git_would_quote(tmp_path):
+    from repo_infra.apply import changed, git
+
+    git(tmp_path, "init", "-q")
+    (tmp_path / "a b.yml").write_text("x\n")
+    (tmp_path / 'q"uote.yml').write_text("x\n")
+    (tmp_path / "same.yml").write_text("x\n")
+    git(tmp_path, "add", "same.yml")
+    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed")
+    assert changed(tmp_path, ["a b.yml", 'q"uote.yml', "same.yml"]) == ["a b.yml", 'q"uote.yml']

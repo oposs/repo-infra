@@ -1,12 +1,12 @@
 {
   "assets": {
     "release-pr": {
-      "version": 3,
+      "version": 5,
       "source": "workflows/release-pr.yml",
       "target": ".github/workflows/release-pr.yml"
     },
     "changelog": {
-      "version": 2,
+      "version": 4,
       "source": "workflows/changelog.yml",
       "target": ".github/workflows/changelog.yml"
     },
@@ -16,7 +16,7 @@
       "target": ".github/dependabot.yml"
     },
     "workflow-lib": {
-      "version": 4,
+      "version": 6,
       "source": "workflows/lib",
       "target": ".github/workflows/lib",
       "kind": "dir",
@@ -24,29 +24,35 @@
     }
   },
   "ci_blocks": {
-    "ci-lib": {"version": 1, "jobs": ["lib"]},
-    "ci-claude-plugin": {"version": 1, "jobs": ["plugin-manifest"]},
-    "ci-python": {"version": 2, "jobs": ["ruff", "pytest"]},
-    "ci-rust": {"version": 1, "jobs": ["rust-check", "rust-test"]},
-    "ci-rust-musl": {"version": 1, "jobs": ["rust-musl"], "optional": true, "requires": "rust"},
-    "ci-man": {"version": 2, "jobs": ["man"], "optional": true, "build": ["man", "man-lua"]},
-    "ci-go": {"version": 1, "jobs": ["go-test", "go-lint"]},
-    "ci-node-pnpm": {"version": 1, "jobs": ["node-pnpm-check"]},
-    "ci-node-bun": {"version": 1, "jobs": ["node-bun-check"]},
-    "ci-perl-autotools": {"version": 2, "jobs": ["perl-autotools"]},
-    "ci-perl-mkpl": {"version": 1, "jobs": ["perl-mkpl"]},
-    "ci-repo-infra-selftest": {"version": 3, "jobs": ["repo-infra-selftest", "repo-infra-man"]},
-    "ci-checkmk-plugin": {"version": 1, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
-    "ci-github-action": {"version": 1, "jobs": ["action-manifest", "action-test"]}
+    "ci-lib": {"version": 2, "jobs": ["lib"]},
+    "ci-claude-plugin": {"version": 2, "jobs": ["plugin-manifest"]},
+    "ci-python": {"version": 3, "jobs": ["ruff", "pytest"]},
+    "ci-rust": {"version": 3, "jobs": ["rust-plan", "rust-check", "rust-test"]},
+    "ci-rust-musl": {"version": 2, "jobs": ["rust-musl"], "optional": true, "requires": "rust"},
+    "ci-man": {"version": 3, "jobs": ["man"], "optional": true, "build": ["man", "man-lua"]},
+    "ci-go": {"version": 2, "jobs": ["go-test", "go-lint"]},
+    "ci-node-pnpm": {"version": 2, "jobs": ["node-pnpm-check"]},
+    "ci-node-bun": {"version": 2, "jobs": ["node-bun-check"]},
+    "ci-perl-autotools": {"version": 3, "jobs": ["perl-autotools"]},
+    "ci-perl-mkpl": {"version": 2, "jobs": ["perl-mkpl"]},
+    "ci-repo-infra-selftest": {"version": 4, "jobs": ["repo-infra-selftest", "repo-infra-man"]},
+    "ci-checkmk-plugin": {"version": 2, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
+    "ci-github-action": {"version": 2, "jobs": ["action-manifest", "action-test"]},
+    "ci-local": {"version": 2, "jobs": ["ci-local"], "optional": true, "seam": "ci_local"}
   },
   "publish_blocks": {
-    "publish-source-tarball": {"version": 2, "jobs": ["publish-source-tarball"],
+    "publish-crates-io": {"version": 3, "jobs": ["publish-crates-io"], "assets": []},
+    "publish-gitea-packages": {"version": 1, "jobs": ["publish-gitea-packages"], "assets": []}
+  },
+  "release_build_blocks": {
+    "release-source-tarball": {"version": 1, "jobs": ["release-source-tarball"],
                                "assets": ["*.tar.gz"]},
-    "publish-crates-io": {"version": 1, "jobs": ["publish-crates-io"], "assets": []}
+    "release-build-local-job": {"version": 1, "jobs": ["release-build-local"], "assets": [],
+                                "seam": "release_build_local"}
   },
   "build_assets": {
     "container": {
-      "version": 1,
+      "version": 2,
       "source": "build/container.mk",
       "target": "build/container.mk",
       "comment": "#"
@@ -74,6 +80,8 @@
     "actions/checkout": "v7",
     "actions/setup-node": "v7",
     "actions/github-script": "v9",
+    "actions/download-artifact": "v8",
+    "actions/upload-artifact": "v7",
     "actions/setup-python": "v7",
     "actions/cache": "v6",
     "actions/setup-go": "v7",
@@ -84,6 +92,6 @@
     "oposs/mkp-builder": "v2"
   },
   "gh": {
-    "ruleset-main": {"version": 1, "source": "gh/ruleset-main.json"}
+    "ruleset-main": {"version": 2, "source": "gh/ruleset-main.json"}
   }
 }
