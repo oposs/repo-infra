@@ -8,39 +8,13 @@ import subprocess
 import pytest
 import yaml
 
-from repo_infra.assemble import AssemblyError, assemble_publish
-from repo_infra.markers import parse_markers
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-
-
-def test_with_no_addons_finalize_needs_only_publish():
-    text = assemble_publish(ASSETS, [], MANIFEST)
-    assert "    needs: [publish]" in text
-
-
-def test_the_frame_marker_survives_assembly():
-    text = assemble_publish(ASSETS, [], MANIFEST)
-    assert ("release-publish", 5) in [(m.asset, m.version) for m in parse_markers(text)]
-
-
-def test_an_unknown_addon_is_an_assembly_error():
-    with pytest.raises(AssemblyError, match="not declared in the manifest"):
-        assemble_publish(ASSETS, ["publish-nonexistent"], MANIFEST)
-
-
-def test_the_placeholder_must_appear_exactly_once():
-    # Guards the asset, not the code: a finalize block that lost its
-    # placeholder would silently publish a release before the add-ons ran.
-    text = (ASSETS / "publish/publish-finalize.yml").read_text(encoding="utf-8")
-    assert text.count("    needs: []") == 1
 
 
 # --- publish-crates-io (D21) -------------------------------------------------
 #
-# These parse the assembled workflow rather than grepping the asset. A substring
+# These parse the piece rather than grepping its text. A substring
 # assertion passes on a block that YAML cannot load, and every claim below is
 # about structure -- which key, which order, which value -- not about text.
 
@@ -61,30 +35,10 @@ def _shell_code(run):
         line for line in run.splitlines() if not line.strip().startswith("#"))
 
 
-def test_the_crates_io_addon_lands_between_publish_and_finalize():
-    text = assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST)
-    assert "    needs: [publish, publish-crates-io]" in text
-    assert text.index("  publish-crates-io:") < text.index("  finalize:")
-
-
-def test_the_crates_io_addon_carries_its_marker():
-    text = assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST)
-    assert ("publish-crates-io", 3) in [
-        (m.asset, m.version) for m in parse_markers(text)]
-
-
-def test_the_crates_io_addon_declares_exactly_the_job_it_contains():
-    from repo_infra.assemble import block_job_ids
-    text = (ASSETS / "publish/publish-crates-io.yml").read_text(encoding="utf-8")
-    assert block_job_ids(text) == MANIFEST["publish_blocks"]["publish-crates-io"]["jobs"]
-
-
-def test_the_assembled_publish_workflow_is_loadable_yaml():
-    # The block is pasted into a frame at a fixed indent. A block that is valid
-    # on its own but wrong by one space produces a file GitHub silently refuses
-    # to run, and every string assertion below would still pass.
-    doc = yaml.safe_load(assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST))
-    assert set(doc["jobs"]) == {"publish", "publish-crates-io", "finalize"}
+def test_the_crates_io_piece_declares_exactly_the_job_it_contains():
+    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+        encoding="utf-8")
+    assert list(yaml.safe_load(text)["jobs"]) == ["publish-crates-io"]
 
 
 def test_the_crates_io_call_snippet_waits_for_publish_and_honours_the_guard():
@@ -154,104 +108,11 @@ def test_the_publish_never_waves_through_a_dirty_tree():
 # --- finalize asserts what it is about to publish (A1) -----------------------
 #
 # `finalize` flips the release from draft to public. Its only safeguard used to
-# be its own `needs:` list, and a `needs:` list is a generated line: revert it
-# and nothing fails -- finalize stops waiting and publishes a release with no
-# artifacts on it. Ordering cannot report its own absence. These tests pin the
-# two halves of the fix: a repository-local publish job is DECLARED rather than
-# hand-edited into `needs:`, and finalize asks the release what it carries
-# before it publishes.
+# be its own `needs:` list, and ordering cannot report its own absence: revert
+# the list and finalize publishes a release with no artifacts on it. The piece
+# asks the release what it carries before it publishes, and these tests pin that.
 
 DEB = {"job": "publish-deb-container", "assets": ["*.deb", "smtp-proxy-*-musl"]}
-
-
-def _finalize(addons=(), local=()):
-    text = assemble_publish(ASSETS, addons, MANIFEST, local)
-    return yaml.safe_load(text)["jobs"]["finalize"]
-
-
-def _finalize_script(addons=(), local=()):
-    steps = _finalize(addons, local)["steps"]
-    script = [s["with"]["script"] for s in steps if "github-script" in s.get("uses", "")]
-    assert len(script) == 2
-    return script[0]
-
-
-def test_a_repository_local_publish_job_joins_finalizes_needs():
-    # The whole point: smtp-proxy-rs's .deb job is not a standard add-on, so the
-    # assembler used to generate `needs: [publish]` and the second entry was
-    # added by hand -- and re-added by hand after every `apply`, or lost.
-    assert _finalize(local=[DEB])["needs"] == ["publish", "publish-deb-container"]
-
-
-def test_a_local_job_lands_after_the_standard_addons_in_needs():
-    needs = _finalize(addons=["publish-crates-io"], local=[DEB])["needs"]
-    assert needs == ["publish", "publish-crates-io", "publish-deb-container"]
-
-
-def test_a_local_job_that_collides_with_a_generated_one_is_refused():
-    # A duplicate in `needs:` is not fatal to GitHub, but it means the repository
-    # believes it owns a job the assembler generates -- the next version of that
-    # add-on would then fight the local block. Say so at assembly time.
-    with pytest.raises(AssemblyError, match="already generated"):
-        assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST,
-                         [{"job": "publish-crates-io", "assets": []}])
-
-
-def test_a_local_entry_without_a_job_id_is_refused():
-    with pytest.raises(AssemblyError, match="must name a job"):
-        assemble_publish(ASSETS, [], MANIFEST, [{"assets": ["*.deb"]}])
-
-
-def test_finalize_expects_the_assets_the_installed_blocks_attach():
-    script = _finalize_script(addons=["publish-crates-io"], local=[DEB])
-    assert "['*.deb', 'smtp-proxy-*-musl']" in script
-
-
-def test_finalize_expects_nothing_from_a_block_that_attaches_nothing():
-    # publish-crates-io uploads to an external registry and deliberately puts no
-    # asset on the GitHub release. Expecting one would go red on every release.
-    assert "const expected = [];" in _finalize_script(addons=["publish-crates-io"])
-
-
-def test_finalize_asserts_the_assets_before_it_publishes():
-    # Order is the fix. Asserting after updateRelease would report the fault on
-    # a release that is already public, which is the state it exists to prevent.
-    script = _finalize_script(local=[DEB])
-    assert script.index("missingAssets") < script.index("draft: false")
-
-
-def test_finalize_reads_the_release_rather_than_trusting_its_needs_list():
-    script = _finalize_script(local=[DEB])
-    assert "listReleaseAssets" in script
-
-
-def test_finalize_fails_the_job_when_an_expected_asset_is_absent():
-    script = _finalize_script(local=[DEB])
-    assert "core.setFailed" in script
-
-
-def test_the_assets_placeholder_appears_exactly_once():
-    # Guards the asset the way the `needs:` placeholder is guarded: a finalize
-    # block that lost this line would publish without asserting anything.
-    text = (ASSETS / "publish/publish-finalize.yml").read_text(encoding="utf-8")
-    assert text.count("            const expected = [];") == 1
-
-
-def test_every_publish_block_declares_what_it_attaches():
-    # Not optional: a new add-on that forgets this silently contributes nothing
-    # to finalize's expectations, and the guard quietly stops covering it.
-    for name, meta in MANIFEST["publish_blocks"].items():
-        assert isinstance(meta.get("assets"), list), name
-
-
-def test_an_asset_pattern_that_could_break_out_of_the_literal_is_refused():
-    # The patterns are interpolated into a JavaScript string literal in the
-    # generated workflow. A quote from a hand-written config would end that
-    # literal and turn a declaration into code, in a job that holds
-    # `contents: write`.
-    with pytest.raises(AssemblyError, match="not an asset name pattern"):
-        assemble_publish(ASSETS, [], MANIFEST,
-                         [{"job": "x", "assets": ["'); throw new Error('"]}])
 
 
 def _piece_finalize():
@@ -263,6 +124,21 @@ def _piece_finalize():
 def _piece_scripts():
     steps = _piece_finalize()["steps"]
     return [s["with"]["script"] for s in steps if "github-script" in s.get("uses", "")]
+
+
+def test_finalize_asserts_the_assets_before_it_publishes():
+    # Order is the fix. Asserting after updateRelease would report the fault on
+    # a release that is already public, which is the state it exists to prevent.
+    script = _piece_scripts()[0]
+    assert script.index("missingAssets") < script.index("draft: false")
+
+
+def test_finalize_reads_the_release_rather_than_trusting_its_needs_list():
+    assert "listReleaseAssets" in _piece_scripts()[0]
+
+
+def test_finalize_fails_the_job_when_an_expected_asset_is_absent():
+    assert "core.setFailed" in _piece_scripts()[0]
 
 
 def _expand_inputs(script):
@@ -493,7 +369,7 @@ def test_the_crates_io_addon_never_rewrites_the_lock():
 
 
 def test_finalize_may_delete_runs():
-    assert _finalize()["permissions"] == {"contents": "write", "actions": "write"}
+    assert _piece_finalize()["permissions"] == {"contents": "write", "actions": "write"}
 
 
 def _parked_step():

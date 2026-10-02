@@ -1,7 +1,5 @@
-"""The ci-man add-on (D23): an opt-in block that belongs to no ecosystem, and
-that carries the build assets its job runs."""
+"""The ri-ci-man piece (D23): its job and the warning check it runs."""
 
-import json
 import os
 import pathlib
 import stat
@@ -10,116 +8,14 @@ import subprocess
 import pytest
 import yaml
 
-from repo_infra.assemble import (
-    AssemblyError,
-    assemble_ci,
-    block_job_ids,
-    ci_addon_blocks,
-    render_all,
-)
-from repo_infra.detect import Detection, DetectResult
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-DETECTION = Detection.load(ASSETS / "detection.json")
-BLOCK = ASSETS / "ci/ci-man.yml"
-CI_YML = ".github/workflows/ci.yml"
+PIECE = ASSETS / "pieces/ri-ci-man/ri-ci-man.yml"
 
 
-def detected(fixture):
-    return DETECTION.detect(ROOT / "tests/fixtures" / fixture)
-
-
-def rendered(fixture="repo-python", ci=("ci-man",), build=()):
-    return render_all(ASSETS, detected(fixture), MANIFEST,
-                      build=list(build), ci=list(ci))
-
-
-def jobs(files):
-    return yaml.safe_load(files[CI_YML])["jobs"]
-
-
-def asset(path):
-    return (ASSETS / path).read_text(encoding="utf-8")
-
-
-# --- the seam -----------------------------------------------------------------
-
-
-def test_the_block_is_absent_unless_the_repository_asks_for_it():
-    # A manual existing does not say its owner wants a required check on it.
-    files = rendered(ci=())
-    assert "man" not in jobs(files)
-    assert "build/man.mk" not in files
-    assert "build/man-deflist.lua" not in files
-
-
-def test_naming_the_block_installs_it_and_makes_it_required():
-    files = rendered()
-    assert "man" in jobs(files)
-    assert "man" in jobs(files)["ci-passed"]["needs"]
-
-
-def test_the_block_lands_after_the_detected_blocks():
-    text = assemble_ci(ASSETS, detected("repo-python").blocks + ["ci-man"], MANIFEST)
-    assert text.index("  pytest:") < text.index("  man:") < text.index("  ci-passed:")
-
-
-def test_choosing_the_block_installs_the_build_assets_its_job_runs():
-    # One choice, not two. `make man` needs build/man.mk; a repository that
-    # named the block and not the fragment would get a red CI and no reason.
-    files = rendered()
-    assert files["build/man.mk"] == asset("build/man.mk")
-    assert files["build/man-deflist.lua"] == asset("build/man-deflist.lua")
-
-
-def test_naming_a_carried_build_asset_in_build_as_well_is_not_a_duplicate():
-    files = rendered(build=["man", "man-lua"])
-    assert files["build/man.mk"] == asset("build/man.mk")
-    assert files["build/man-deflist.lua"] == asset("build/man-deflist.lua")
-    assert files[CI_YML].count("\n  man:\n") == 1
-
-
-@pytest.mark.parametrize("fixture", ["repo-python", "repo-rust", "repo-go", "repo-perl-mkpl"])
-def test_the_block_fits_any_ecosystem(fixture):
-    # A man page has no ecosystem: mdmost is Rust, and a Perl or Go tool ships
-    # one the same way.
-    assert "man" in jobs(rendered(fixture))
-
-
-def test_the_block_fits_a_repository_with_no_ecosystem():
-    result = DetectResult(ecosystems=[], blocks=["ci-lib"])
-    files = render_all(ASSETS, result, MANIFEST, ci=["ci-man"])
-    assert "man" in jobs(files)
-    assert "build/man.mk" in files
-
-
-def test_an_optional_block_without_requires_keeps_the_other_refusals():
-    result = DetectResult(ecosystems=[], blocks=["ci-lib"])
-    assert ci_addon_blocks(result, ["ci-man"], MANIFEST) == ["ci-man"]
-    with pytest.raises(AssemblyError, match="already installed"):
-        ci_addon_blocks(result, ["ci-man", "ci-man"], MANIFEST)
-
-
-def test_the_block_declares_exactly_its_one_job():
-    assert block_job_ids(BLOCK.read_text(encoding="utf-8")) == ["man"]
-    assert MANIFEST["ci_blocks"]["ci-man"]["jobs"] == ["man"]
-
-
-def test_every_build_asset_a_ci_block_carries_is_declared():
-    for name, meta in MANIFEST["ci_blocks"].items():
-        for carried in meta.get("build", []):
-            assert carried in MANIFEST["build_assets"], (
-                "%s carries %s, which build_assets does not declare" % (name, carried))
-
-
-def test_only_an_opt_in_block_carries_build_assets():
-    # render_all installs carried assets for the blocks a repository chose. A
-    # detected block that declared some would have them silently ignored.
-    for name, meta in MANIFEST["ci_blocks"].items():
-        if meta.get("build"):
-            assert meta.get("optional"), "%s carries build assets but is not optional" % name
+def test_the_piece_declares_exactly_its_one_job():
+    doc = yaml.safe_load(PIECE.read_text(encoding="utf-8"))
+    assert list(doc["jobs"]) == ["man"]
 
 
 # --- the warning check, run for real -------------------------------------------
@@ -134,8 +30,7 @@ TABLE = "<standard input>:35: warning: table wider than line length minus indent
 
 
 def check_script():
-    path = ASSETS / "pieces/ri-ci-man/ri-ci-man.yml"
-    job = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["man"]
+    job = yaml.safe_load(PIECE.read_text(encoding="utf-8"))["jobs"]["man"]
     step = next(s for s in job["steps"]
                 if s.get("name", "").startswith("Render"))
     return step["run"]
@@ -203,7 +98,7 @@ def test_one_bad_page_among_several_fails_and_is_named(tmp_path):
 @pytest.mark.pandoc
 def test_the_real_toolchain_fails_a_prose_table_and_passes_a_list(tmp_path, require):
     require("pandoc", "man")
-    lua = str(ASSETS / "build/man-deflist.lua")
+    lua = str(ASSETS / "pieces/man-lua/man-deflist.lua")
     head = ("---\ntitle: T\nsection: 1\nheader: t\nfooter: t\ndate: 2026-09-23\n---\n\n"
             "# NAME\n\nt - test\n\n")
     wide = head + ("| Key | Meaning |\n|---|---|\n| a | " + "word " * 60 + "|\n")
@@ -218,17 +113,3 @@ def test_the_real_toolchain_fails_a_prose_table_and_passes_a_list(tmp_path, requ
         done = subprocess.run(["bash", "-e", "-c", check_script()], cwd=out.parent,
                               capture_output=True, text=True, timeout=60)
         assert done.returncode == expected, name + ": " + done.stdout + done.stderr
-
-
-# --- the candidate hint ---------------------------------------------------------
-
-
-def test_a_candidate_that_names_a_block_names_an_optional_one():
-    # A hint answered by a block detection installs would never be answered:
-    # nobody can put that block in the `ci` list.
-    detection = json.loads((ASSETS / "detection.json").read_text(encoding="utf-8"))
-    for entry in detection["candidates"]:
-        if "ci_block" in entry:
-            meta = MANIFEST["ci_blocks"].get(entry["ci_block"])
-            assert meta and meta.get("optional"), entry
-

@@ -9,11 +9,8 @@ import subprocess
 import pytest
 import yaml
 
-from repo_infra.assemble import assemble_publish
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 MAIN = "m" * 40
 HEAD = "a" * 40
 CHANGES = "# Changes\n\n## [Unreleased]\n\n## 1.2.0 - 2026-09-29\n\n### New\n\n- x\n"
@@ -26,14 +23,13 @@ def merged_pr(sha=MERGE, ref="release/v1.2.0", login="github-actions[bot]"):
             "merge_commit_sha": sha, "head": {"ref": ref, "repo": {"full_name": "o/r"}}}
 
 
-def workflow(addons=()):
-    return yaml.safe_load(assemble_publish(ASSETS, list(addons), MANIFEST))
+def piece(name):
+    path = ASSETS / "pieces" / name / (name + ".yml")
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
 def publish_script():
-    piece = yaml.safe_load(
-        (ASSETS / "pieces/ri-publish-tag/ri-publish-tag.yml").read_text(encoding="utf-8"))
-    steps = piece["jobs"]["publish"]["steps"]
+    steps = piece("ri-publish-tag")["jobs"]["publish"]["steps"]
     return next(s["with"]["script"] for s in steps if s.get("id") == "publish")
 
 
@@ -209,21 +205,18 @@ def test_a_squash_merge_is_noticed(tmp_path):
     assert any("merge commit" in n for n in out["notices"])
 
 
-@pytest.mark.parametrize("addon", ["publish-crates-io", "publish-gitea-packages"])
-def test_every_addon_checks_out_the_tagged_head(addon):
-    job = workflow([addon])["jobs"][addon]
-    checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
-    assert checkout["with"]["ref"] == "${{ needs.publish.outputs.head }}"
-
-
-def test_finalize_checks_out_the_tagged_head():
-    job = workflow()["jobs"]["finalize"]
-    checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
-    assert checkout["with"]["ref"] == "${{ needs.publish.outputs.head }}"
+@pytest.mark.parametrize("name,job", [("ri-publish-crates-io", "publish-crates-io"),
+                                      ("ri-publish-gitea", "publish-gitea-packages"),
+                                      ("ri-publish-finalize", "finalize")])
+def test_every_follower_checks_out_the_tagged_head(name, job):
+    steps = piece(name)["jobs"][job]["steps"]
+    checkout = next(s for s in steps if s.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"]["ref"] == "${{ inputs.head }}"
 
 
 def test_publish_exposes_the_head():
-    assert workflow()["jobs"]["publish"]["outputs"]["head"] == "${{ steps.publish.outputs.head }}"
+    assert piece("ri-publish-tag")["jobs"]["publish"]["outputs"]["head"] == (
+        "${{ steps.publish.outputs.head }}")
 
 
 def test_a_failed_record_download_does_not_stop_a_resume(tmp_path):
@@ -296,4 +289,5 @@ def test_the_frame_has_one_path():
 def test_publish_may_read_the_release_pull_request():
     # pulls.list needs pull-requests: read; the
     # workflow level grants nothing it does not name.
-    assert workflow()["permissions"] == {"contents": "write", "pull-requests": "read"}
+    assert piece("ri-publish-tag")["permissions"] == {
+        "contents": "write", "pull-requests": "read"}

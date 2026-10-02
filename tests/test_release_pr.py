@@ -1,19 +1,14 @@
 """release-pr v5 (D28): one release flow, built and tested before the merge."""
 
-import json
 import pathlib
 
 import yaml
 
-from repo_infra.assemble import render_all
-from repo_infra.detect import Detection
 from repo_infra.markers import parse_markers
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 ASSET = ASSETS / "pieces/release-pr/release-pr.yml"
-REPO_INFRA = ROOT / "skills/repo-infra/scripts/repo_infra"
 
 
 def workflow():
@@ -52,18 +47,6 @@ def test_test_calls_ci_yml_on_the_release_branch_with_the_union_of_permissions()
     assert test["secrets"] == "inherit"
     assert test["permissions"] == {"contents": "read", "pull-requests": "read",
                                    "statuses": "read", "checks": "write"}
-
-
-def test_the_union_covers_every_permission_ci_yml_asks_for(tmp_path):
-    (tmp_path / "action.yml").write_text("name: x\n")
-    result = Detection.load(ASSETS / "detection.json").detect(tmp_path)
-    ci = yaml.safe_load(render_all(ASSETS, result, MANIFEST, ci_local=True)[
-        ".github/workflows/ci.yml"])
-    granted = workflow()["jobs"]["test"]["permissions"]
-    rank = {"read": 1, "write": 2}
-    for perms in [ci["permissions"]] + [j.get("permissions", {}) for j in ci["jobs"].values()]:
-        for scope, level in perms.items():
-            assert scope in granted and rank[granted[scope]] >= rank[level], (scope, level)
 
 
 def test_permissions_per_job():
@@ -131,12 +114,5 @@ def test_the_rust_lockfile_note_survives():
     assert "a Rust repository lists Cargo.lock in version_files" in ASSET.read_text(encoding="utf-8")
 
 
-def test_the_variant_is_gone():
-    assert "release-pr-build" not in MANIFEST["assets"]
-    assert not (ASSETS / "workflows/release-pr-build.yml").exists()
-    for spec in MANIFEST["assets"].values():
-        assert "variant_of" not in spec and "when" not in spec
-    for module in ("assemble.py", "state.py", "apply.py", "cli.py"):
-        text = (REPO_INFRA / module).read_text(encoding="utf-8")
-        assert "variant" not in text, module
+def test_the_piece_carries_one_marker_naming_itself():
     assert [m.asset for m in parse_markers(ASSET.read_text(encoding="utf-8"))] == ["release-pr"]

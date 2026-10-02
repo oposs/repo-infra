@@ -26,13 +26,12 @@ from .remote import protects_default_branch
 # `.git/worktrees/<name>/` of the main checkout in a linked worktree.
 MERGE_DIR = pathlib.Path("repo-infra/merge")
 
-# Reported as `conflict` by state.py when absent; required here so the ruleset
+# Reported as a conflict by check.py when absent; required here so the ruleset
 # is never enabled before the checks it requires can actually report.
 REQUIRED_WORKFLOWS = (".github/workflows/ci.yml", ".github/workflows/changelog.yml")
 
-# What the ruleset POST must read back as required -- state.py's
-# classify_remote wants the same two contexts, kept here rather than shared
-# because that module has no reason to import apply.py's write path.
+# What the ruleset POST must read back as required; check.classify_remote
+# wants the same two contexts.
 REQUIRED_CONTEXTS = {"ci-passed", "changelog-updated"}
 
 
@@ -88,7 +87,9 @@ def _git_dir(repo_root):
 def _read_raw(path):
     """The file with its line endings as they are: a CRLF checkout must be
     compared and snapshotted as CRLF, or the hand-back guard would see an LF
-    file that is not on disk."""
+    file that is not on disk. A file that v0.3.x stamped keeps its ` sha256=`
+    suffix here; apply writes no stamp, and `unstamped` removes it before the
+    bytes are compared."""
     with open(path, encoding="utf-8", newline="") as handle:
         return handle.read()
 
@@ -100,9 +101,8 @@ def _scratch_dir(repo_root):
 def changed(repo_root, paths):
     """The paths among `paths` whose content differs from the last commit.
 
-    A block of an assembled file finds its file already written by the item
-    before it; writing the rendering again changes nothing, and `git commit`
-    would fail with "nothing to commit".
+    A piece whose file already equals the last commit has nothing to stage,
+    and `git commit` would fail with "nothing to commit".
     """
     if not paths:
         return []
@@ -480,8 +480,7 @@ def _stage_ruleset_payload(repo_root, payload):
 
 BRANCH = "repo-infra/apply"
 
-# Ends every commit apply makes in the target repository, one item or the
-# D28 migration.
+# Ends every commit apply makes in the target repository.
 TRAILER = "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 
@@ -492,108 +491,3 @@ def ensure_branch(repo_root):
     existing = git(repo_root, "branch", "--list", BRANCH).strip()
     git(repo_root, "checkout", BRANCH) if existing else git(repo_root, "checkout", "-b", BRANCH)
     return BRANCH
-
-
-def commit_item(repo_root, name, paths, merged=False):
-    """One commit per item, so any single item can be dropped at review.
-
-    A hand merge with local edits gets its own subject: the next NeedsMerge
-    hands the LLM the file's log, and an Install commit there means "no local
-    edits" (D29). A merge handed back unchanged is an install.
-    """
-    if not paths:
-        return None
-    subject = (f"Merge {name} from the repo-infra standard with local edits" if merged
-               else f"Install {name} from the repo-infra standard")
-    git(repo_root, "add", *paths)
-    git(repo_root, "commit", "-m", f"{subject}\n\n{TRAILER}")
-    return git(repo_root, "rev-parse", "HEAD").strip()
-
-
-CONFIG = ".github/repo-infra.json"
-
-WIDTH = 80
-
-
-def _compact(value, indent, level, prefix=0):
-    unit = indent if isinstance(indent, str) else " " * indent
-    if isinstance(value, (dict, list)) and value:
-        items = list(value.values()) if isinstance(value, dict) else value
-        one_line = json.dumps(value, separators=(", ", ": "))
-        # A tab counts as the 8 columns an editor shows it as.
-        if (not any(isinstance(v, (dict, list)) for v in items)
-                and len(unit.expandtabs()) * level + prefix + len(one_line) + 1 <= WIDTH):
-            return one_line
-        inner = unit * (level + 1)
-        if isinstance(value, dict):
-            parts = []
-            for key, item in value.items():
-                head = json.dumps(key) + ": "
-                parts.append(inner + head + _compact(item, indent, level + 1, len(head)))
-            return "{\n" + ",\n".join(parts) + "\n" + unit * level + "}"
-        parts = [inner + _compact(item, indent, level + 1) for item in value]
-        return "[\n" + ",\n".join(parts) + "\n" + unit * level + "]"
-    return json.dumps(value)
-
-
-def config_text(data, original=None):
-    """`data` as JSON in the layout of `original`, the file it replaces.
-
-    A plain json.dumps(indent=2) rewrote every line of a repo-infra.json that
-    was indented by four spaces, so the migration's one-key change showed up
-    as a diff of the whole file. The indent and the final newline are read
-    from the file; key order is the order of `data`.
-
-    An array or object of scalars stays on one line when it fits in 80 columns;
-    oetiker/mdmost#30 showed `"ci": ["ci-man", "ci-rust-musl"]` turned into
-    four lines.
-    """
-    indent, newline = 2, "\n"
-    if original is not None:
-        newline = "\n" if original.endswith("\n") else ""
-        for line in original.splitlines()[1:]:
-            stripped = line.lstrip(" \t")
-            if stripped and stripped != line:
-                lead = line[:len(line) - len(stripped)]
-                indent = lead if "\t" in lead else len(lead)
-                break
-    return _compact(data, indent, 0) + newline
-
-
-def write_config(repo_root, result, answers=None):
-    """Write .github/repo-infra.json, preserving anything already answered.
-
-    An existing file wins on every key it sets: it records answers to
-    ambiguities and deliberate `skip` decisions, and re-detecting must not
-    discard them. That file is the only way to record a considered "no", and
-    without it the checker nags about the same item forever.
-    """
-    existing = {}
-    original = None
-    target = pathlib.Path(repo_root) / CONFIG
-    if target.is_file():
-        original = target.read_text(encoding="utf-8")
-        existing = json.loads(original)
-
-    if result.ambiguities:
-        answered = (answers or {}).keys() | existing.get("answers", {}).keys()
-        unanswered = [a for a in result.ambiguities if a["id"] not in answered]
-        if unanswered:
-            raise ApplyError(f"{unanswered[0]['id']}: unresolved -- {unanswered[0]['question']}")
-
-    config = {
-        "ecosystems": result.ecosystems,
-        "moving_major_tag": existing.get("moving_major_tag", False),
-        "version_files": existing.get("version_files") or result.version_files,
-        "publish": existing.get("publish", []),
-        "build": existing.get("build", []),
-    }
-    # Every other key is a decision this function does not compute -- `ci`,
-    # `publish_local`, `skip`, `answers`, a `_comment` -- so it is kept as
-    # written. A fixed list of keys to keep dropped each new one as it was added.
-    for key, value in existing.items():
-        config.setdefault(key, value)
-    if answers:
-        config.setdefault("answers", {}).update(answers)
-
-    return write_asset(repo_root, CONFIG, config_text(config, original))

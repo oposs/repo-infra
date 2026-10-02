@@ -10,17 +10,10 @@ MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 FRAGMENT = ASSETS / "pieces/container/container.mk"
 
 
-def test_the_fragment_is_declared_in_the_manifest():
-    spec = MANIFEST["build_assets"]["container"]
-    assert spec["source"] == "build/container.mk"
-    assert spec["target"] == "build/container.mk"
-    assert spec["comment"] == "#"
-
-
 def test_the_old_test_only_fragment_is_gone():
     # D18 replaced it. Leaving both would ship two answers to one question.
-    assert "container-test" not in MANIFEST["build_assets"]
-    assert not (ASSETS / "build/container-test.mk").exists()
+    assert not (ASSETS / "pieces/container/container-test.mk").exists()
+    assert "container-test" not in MANIFEST["pieces"]
 
 
 def test_the_fragment_carries_its_marker_at_the_declared_version():
@@ -28,18 +21,6 @@ def test_the_fragment_carries_its_marker_at_the_declared_version():
     text = FRAGMENT.read_text(encoding="utf-8")
     assert ("container", piece.version) in [(m.asset, m.version) for m in parse_markers(text)]
     assert MANIFEST["pieces"]["container"]["target"] == "build/container.mk"
-
-
-def test_a_repository_that_did_not_ask_for_it_does_not_get_it():
-    # D16: containerization is a decision, not a detection.
-    import pathlib as _p
-
-    from repo_infra.assemble import render_all
-    from repo_infra.detect import Detection
-    result = Detection.load(ASSETS / "detection.json").detect(_p.Path(ROOT))
-    assert "build/container.mk" not in render_all(ASSETS, result, MANIFEST)
-    assert "build/container.mk" in render_all(
-        ASSETS, result, MANIFEST, build=["container"])
 
 
 def test_every_driver_target_is_inside_the_conditional():
@@ -115,7 +96,7 @@ def test_test_dev_passes_a_relative_tests_override():
 def test_no_ci_block_calls_the_dev_loop():
     # test-dev is a developer convenience. What CI must verify is that the image
     # builds and its contents pass, which is `make test`.
-    paths = sorted((ASSETS / "pieces").glob("*/*.yml")) + sorted((ASSETS / "publish").glob("*.yml"))
+    paths = sorted((ASSETS / "pieces").glob("*/*.yml"))
     assert len(paths) >= 10, "the piece workflow files were not found"
     for path in paths:
         assert "test-dev" not in path.read_text(encoding="utf-8"), path.name

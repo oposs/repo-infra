@@ -255,3 +255,129 @@ def test_the_shipped_ci_passed_pattern_is_accepted_in_a_ci_yml():
     assert checkout["with"]["path"] == "repo-infra-base"
     assert callers.ref_problems(ci, True) != []
     assert callers.ref_problems(ci, True, skip=("ci-passed",)) == []
+
+
+# The ref contract of a project workflow (D28), ported from the retired seam
+# reader's tests: each case is a form that must not read as conforming.
+GOOD = """\
+name: Local CI
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ''
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - run: cargo check
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: "actions/checkout@v7"
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+"""
+NO_REF_LINE = "          fetch-depth: 0\n          ref: ${{ inputs.ref }}\n"
+STEPS = GOOD.split("    steps:\n")[0] + "    steps:\n"
+
+
+def ref_found(text, reserved=False):
+    return callers.ref_problems(workflow.load(text), reserved)
+
+
+def test_a_conforming_project_workflow_has_no_ref_problem():
+    assert ref_found(GOOD, reserved=True) == []
+
+
+def test_a_checkout_in_a_second_job_without_ref_is_named():
+    found = ref_found(GOOD.replace(NO_REF_LINE, "          fetch-depth: 0\n"))
+    assert len(found) == 1 and found[0].startswith("job lint has an actions/checkout step")
+
+
+def test_a_checkout_without_with_is_named():
+    text = GOOD.replace("      - uses: actions/checkout@v7\n        with:\n"
+                        "          ref: ${{ inputs.ref }}\n", "      - uses: actions/checkout@v7\n")
+    assert len(ref_found(text)) == 1
+
+
+def test_a_comment_mentioning_ref_does_not_count():
+    text = GOOD.replace(NO_REF_LINE, "          fetch-depth: 0\n          # ref: ${{ inputs.ref }}\n")
+    assert len(ref_found(text)) == 1
+
+
+@pytest.mark.parametrize("name", ["release-asset-x", "'release-files'", '"release-asset-"',
+                                  "Release-Files", "RELEASE-ASSET-x"])
+def test_a_reserved_artifact_name_is_named_where_it_is_reserved(name):
+    text = GOOD + ("      - uses: actions/upload-artifact@v7\n        with:\n"
+                   f"          name: {name}\n          path: out/\n")
+    found = ref_found(text, reserved=True)
+    assert len(found) == 1 and "reserved for the release build" in found[0]
+    assert ref_found(text, reserved=False) == []
+
+
+def test_a_step_display_name_is_not_an_artifact_name():
+    text = GOOD + ("      - name: release-files\n        uses: actions/upload-artifact@v7\n"
+                   "        with:\n          name: coverage\n          path: out/\n")
+    assert ref_found(text, reserved=True) == []
+
+
+@pytest.mark.parametrize("steps", [
+    "      -\n        uses: actions/checkout@v7\n",
+    "      - uses: actions/checkout@v7\n        env:\n          ref: ${{ inputs.ref }}\n",
+])
+def test_a_checkout_that_ignores_ref_in_any_form_is_a_problem(steps):
+    assert ref_found(STEPS + steps) != []
+
+
+@pytest.mark.parametrize("steps", [
+    "      - run: 'true'\n      - &co\n        uses: actions/checkout@v7\n      - *co\n",
+    "      - {uses: actions/checkout@v7}\n",
+    "      - uses: actions/checkout@v7\n        with: {fetch-depth: 0}\n",
+    "      - uses: actions/upload-artifact@v7\n        with: {name: release-files}\n",
+])
+def test_a_form_the_reader_does_not_follow_is_refused_never_passed(steps):
+    # Each of these checks out the default commit or uploads a reserved name;
+    # the reader refuses them, and check reports the file as unreadable.
+    with pytest.raises(workflow.ReadError):
+        ref_found(STEPS + steps, reserved=True)
+
+
+@pytest.mark.parametrize("ref", [
+    "'${{ github.sha }}' # ${{ inputs.ref }}",
+    '"main" # ${{ inputs.ref }}',
+    "main # ${{ inputs.ref }}",
+    "${{ inputs.ref || github.sha }}",
+    # The quotes inside are part of the value: the ref named is '<sha>', quotes included.
+    "\"'${{ inputs.ref }}'\"",
+    "'\"${{ inputs.ref }}\"'",
+])
+def test_only_the_whole_value_inputs_ref_counts(ref):
+    text = GOOD.replace(NO_REF_LINE, f"          fetch-depth: 0\n          ref: {ref}\n")
+    assert len(ref_found(text)) == 1
+
+
+@pytest.mark.parametrize("ref", ["'${{ inputs.ref }}' # pinned", "${{inputs.ref}}",
+                                 "${{ INPUTS.REF }}", "${{ Inputs.Ref }}"])
+def test_a_quoted_or_tight_inputs_ref_counts(ref):
+    text = GOOD.replace(NO_REF_LINE, f"          fetch-depth: 0\n          ref: {ref}\n")
+    assert ref_found(text) == []
+
+
+def test_the_action_name_is_read_in_any_case():
+    assert len(ref_found(STEPS + "      - uses: Actions/Checkout@v7\n")) == 1
+
+
+def test_a_comment_after_with_is_not_a_value():
+    text = GOOD.replace("          fetch-depth: 0\n", "").replace("        with:\n",
+                                                                   "        with: # pinned\n")
+    assert ref_found(text, reserved=True) == []

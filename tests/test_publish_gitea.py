@@ -1,15 +1,13 @@
 """publish-gitea-packages (D27)."""
 
-import json
 import pathlib
 
 import yaml
 
-from repo_infra.assemble import assemble_publish, block_job_ids
+from repo_infra import callers
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 BLOCK = "publish-gitea-packages"
 
 
@@ -28,16 +26,22 @@ def script():
     return next(s["with"]["script"] for s in job()["steps"] if "script" in s.get("with", {}))
 
 
-def test_the_block_declares_its_one_job():
-    text = (ASSETS / f"publish/{BLOCK}.yml").read_text(encoding="utf-8")
-    assert block_job_ids(text) == MANIFEST["publish_blocks"][BLOCK]["jobs"] == [BLOCK]
+def test_the_piece_declares_its_one_job():
+    assert list(workflow()["jobs"]) == [BLOCK]
 
 
 def test_a_failed_upload_keeps_the_release_a_draft():
     # Blocking: a version public on GitHub but absent from apt and dnf is the
-    # inconsistency worth preventing.
-    assembled = yaml.safe_load(assemble_publish(ASSETS, [BLOCK], MANIFEST))
-    assert BLOCK in assembled["jobs"]["finalize"]["needs"]
+    # inconsistency worth preventing. The caller's finalize must wait for the
+    # upload job, and check reports a finalize that does not.
+    publish = {"uses": "./.github/workflows/ri-publish-tag.yml"}
+    gitea = {"uses": "./.github/workflows/ri-publish-gitea.yml", "needs": ["publish"]}
+    docs = {"release-publish.yml": {"jobs": {
+        "publish": publish, "gitea": gitea, "finalize": {"needs": ["publish"]}}}}
+    found = callers.closing_problems(docs)
+    assert found and "finalize does not need gitea" in found[0][1]
+    docs["release-publish.yml"]["jobs"]["finalize"]["needs"] = ["publish", "gitea"]
+    assert callers.closing_problems(docs) == []
 
 
 def test_the_call_snippet_waits_for_publish_and_honours_the_guard():

@@ -1,4 +1,4 @@
-"""The `github-action` ecosystem (D20): the seam, and the manifest validator.
+"""The ri-ci-github-action piece (D20): the seam, and the manifest validator.
 
 The validator is a script embedded in a shipped CI block, so these tests run
 it the way CI does -- `bash -c` over the block's own `run:` text, against a
@@ -7,21 +7,15 @@ as happily against a script that checks nothing, which is the whole lesson of
 D19.
 """
 
-import json
 import pathlib
 import subprocess
 
 import pytest
 import yaml
 
-from repo_infra.detect import Detection
-from repo_infra.state import NEEDS_ATTENTION_STATES, classify_contracts
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-BLOCK = ASSETS / "ci/ci-github-action.yml"
 PIECE = ASSETS / "pieces/ri-ci-github-action/ri-ci-github-action.yml"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 
 ACTION = """\
 name: Example
@@ -186,13 +180,16 @@ def test_a_runs_block_without_using_fails(tmp_path):
 
 # --- the seam itself -----------------------------------------------------
 
-def test_the_seam_names_the_one_path_the_contract_fixes(tmp_path):
+def piece_jobs():
+    return yaml.safe_load(PIECE.read_text(encoding="utf-8"))["jobs"]
+
+
+def test_the_seam_names_the_one_path_the_contract_fixes():
     """A fixed path is the point (D20): no substitution token, no entry in
     .github/repo-infra.json, nothing for a repository to configure."""
-    block = yaml.safe_load(BLOCK.read_text(encoding="utf-8"))
-    assert block["action-test"] == {"uses": "./.github/workflows/action-test.yml",
-                                    "with": {"ref": "${{ inputs.ref }}"},
-                                    "secrets": "inherit"}
+    assert piece_jobs()["action-test"] == {"uses": "./.github/workflows/action-test.yml",
+                                           "with": {"ref": "${{ inputs.ref }}"},
+                                           "secrets": "inherit"}
 
 
 def test_the_seam_job_carries_no_keys_a_uses_job_cannot_have():
@@ -200,76 +197,8 @@ def test_the_seam_job_carries_no_keys_a_uses_job_cannot_have():
     job that calls a reusable workflow -- which is why the contract makes the
     timeout the project's business. `with` and `secrets` are the two keys a
     calling job does carry: the ref and the inherited secrets."""
-    block = yaml.safe_load(BLOCK.read_text(encoding="utf-8"))
-    assert set(block["action-test"]) == {"uses", "with", "secrets"}
+    assert set(piece_jobs()["action-test"]) == {"uses", "with", "secrets"}
 
 
-def test_the_block_declares_both_jobs():
-    assert MANIFEST["ci_blocks"]["ci-github-action"]["jobs"] == ["action-manifest", "action-test"]
-
-
-# --- detection -----------------------------------------------------------
-
-def test_action_yml_selects_the_github_action_ecosystem(tmp_path):
-    (tmp_path / "action.yml").write_text(ACTION, encoding="utf-8")
-    result = Detection.load(ASSETS / "detection.json").detect(tmp_path)
-    assert result.ecosystems == ["github-action"]
-    assert result.blocks == ["ci-lib", "ci-github-action"]
-
-
-def test_the_ecosystem_stacks_with_a_language_ecosystem(tmp_path):
-    """An action repository is still written in something. Being an action is
-    not a claim about the language, so the blocks add up rather than compete."""
-    (tmp_path / "action.yml").write_text(ACTION, encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text('version = "1.0.0"\n', encoding="utf-8")
-    result = Detection.load(ASSETS / "detection.json").detect(tmp_path)
-    assert result.ecosystems == ["github-action", "python"]
-    assert result.blocks == ["ci-lib", "ci-github-action", "ci-python"]
-
-
-def test_an_action_repository_declares_no_version_file(tmp_path):
-    """Actions are tag-versioned; there is no file for the release workflow to
-    write a version into."""
-    (tmp_path / "action.yml").write_text(ACTION, encoding="utf-8")
-    result = Detection.load(ASSETS / "detection.json").detect(tmp_path)
-    assert result.version_files == []
-
-
-# --- the contract check --------------------------------------------------
-
-def action_repo_result(tmp_path, seam=None):
-    (tmp_path / "action.yml").write_text(ACTION, encoding="utf-8")
-    if seam is not None:
-        wf = tmp_path / ".github/workflows"
-        wf.mkdir(parents=True, exist_ok=True)
-        (wf / "action-test.yml").write_text(seam, encoding="utf-8")
-    return Detection.load(ASSETS / "detection.json").detect(tmp_path)
-
-
-def test_check_reports_a_missing_action_test_workflow(tmp_path):
-    """Installing the block without the project's half does not leave a gap --
-    it makes ci.yml invalid, so no job in the repository reports at all."""
-    items = classify_contracts(tmp_path, action_repo_result(tmp_path))
-    assert [i.name for i in items] == ["action-test"]
-    assert items[0].state == "conflict"
-    assert "action-test.yml" in items[0].detail
-
-
-def test_a_present_action_test_workflow_reports_nothing(tmp_path):
-    result = action_repo_result(tmp_path, seam=(
-        "on:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\njobs: {}\n"))
-    assert classify_contracts(tmp_path, result) == []
-
-
-def test_a_repository_that_is_not_an_action_is_not_asked_for_the_seam(tmp_path):
-    (tmp_path / "pyproject.toml").write_text('version = "1.0.0"\n', encoding="utf-8")
-    result = Detection.load(ASSETS / "detection.json").detect(tmp_path)
-    assert classify_contracts(tmp_path, result) == []
-
-
-def test_the_contract_item_needs_attention_so_check_exits_nonzero(tmp_path):
-    """`conflict` and not `missing`: there is nothing for `apply` to install,
-    and _ordered_names only ever hands apply `missing`/`outdated` items."""
-    items = classify_contracts(tmp_path, action_repo_result(tmp_path))
-    assert items[0].state in NEEDS_ATTENTION_STATES
-    assert items[0].state not in ("missing", "outdated")
+def test_the_piece_declares_both_jobs():
+    assert list(piece_jobs()) == ["action-manifest", "action-test"]

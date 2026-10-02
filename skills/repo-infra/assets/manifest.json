@@ -123,83 +123,6 @@
       "group": "publish"
     }
   },
-  "assets": {
-    "release-pr": {
-      "version": 5,
-      "source": "workflows/release-pr.yml",
-      "target": ".github/workflows/release-pr.yml"
-    },
-    "changelog": {
-      "version": 4,
-      "source": "workflows/changelog.yml",
-      "target": ".github/workflows/changelog.yml"
-    },
-    "dependabot": {
-      "version": 1,
-      "source": "workflows/dependabot.yml",
-      "target": ".github/dependabot.yml"
-    },
-    "workflow-lib": {
-      "version": 6,
-      "source": "workflows/lib",
-      "target": ".github/workflows/lib",
-      "kind": "dir",
-      "comment": "//"
-    }
-  },
-  "ci_blocks": {
-    "ci-lib": {"version": 2, "jobs": ["lib"]},
-    "ci-claude-plugin": {"version": 2, "jobs": ["plugin-manifest"]},
-    "ci-python": {"version": 3, "jobs": ["ruff", "pytest"]},
-    "ci-rust": {"version": 3, "jobs": ["rust-plan", "rust-check", "rust-test"]},
-    "ci-rust-musl": {"version": 2, "jobs": ["rust-musl"], "optional": true, "requires": "rust"},
-    "ci-man": {"version": 3, "jobs": ["man"], "optional": true, "build": ["man", "man-lua"]},
-    "ci-go": {"version": 2, "jobs": ["go-test", "go-lint"]},
-    "ci-node-pnpm": {"version": 2, "jobs": ["node-pnpm-check"]},
-    "ci-node-bun": {"version": 2, "jobs": ["node-bun-check"]},
-    "ci-perl-autotools": {"version": 3, "jobs": ["perl-autotools"]},
-    "ci-perl-mkpl": {"version": 2, "jobs": ["perl-mkpl"]},
-    "ci-repo-infra-selftest": {"version": 4, "jobs": ["repo-infra-selftest", "repo-infra-man"]},
-    "ci-checkmk-plugin": {"version": 2, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
-    "ci-github-action": {"version": 2, "jobs": ["action-manifest", "action-test"]},
-    "ci-local": {"version": 2, "jobs": ["ci-local"], "optional": true, "seam": "ci_local"}
-  },
-  "publish_blocks": {
-    "publish-crates-io": {"version": 3, "jobs": ["publish-crates-io"], "assets": []},
-    "publish-gitea-packages": {"version": 1, "jobs": ["publish-gitea-packages"], "assets": []}
-  },
-  "release_build_blocks": {
-    "release-source-tarball": {"version": 1, "jobs": ["release-source-tarball"],
-                               "assets": ["*.tar.gz"]},
-    "release-build-local-job": {"version": 1, "jobs": ["release-build-local"], "assets": [],
-                                "seam": "release_build_local"}
-  },
-  "build_assets": {
-    "container": {
-      "version": 2,
-      "source": "build/container.mk",
-      "target": "build/container.mk",
-      "comment": "#"
-    },
-    "container-m4": {
-      "version": 1,
-      "source": "m4/repo-infra-container.m4",
-      "target": "m4/repo-infra-container.m4",
-      "comment": "dnl"
-    },
-    "man": {
-      "version": 3,
-      "source": "build/man.mk",
-      "target": "build/man.mk",
-      "comment": "#"
-    },
-    "man-lua": {
-      "version": 1,
-      "source": "build/man-deflist.lua",
-      "target": "build/man-deflist.lua",
-      "comment": "--"
-    }
-  },
   "actions": {
     "actions/checkout": "v7",
     "actions/setup-node": "v7",
@@ -216,6 +139,9 @@
     "oposs/mkp-builder": "v2"
   },
   "gh": {
-    "ruleset-main": {"version": 2, "source": "gh/ruleset-main.json"}
+    "ruleset-main": {
+      "version": 2,
+      "source": "gh/ruleset-main.json"
+    }
   }
 }

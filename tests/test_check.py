@@ -272,3 +272,38 @@ def test_malformed_version_files_are_a_problem_not_a_traceback(tmp_path, data):
 def test_a_string_release_files_is_a_problem_not_a_traceback(tmp_path):
     found = config(tmp_path, {"version_files": VERSIONS, "release_files": "CHANGES.md"})
     assert [(n, s) for n, s, _ in found] == [("release_files", "problem")]
+
+
+@pytest.mark.parametrize("entry", [
+    "CHANGES.md", "./CHANGES.md", "Formula/../CHANGES.md", "Cargo.toml",
+    ".github/repo-infra.json", ".github//workflows/ci.yml", "/etc/passwd", "../x", "",
+])
+def test_a_release_file_that_reopens_the_channel_is_refused(entry):
+    refused = check.refused_release_files([entry], [{"path": "Cargo.toml"}])
+    assert [path for path, _ in refused] == [entry]
+
+
+def test_the_formula_is_an_acceptable_release_file():
+    assert check.refused_release_files(["Formula/mdmost.rb"], [{"path": "Cargo.toml"}]) == []
+
+
+GITEA_DOCS = {"release-publish.yml": {"jobs": {"gitea": {
+    "uses": "./.github/workflows/ri-publish-gitea.yml"}}}}
+
+
+def test_gitea_packages_with_its_config_is_fine(tmp_path):
+    base = {"version_files": VERSIONS,
+            "gitea_packages": {"url": "https://gitea.example.org", "owner": "acme"}}
+    assert config(tmp_path, base, GITEA_DOCS) == []
+
+
+@pytest.mark.parametrize("packages,absent", [
+    (None, "url and owner"),
+    ({"owner": "acme"}, "url"),
+    ({"url": "https://gitea.example.org"}, "owner"),
+])
+def test_gitea_packages_without_url_or_owner_is_a_problem(tmp_path, packages, absent):
+    found = config(tmp_path, {"version_files": VERSIONS, "gitea_packages": packages},
+                   GITEA_DOCS)
+    assert [(n, s) for n, s, _ in found] == [("gitea_packages", "problem")]
+    assert f"lacks {absent};" in found[0][2]

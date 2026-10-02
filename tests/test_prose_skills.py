@@ -12,7 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "skills"
 PROSE_SKILLS = ["writing-style", "man-pages"]
 TERM_EXAMPLE = "- `--listen <ip:port>`: Address and port to listen on."
-LUA = ROOT / "skills/repo-infra/assets/build/man-deflist.lua"
+LUA = ROOT / "skills/repo-infra/assets/pieces/man-lua/man-deflist.lua"
 
 
 def skill(name):

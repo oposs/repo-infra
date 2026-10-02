@@ -9,12 +9,8 @@ import subprocess
 import pytest
 import yaml
 
-from repo_infra.assemble import assemble_ci, render_all
-from repo_infra.detect import Detection
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 BOT = "github-actions[bot]"
 REF = "${{ inputs.ref }}"
 BUILT = [{"context": "release-built", "state": "success", "creator": {"login": BOT}}]
@@ -38,26 +34,6 @@ def release_pr_current_job():
     piece = yaml.safe_load((ASSETS / "pieces/ri-release-pr-current/ri-release-pr-current.yml")
                            .read_text(encoding="utf-8"))
     return piece["jobs"]["release-pr-current"]
-
-
-def test_ci_yml_is_also_a_reusable_workflow_with_an_optional_ref():
-    doc = yaml.safe_load(assemble_ci(ASSETS, [], MANIFEST))
-    assert on(doc)["workflow_call"] == {
-        "inputs": {"ref": {"type": "string", "required": False, "default": ""}}}
-    assert set(on(doc)) == {"push", "pull_request", "workflow_call"}
-    assert doc["permissions"] == {"contents": "read"}
-
-
-def test_every_called_workflow_gets_ref_and_secrets(tmp_path):
-    (tmp_path / "action.yml").write_text("name: x\n")
-    result = Detection.load(ASSETS / "detection.json").detect(tmp_path)
-    jobs = yaml.safe_load(render_all(ASSETS, result, MANIFEST, ci_local=True)[
-        ".github/workflows/ci.yml"])["jobs"]
-    called = {k: j for k, j in jobs.items() if str(j.get("uses", "")).startswith("./")}
-    assert sorted(called) == ["action-test", "ci-local"]
-    for job in called.values():
-        assert job["with"] == {"ref": REF}
-        assert job["secrets"] == "inherit"
 
 
 def test_ci_passed_raises_only_what_release_mode_reads():
