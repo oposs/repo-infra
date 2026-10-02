@@ -147,7 +147,9 @@ TABLE = "<standard input>:35: warning: table wider than line length minus indent
 
 
 def check_script():
-    step = next(s for s in jobs(rendered())["man"]["steps"]
+    path = ASSETS / "pieces/ri-ci-man/ri-ci-man.yml"
+    job = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["man"]
+    step = next(s for s in job["steps"]
                 if s.get("name", "").startswith("Render"))
     return step["run"]
 

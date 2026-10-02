@@ -16,7 +16,7 @@ Installed at `.github/workflows/ri-ci-checkmk-plugin.yml`.
 
 **Choose it when:** The repository has .mkp-builder.ini.
 
-**The repository supplies:** Plugin code under local/, tests for pytest, .mkp-builder.ini.
+**The repository supplies:** Plugin code under local/, tests for pytest, .mkp-builder.ini; requirements-dev.txt for the test dependencies, when it exists.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -52,6 +52,30 @@ plugin:
   uses: ./.github/workflows/ri-ci-claude-plugin.yml
   with:
     ref: ${{ inputs.ref }}
+```
+
+### ri-ci-github-action v1
+
+Installed at `.github/workflows/ri-ci-github-action.yml`.
+
+**Purpose:** Check action.yml against its callers and run the project's own action test.
+
+**Choose it when:** The repository has action.yml.
+
+**The repository supplies:** action.yml, and .github/workflows/action-test.yml: the project's own test, called with `ref` (D20).
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+action:
+  uses: ./.github/workflows/ri-ci-github-action.yml
+  with:
+    ref: ${{ inputs.ref }}
+  secrets: inherit
 ```
 
 ### ri-ci-go v1
@@ -98,6 +122,31 @@ Installed at `.github/workflows/ri-ci-lib.yml`.
 ```yaml
 lib:
   uses: ./.github/workflows/ri-ci-lib.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-man v1
+
+Installed at `.github/workflows/ri-ci-man.yml`.
+
+**Purpose:** Build the man page and fail on a roff warning.
+
+**Choose it when:** The project ships a man page built from docs/manual.md (D23).
+
+**The repository supplies:** docs/manual.md and a `man` target from build/man.mk.
+
+**Needs the pieces:** man, man-lua
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+man:
+  uses: ./.github/workflows/ri-ci-man.yml
   with:
     ref: ${{ inputs.ref }}
 ```
@@ -154,7 +203,7 @@ Installed at `.github/workflows/ri-ci-perl-autotools.yml`.
 
 **Purpose:** Bootstrap, configure, build and test an autotools Perl project.
 
-**Choose it when:** configure.ac.
+**Choose it when:** configure.ac and cpanfile.
 
 **The repository supplies:** ./bootstrap, configure, and the targets all and test.
 
@@ -213,6 +262,77 @@ Installed at `.github/workflows/ri-ci-python.yml`.
 ```yaml
 python:
   uses: ./.github/workflows/ri-ci-python.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-repo-infra-selftest v1
+
+Installed at `.github/workflows/ri-ci-repo-infra-selftest.yml`.
+
+**Purpose:** Run the container and pandoc tests of the pytest suite.
+
+**Choose it when:** Only in repo-infra itself.
+
+**The repository supplies:** The pytest suite with the container and pandoc markers.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+selftest:
+  uses: ./.github/workflows/ri-ci-repo-infra-selftest.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-rust v1
+
+Installed at `.github/workflows/ri-ci-rust.yml`.
+
+**Purpose:** Check, lint and test a Rust workspace.
+
+**Choose it when:** The repository has Cargo.toml.
+
+**The repository supplies:** Cargo.toml and Cargo.lock; the optional "rust" key in .github/repo-infra.json names the crates to lint and to test (D24).
+
+**Needs the pieces:** workflow-lib
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+rust:
+  uses: ./.github/workflows/ri-ci-rust.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-rust-musl v1
+
+Installed at `.github/workflows/ri-ci-rust-musl.yml`.
+
+**Purpose:** Build static musl binaries and verify they are static.
+
+**Choose it when:** The project ships a static Linux binary; call it beside ri-ci-rust.
+
+**The repository supplies:** Cargo.toml with a binary target.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+rust-musl:
+  uses: ./.github/workflows/ri-ci-rust-musl.yml
   with:
     ref: ${{ inputs.ref }}
 ```

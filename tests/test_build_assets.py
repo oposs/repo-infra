@@ -115,7 +115,9 @@ def test_test_dev_passes_a_relative_tests_override():
 def test_no_ci_block_calls_the_dev_loop():
     # test-dev is a developer convenience. What CI must verify is that the image
     # builds and its contents pass, which is `make test`.
-    for path in sorted((ASSETS / "ci").glob("*.yml")) + sorted((ASSETS / "publish").glob("*.yml")):
+    paths = sorted((ASSETS / "pieces").glob("*/*.yml")) + sorted((ASSETS / "publish").glob("*.yml"))
+    assert len(paths) >= 10, "the piece workflow files were not found"
+    for path in paths:
         assert "test-dev" not in path.read_text(encoding="utf-8"), path.name
 
 

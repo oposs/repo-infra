@@ -94,16 +94,22 @@
     "6": "5f367cbe5a65a43a1bfc2768cf5dc478ee59120343e7910b14d5ee651a834852"
   },
   "pieces/ri-ci-checkmk-plugin/ri-ci-checkmk-plugin.yml": {
-    "1": "33046aa27071b29462cf08bbd8482e0e5d6d8ed5232fa5808d52dd9d7bdc2eca"
+    "1": "fb5b99b87ca00fbaf457dc7eb0a74150de47a44c619ae65a1ccea36de67152aa"
   },
   "pieces/ri-ci-claude-plugin/ri-ci-claude-plugin.yml": {
     "1": "64ff6b446bd3c30290b294ed5a32286ed302a8ca9defebca2ba85e6faecf9bc7"
+  },
+  "pieces/ri-ci-github-action/ri-ci-github-action.yml": {
+    "1": "f7ef87b8af59e3c5cf7d52d509a16882cf25cd3069972b108b2da5888ddff23c"
   },
   "pieces/ri-ci-go/ri-ci-go.yml": {
     "1": "376b1bdf7192ed7d2adeecad788ee221ad8367df25b65504c3fa58c1d2bb07e6"
   },
   "pieces/ri-ci-lib/ri-ci-lib.yml": {
     "1": "853c34d55ff0b9e8311fba6847f8a48a23f03e0592593f60091966073cc7e375"
+  },
+  "pieces/ri-ci-man/ri-ci-man.yml": {
+    "1": "0213825a02a9356abbd80c492d43a4c384c7830be767c9b0cf2e0df346d62905"
   },
   "pieces/ri-ci-node-bun/ri-ci-node-bun.yml": {
     "1": "5e1415601a8f7f9046d1927b07edd2ddc910a25c6938d75a75321ebeb39f0855"
@@ -112,13 +118,22 @@
     "1": "6fdc85daba4c40c10d4884b4d0d55b89b60b351e8ef8ae92b9ddbdeb97a67875"
   },
   "pieces/ri-ci-perl-autotools/ri-ci-perl-autotools.yml": {
-    "1": "93e23e302104ca11fc555eb2e8317e2597e8cccfe9f06fd54f90384489e888b4"
+    "1": "c1f1495d01ca58ae84aca2a17acdabb13ba6da3b666dd432a96dbe8ada095d8d"
   },
   "pieces/ri-ci-perl-mkpl/ri-ci-perl-mkpl.yml": {
     "1": "a8e3119bf1c3762c66782a51db8736a7fd403870339ccd118e61f5949fb12233"
   },
   "pieces/ri-ci-python/ri-ci-python.yml": {
     "1": "8b478e85140d56a61842faee83dbfe48a66df176c87a64857b697cc0c9b49ea5"
+  },
+  "pieces/ri-ci-repo-infra-selftest/ri-ci-repo-infra-selftest.yml": {
+    "1": "0980d68d404bf1aeff0de01ad1aa23a089886f02f960ec5494e0b18ff00b1ead"
+  },
+  "pieces/ri-ci-rust-musl/ri-ci-rust-musl.yml": {
+    "1": "e5e03089ce24416d597d4fd0002d55c97d5daf2b5f9deeb5bca5415bc1856de1"
+  },
+  "pieces/ri-ci-rust/ri-ci-rust.yml": {
+    "1": "bc048855fa2f0f9f15ec07d3c66f60a440535448cf8347032deaf07259b27ebb"
   },
   "pieces/workflow-lib/lib/assets.js": {
     "6": "dad330962988bf07890d792172cf8db456c2a0fdd931473fa17880012c5408f0",

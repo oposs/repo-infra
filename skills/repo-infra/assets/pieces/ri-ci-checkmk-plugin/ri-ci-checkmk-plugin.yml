@@ -2,7 +2,8 @@
 #
 # Purpose: Lint, test and package a Checkmk plugin.
 # Choose: The repository has .mkp-builder.ini.
-# Supplies: Plugin code under local/, tests for pytest, .mkp-builder.ini.
+# Supplies: Plugin code under local/, tests for pytest, .mkp-builder.ini;
+#   requirements-dev.txt for the test dependencies, when it exists.
 # Call:
 #   checkmk:
 #     uses: ./.github/workflows/ri-ci-checkmk-plugin.yml

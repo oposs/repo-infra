@@ -1,7 +1,7 @@
 # repo-infra: ri-ci-perl-autotools v1
 #
 # Purpose: Bootstrap, configure, build and test an autotools Perl project.
-# Choose: configure.ac.
+# Choose: configure.ac and cpanfile.
 # Supplies: ./bootstrap, configure, and the targets all and test.
 # Call:
 #   perl:

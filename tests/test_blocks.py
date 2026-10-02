@@ -14,6 +14,14 @@ USES = re.compile(r"uses:\s*([\w.-]+/[\w.-]+)@(v\d+|\w+)")
 MAN_TOOLCHAIN_LINE = "          sudo apt-get install -y pandoc groff man-db"
 
 
+def piece_text(name):
+    return (ASSETS / "pieces" / name / (name + ".yml")).read_text(encoding="utf-8")
+
+
+def ci_pieces():
+    return sorted(p.name for p in (ASSETS / "pieces").glob("ri-ci-*") if p.is_dir())
+
+
 def every_asset_file():
     for path in sorted(ASSETS.rglob("*")):
         if path.is_file() and path.suffix in (".yml", ".yaml"):
@@ -27,8 +35,17 @@ def required_workflow_files():
     push trigger and none of their jobs is a required context. Applying D13's
     rule to them would be wrong.
     """
-    yield from sorted((ASSETS / "ci").glob("*.yml"))
-    yield ASSETS / "workflows/changelog.yml"
+    yield from sorted((ASSETS / "pieces").glob("ri-ci-*/*.yml"))
+    yield ASSETS / "pieces/changelog/changelog.yml"
+
+
+def test_the_required_workflow_set_is_not_empty():
+    # The path-filter test below is parametrized over this set; an empty set
+    # would let it pass on nothing.
+    names = [p.name for p in required_workflow_files()]
+    assert "ri-ci-python.yml" in names
+    assert "changelog.yml" in names
+    assert len(names) >= 10
 
 
 @pytest.mark.parametrize("block", sorted(MANIFEST["ci_blocks"]))
@@ -106,7 +123,7 @@ def test_every_non_yaml_asset_is_covered_by_a_test():
 
 
 def test_the_autotools_block_installs_only_the_fixed_host_toolchain():
-    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    text = piece_text("ri-ci-perl-autotools")
     assert "autoconf automake gettext podman" in text
     # D16: no per-repo package list, in any shape.
     assert "apt-packages" not in text
@@ -114,7 +131,7 @@ def test_the_autotools_block_installs_only_the_fixed_host_toolchain():
 
 
 def test_the_autotools_block_runs_make_test():
-    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    text = piece_text("ri-ci-perl-autotools")
     assert "make test" in text
     assert "make check" not in text
 
@@ -122,7 +139,7 @@ def test_the_autotools_block_runs_make_test():
 def test_the_autotools_block_no_longer_documents_a_bare_configure_limit():
     # D18 closed it: plain ./configure is driver mode, so the runner never
     # probes the project's system dependencies.
-    text = (ASSETS / "ci/ci-perl-autotools.yml").read_text(encoding="utf-8")
+    text = piece_text("ri-ci-perl-autotools")
     assert "Known limit" not in text
     assert "enable-pkgonly" not in text
 
@@ -136,7 +153,7 @@ def test_the_selftest_block_declares_exactly_its_two_jobs():
 def test_the_selftest_block_runs_only_the_container_marked_tests():
     # The marker is what keeps the ordinary pytest job sub-second. A selftest
     # job that ran the whole suite would duplicate it and hide its own cost.
-    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    text = piece_text("ri-ci-repo-infra-selftest")
     assert "-m container" in text
 
 
@@ -151,8 +168,8 @@ def test_all_three_blocks_install_a_byte_identical_host_toolchain():
     # needed on top of it.
     expected_line = "          sudo apt-get install -y autoconf automake gettext podman"
     for name in (
-        "ci/ci-perl-autotools.yml",
-        "ci/ci-repo-infra-selftest.yml",
+        "pieces/ri-ci-perl-autotools/ri-ci-perl-autotools.yml",
+        "pieces/ri-ci-repo-infra-selftest/ri-ci-repo-infra-selftest.yml",
         "release-build/release-source-tarball.yml",
     ):
         text = (ASSETS / name).read_text(encoding="utf-8")
@@ -164,8 +181,8 @@ def test_all_three_blocks_install_a_byte_identical_host_toolchain():
         assert lines[0] == expected_line, f"{name}: expected {repr(expected_line)}, got {repr(lines[0])}"
 
 
-@pytest.mark.parametrize("block", sorted(MANIFEST["ci_blocks"]))
-def test_a_block_that_runs_pytest_installs_the_declared_test_dependencies(block):
+@pytest.mark.parametrize("piece", ci_pieces())
+def test_a_piece_that_runs_pytest_installs_the_declared_test_dependencies(piece):
     """`-m <marker>` filters selection, not collection.
 
     pytest imports every module under tests/ before deciding which to run, so a
@@ -174,24 +191,31 @@ def test_a_block_that_runs_pytest_installs_the_declared_test_dependencies(block)
     pytest alone and died with `1 error during collection` on a test file it
     was never going to run.
     """
-    text = (ASSETS / "ci" / (block + ".yml")).read_text(encoding="utf-8")
+    text = piece_text(piece)
     if "python3 -m pytest" not in text:
         return
     assert "requirements-dev.txt" in text, (
         "%s runs pytest but never installs the repository's declared test "
-        "dependencies" % block)
+        "dependencies" % piece)
+
+
+def test_the_pytest_pieces_are_among_those_checked():
+    # The check above returns early for a piece without pytest; make sure it
+    # still has pieces that do run it.
+    running = [p for p in ci_pieces() if "python3 -m pytest" in piece_text(p)]
+    assert "ri-ci-repo-infra-selftest" in running
 
 
 def test_the_man_selftest_installs_what_ci_man_installs():
     # repo-infra-man proves the build assets ci-man runs. On a different
     # toolchain it would prove something else, and stay green doing it.
-    for name in ("ci/ci-man.yml", "ci/ci-repo-infra-selftest.yml"):
-        text = (ASSETS / name).read_text(encoding="utf-8")
+    for name in ("ri-ci-man", "ri-ci-repo-infra-selftest"):
+        text = piece_text(name)
         assert text.split("\n").count(MAN_TOOLCHAIN_LINE) == 1, name
 
 
 def test_the_man_selftest_runs_the_pandoc_marked_tests():
-    text = (ASSETS / "ci/ci-repo-infra-selftest.yml").read_text(encoding="utf-8")
+    text = piece_text("ri-ci-repo-infra-selftest")
     job = text.split("  repo-infra-man:", 1)[1]
     assert "python3 -m pytest -m pandoc -v tests" in job
     assert "requirements-dev.txt" in job

@@ -20,6 +20,7 @@ from repo_infra.state import NEEDS_ATTENTION_STATES, classify_contracts
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 BLOCK = ASSETS / "ci/ci-github-action.yml"
+PIECE = ASSETS / "pieces/ri-ci-github-action/ri-ci-github-action.yml"
 MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 
 ACTION = """\
@@ -47,8 +48,8 @@ def validator_script():
     that these tests do not cover shows up as a test that stopped exercising
     what ships.
     """
-    block = yaml.safe_load(BLOCK.read_text(encoding="utf-8"))
-    steps = block["action-manifest"]["steps"]
+    piece = yaml.safe_load(PIECE.read_text(encoding="utf-8"))
+    steps = piece["jobs"]["action-manifest"]["steps"]
     checks = [s for s in steps if s.get("name", "").startswith("Check action.yml")]
     assert len(checks) == 1, "the block no longer has exactly one checking step"
     return checks[0]["run"]

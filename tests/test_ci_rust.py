@@ -13,6 +13,13 @@ MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 
 
 def jobs():
+    path = ASSETS / "pieces/ri-ci-rust/ri-ci-rust.yml"
+    return yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]
+
+
+def assembled_jobs():
+    # Only for the ci-passed needs list, which belongs to the assembler until
+    # the caller owns it (Task 14 removes this).
     return yaml.safe_load(assemble_ci(ASSETS, ["ci-rust"], MANIFEST))["jobs"]
 
 
@@ -24,7 +31,7 @@ def test_the_plan_is_a_required_job():
     # If rust-plan fails, both matrix jobs are skipped, and ci-passed counts a
     # skipped need as green. rust-plan in ci-passed's needs is what stops a
     # run whose Rust checks never ran from going green.
-    assert jobs()["ci-passed"]["needs"] == ["rust-plan", "rust-check", "rust-test"]
+    assert assembled_jobs()["ci-passed"]["needs"] == ["rust-plan", "rust-check", "rust-test"]
 
 
 def test_the_matrix_jobs_wait_for_the_plan_and_read_its_lists():

@@ -74,6 +74,26 @@
     "ri-ci-checkmk-plugin": {
       "target": ".github/workflows/ri-ci-checkmk-plugin.yml",
       "group": "ci"
+    },
+    "ri-ci-rust": {
+      "target": ".github/workflows/ri-ci-rust.yml",
+      "group": "ci"
+    },
+    "ri-ci-rust-musl": {
+      "target": ".github/workflows/ri-ci-rust-musl.yml",
+      "group": "ci"
+    },
+    "ri-ci-man": {
+      "target": ".github/workflows/ri-ci-man.yml",
+      "group": "ci"
+    },
+    "ri-ci-github-action": {
+      "target": ".github/workflows/ri-ci-github-action.yml",
+      "group": "ci"
+    },
+    "ri-ci-repo-infra-selftest": {
+      "target": ".github/workflows/ri-ci-repo-infra-selftest.yml",
+      "group": "ci"
     }
   },
   "assets": {
