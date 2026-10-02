@@ -7,13 +7,17 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def git_identity(monkeypatch):
-    """Give every git commit an author, including the ones apply makes.
+    """Run git as a fresh GitHub runner does: no global or system config, and
+    an identity from the environment.
 
-    A GitHub runner has no git identity and no host name git can build one
-    from, so "git commit" fails there with "Author identity unknown". A
-    developer machine guesses one, which hid six such tests until the
-    PR #44 run.
+    The runner has no git identity and no host name git can build one from,
+    so "git commit" fails there with "Author identity unknown". A developer
+    machine guesses one, which hid six such tests until the PR #44 run. A
+    global setting such as commit signing or init.defaultBranch would hide
+    the next difference the same way.
     """
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     for role in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
         monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.com")
