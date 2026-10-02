@@ -93,6 +93,33 @@
     "5": "02b11b7c843a7d452f7131234378e34c63314e772420fdb4707259f5b19bc1e2",
     "6": "5f367cbe5a65a43a1bfc2768cf5dc478ee59120343e7910b14d5ee651a834852"
   },
+  "pieces/ri-ci-checkmk-plugin/ri-ci-checkmk-plugin.yml": {
+    "1": "33046aa27071b29462cf08bbd8482e0e5d6d8ed5232fa5808d52dd9d7bdc2eca"
+  },
+  "pieces/ri-ci-claude-plugin/ri-ci-claude-plugin.yml": {
+    "1": "64ff6b446bd3c30290b294ed5a32286ed302a8ca9defebca2ba85e6faecf9bc7"
+  },
+  "pieces/ri-ci-go/ri-ci-go.yml": {
+    "1": "376b1bdf7192ed7d2adeecad788ee221ad8367df25b65504c3fa58c1d2bb07e6"
+  },
+  "pieces/ri-ci-lib/ri-ci-lib.yml": {
+    "1": "853c34d55ff0b9e8311fba6847f8a48a23f03e0592593f60091966073cc7e375"
+  },
+  "pieces/ri-ci-node-bun/ri-ci-node-bun.yml": {
+    "1": "5e1415601a8f7f9046d1927b07edd2ddc910a25c6938d75a75321ebeb39f0855"
+  },
+  "pieces/ri-ci-node-pnpm/ri-ci-node-pnpm.yml": {
+    "1": "6fdc85daba4c40c10d4884b4d0d55b89b60b351e8ef8ae92b9ddbdeb97a67875"
+  },
+  "pieces/ri-ci-perl-autotools/ri-ci-perl-autotools.yml": {
+    "1": "93e23e302104ca11fc555eb2e8317e2597e8cccfe9f06fd54f90384489e888b4"
+  },
+  "pieces/ri-ci-perl-mkpl/ri-ci-perl-mkpl.yml": {
+    "1": "a8e3119bf1c3762c66782a51db8736a7fd403870339ccd118e61f5949fb12233"
+  },
+  "pieces/ri-ci-python/ri-ci-python.yml": {
+    "1": "8b478e85140d56a61842faee83dbfe48a66df176c87a64857b697cc0c9b49ea5"
+  },
   "pieces/workflow-lib/lib/assets.js": {
     "6": "dad330962988bf07890d792172cf8db456c2a0fdd931473fa17880012c5408f0",
     "7": "713c6053ffe1adec0f083596cfa84f32405ecf1397d1fc031748a62d328b09fe"

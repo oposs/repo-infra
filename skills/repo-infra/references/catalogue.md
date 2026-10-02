@@ -6,6 +6,217 @@ secrets of every piece. Do not edit it by hand.
 `apply --item <piece>` installs a piece 1:1 and commits it. A workflow piece
 then needs a job in a caller; the snippet under each one is that job.
 
+## CI: called from ci.yml
+
+### ri-ci-checkmk-plugin v1
+
+Installed at `.github/workflows/ri-ci-checkmk-plugin.yml`.
+
+**Purpose:** Lint, test and package a Checkmk plugin.
+
+**Choose it when:** The repository has .mkp-builder.ini.
+
+**The repository supplies:** Plugin code under local/, tests for pytest, .mkp-builder.ini.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+checkmk:
+  uses: ./.github/workflows/ri-ci-checkmk-plugin.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-claude-plugin v1
+
+Installed at `.github/workflows/ri-ci-claude-plugin.yml`.
+
+**Purpose:** Check that .claude-plugin/plugin.json is valid.
+
+**Choose it when:** The repository has .claude-plugin/plugin.json.
+
+**The repository supplies:** .claude-plugin/plugin.json.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+plugin:
+  uses: ./.github/workflows/ri-ci-claude-plugin.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-go v1
+
+Installed at `.github/workflows/ri-ci-go.yml`.
+
+**Purpose:** Run go vet, go test and golangci-lint.
+
+**Choose it when:** The repository has go.mod.
+
+**The repository supplies:** go.mod.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+go:
+  uses: ./.github/workflows/ri-ci-go.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-lib v1
+
+Installed at `.github/workflows/ri-ci-lib.yml`.
+
+**Purpose:** Run the tests of the workflow library.
+
+**Choose it when:** Always: it runs the tests of the workflow library every repository carries.
+
+**The repository supplies:** Nothing.
+
+**Needs the pieces:** workflow-lib
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+lib:
+  uses: ./.github/workflows/ri-ci-lib.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-node-bun v1
+
+Installed at `.github/workflows/ri-ci-node-bun.yml`.
+
+**Purpose:** Install with bun, type-check and test.
+
+**Choose it when:** package.json and bun.lock, and no other lockfile.
+
+**The repository supplies:** A tsconfig for `bunx tsc --noEmit`, and tests for `bun test`.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+node:
+  uses: ./.github/workflows/ri-ci-node-bun.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-node-pnpm v1
+
+Installed at `.github/workflows/ri-ci-node-pnpm.yml`.
+
+**Purpose:** Install with pnpm, then check, test and build.
+
+**Choose it when:** package.json and pnpm-lock.yaml, and no other lockfile.
+
+**The repository supplies:** The package.json scripts check, test and build.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+node:
+  uses: ./.github/workflows/ri-ci-node-pnpm.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-perl-autotools v1
+
+Installed at `.github/workflows/ri-ci-perl-autotools.yml`.
+
+**Purpose:** Bootstrap, configure, build and test an autotools Perl project.
+
+**Choose it when:** configure.ac.
+
+**The repository supplies:** ./bootstrap, configure, and the targets all and test.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+perl:
+  uses: ./.github/workflows/ri-ci-perl-autotools.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-perl-mkpl v1
+
+Installed at `.github/workflows/ri-ci-perl-mkpl.yml`.
+
+**Purpose:** Build the vendored dependencies and test a Makefile.PL project on three Perl versions.
+
+**Choose it when:** Makefile.PL and no configure.ac.
+
+**The repository supplies:** Makefile.PL and the targets thirdparty and test.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+perl:
+  uses: ./.github/workflows/ri-ci-perl-mkpl.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
+### ri-ci-python v1
+
+Installed at `.github/workflows/ri-ci-python.yml`.
+
+**Purpose:** Lint with ruff and run pytest.
+
+**Choose it when:** The repository has pyproject.toml.
+
+**The repository supplies:** pyproject.toml with the pytest pythonpath setting; requirements-dev.txt for the test dependencies, when it exists.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+python:
+  uses: ./.github/workflows/ri-ci-python.yml
+  with:
+    ref: ${{ inputs.ref }}
+```
+
 ## Release flow: installed, never called by hand
 
 ### changelog v5

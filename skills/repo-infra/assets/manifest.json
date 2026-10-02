@@ -37,6 +37,43 @@
     "man-lua": {
       "target": "build/man-deflist.lua",
       "group": "build"
+    },
+    "ri-ci-lib": {
+      "target": ".github/workflows/ri-ci-lib.yml",
+      "group": "ci",
+      "core": true
+    },
+    "ri-ci-claude-plugin": {
+      "target": ".github/workflows/ri-ci-claude-plugin.yml",
+      "group": "ci"
+    },
+    "ri-ci-python": {
+      "target": ".github/workflows/ri-ci-python.yml",
+      "group": "ci"
+    },
+    "ri-ci-go": {
+      "target": ".github/workflows/ri-ci-go.yml",
+      "group": "ci"
+    },
+    "ri-ci-node-pnpm": {
+      "target": ".github/workflows/ri-ci-node-pnpm.yml",
+      "group": "ci"
+    },
+    "ri-ci-node-bun": {
+      "target": ".github/workflows/ri-ci-node-bun.yml",
+      "group": "ci"
+    },
+    "ri-ci-perl-autotools": {
+      "target": ".github/workflows/ri-ci-perl-autotools.yml",
+      "group": "ci"
+    },
+    "ri-ci-perl-mkpl": {
+      "target": ".github/workflows/ri-ci-perl-mkpl.yml",
+      "group": "ci"
+    },
+    "ri-ci-checkmk-plugin": {
+      "target": ".github/workflows/ri-ci-checkmk-plugin.yml",
+      "group": "ci"
     }
   },
   "assets": {

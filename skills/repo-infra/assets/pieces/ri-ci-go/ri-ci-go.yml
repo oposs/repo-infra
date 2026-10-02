@@ -1,0 +1,59 @@
+# repo-infra: ri-ci-go v1
+#
+# Purpose: Run go vet, go test and golangci-lint.
+# Choose: The repository has go.mod.
+# Supplies: go.mod.
+# Call:
+#   go:
+#     uses: ./.github/workflows/ri-ci-go.yml
+#     with:
+#       ref: ${{ inputs.ref }}
+
+name: Go
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to check out; empty takes the commit that triggered the run (D28).
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  go-test:
+    name: Go vet and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      # go-version-file rather than a literal: the toolchain directive in go.mod
+      # is the repository's own answer, and dependabot can see it.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: go vet ./...
+
+      - run: go test ./...
+
+  go-lint:
+    name: Go lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@v9
