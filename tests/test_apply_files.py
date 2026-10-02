@@ -94,9 +94,12 @@ def test_an_unstamped_old_file_hands_over_the_merge(tmp_path):
 
 def test_a_crlf_checkout_is_never_overwritten(tmp_path):
     git_repo(tmp_path)
-    installed(tmp_path, stamp(OLD).replace("\n", "\r\n"))
+    target = installed(tmp_path, "")
+    crlf = stamp(OLD).replace("\n", "\r\n").encode("utf-8")
+    target.write_bytes(crlf)
     with pytest.raises(NeedsMerge):
         apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+    assert target.read_bytes() == crlf
 
 
 def test_a_deleted_stamp_hands_over_the_merge(tmp_path):

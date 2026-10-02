@@ -169,4 +169,4 @@ def test_stamp_works_for_each_comment_style():
 
 def test_crlf_text_is_never_pristine_after_conversion():
     lf = stamp("# repo-infra: ci v2\njobs:\n")
-    assert pristine(lf.replace("\n", "\r\n")) is not True
+    assert pristine(lf.replace("\n", "\r\n")) is None
