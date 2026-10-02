@@ -1,9 +1,8 @@
 import json
 import pathlib
 
-import pytest
-
 import generations
+import pytest
 
 ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 RECORD = ASSETS / "generations.json"
