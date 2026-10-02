@@ -230,4 +230,3 @@ def test_a_plugin_installed_without_git_upgrades_an_unedited_stamped_file(tmp_pa
     text = (target / path).read_text(encoding="utf-8")
     assert pristine(text) is True and strip_stamp(text) == current
     assert last_subject(target) == "Install changelog from the repo-infra standard"
-
