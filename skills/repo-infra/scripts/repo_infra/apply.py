@@ -17,6 +17,7 @@ import pathlib
 import re
 import subprocess
 
+from .check import unstamped
 from .markers import parse_markers
 from .remote import protects_default_branch
 
@@ -148,27 +149,34 @@ def _prepare_merge(repo_root, name, path, expected, installed):
 def install_piece(repo_root, piece, state, history, merged=None):
     """Write `piece` at its current version; return the paths written or removed.
 
-    A file an older version shipped and this one does not is removed when its
-    bytes are a published version; an edited one stays for the human (see
-    `kept_edits`). When the piece is edited, the merge is prepared for an
-    edited file the new version ships; edited files it dropped cannot be
-    merged into anything."""
+    An edited file the new version ships is merged by hand: the first call
+    prepares the merge and raises NeedsMerge, the `merged` call completes the
+    piece. An edited file the new version dropped cannot be merged into
+    anything; it stays (see `kept_edits`)."""
     if merged is not None:
-        return [_hand_back(repo_root, piece, merged)]
+        return _hand_back(repo_root, piece, state, history, merged)
     root = pathlib.Path(repo_root)
     shipped = [path for path in state.edited if path in piece.files]
     if shipped:
         _prepare_merge(repo_root, piece.name, shipped[0], piece.files[shipped[0]],
                        _read_raw(root / shipped[0]))
     written = [write_asset(repo_root, path, text) for path, text in sorted(piece.files.items())]
+    return written + _remove_dropped(repo_root, piece, history)
+
+
+def _remove_dropped(repo_root, piece, history):
+    """Remove the files an older version shipped and this one does not, when
+    their bytes (stamp aside, as check reads them) are a published version."""
+    root = pathlib.Path(repo_root)
+    removed = []
     for path, versions in sorted(history.items()):
         target = root / path
         if path not in piece.files and target.is_file():
-            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            digest = hashlib.sha256(unstamped(target.read_bytes())).hexdigest()
             if digest in versions.values():
                 target.unlink()
-                written.append(path)
-    return written
+                removed.append(path)
+    return removed
 
 
 def kept_edits(piece, state):
@@ -177,8 +185,27 @@ def kept_edits(piece, state):
     return [path for path in state.edited if path not in piece.files]
 
 
-def _hand_back(repo_root, piece, merged):
-    """The merged file from --from, written where the refusal recorded."""
+def claimed_version(repo_root, piece, path):
+    """The version the marker of `path` claims for the piece, or None."""
+    text = _read_raw(pathlib.Path(repo_root) / path)
+    return next((m.version for m in parse_markers(text) if m.asset == piece.name), None)
+
+
+def needs_merge(repo_root, piece, state):
+    """True when an edited file the piece still ships claims an older version
+    than the piece (or none). A file claiming the current or a newer version
+    is not offered a merge: it would be a downgrade, or nothing to merge."""
+    for path in state.edited:
+        if path in piece.files:
+            claimed = claimed_version(repo_root, piece, path)
+            if claimed is None or claimed < piece.version:
+                return True
+    return False
+
+
+def _hand_back(repo_root, piece, state, history, merged):
+    """The merged file from --from, written where the refusal recorded, and
+    then the rest of the piece as install_piece writes it."""
     scratch = _scratch_dir(repo_root)
     recorded = scratch / f"{piece.name}.path"
     snapshot = scratch / f"{piece.name}.current"
@@ -191,7 +218,7 @@ def _hand_back(repo_root, piece, merged):
                          "no longer ships; redo the merge")
     target = pathlib.Path(repo_root) / path
     current = _read_raw(target) if target.is_file() else None
-    if current != snapshot.read_text(encoding="utf-8"):
+    if current != _read_raw(snapshot):
         raise ApplyError(f"{path}: changed since the merge was prepared; redo the merge "
                          "against the current file")
     text = pathlib.Path(merged).read_text(encoding="utf-8")
@@ -199,10 +226,12 @@ def _hand_back(repo_root, piece, merged):
     if got != piece.version:
         raise ApplyError(f"{piece.name}: the merged file says v{got}, the piece is "
                          f"v{piece.version}")
-    write_asset(repo_root, path, text)
+    written = [write_asset(repo_root, path, text)]
+    written += [write_asset(repo_root, other, body) for other, body in sorted(piece.files.items())
+                if other != path and other not in state.edited]
     for suffix in ("new", "current", "path", "log"):
         (scratch / f"{piece.name}.{suffix}").unlink(missing_ok=True)
-    return path
+    return written + _remove_dropped(repo_root, piece, history)
 
 
 def commit_piece(repo_root, name, version, paths, merged=False):
@@ -212,7 +241,8 @@ def commit_piece(repo_root, name, version, paths, merged=False):
     subject = (f"Merge {name} v{version} from the repo-infra standard with local edits"
                if merged else f"Install {name} v{version} from the repo-infra standard")
     git(repo_root, "add", "--all", "--", *paths)
-    git(repo_root, "commit", "-m", f"{subject}\n\n{TRAILER}")
+    # Only the piece's paths: whatever the user had staged is not part of it.
+    git(repo_root, "commit", "-m", f"{subject}\n\n{TRAILER}", "--", *paths)
     return git(repo_root, "rev-parse", "HEAD").strip()
 
 

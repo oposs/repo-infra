@@ -6,6 +6,7 @@ from piecekit import install, lib_file, make_assets, workflow_piece
 
 from repo_infra import apply, check, cli
 from repo_infra.pieces import load_pieces, load_published
+from repo_infra.remote import Facts
 
 OLD = workflow_piece("ri-x", 1, body="old")
 NEW_INPUT = ("      target:\n        description: The make target.\n"
@@ -141,3 +142,248 @@ def test_the_merge_targets_the_edited_file_the_new_version_ships(monkeypatch, st
     with pytest.raises(apply.NeedsMerge) as stopped:
         run_apply(monkeypatch, store, repo, "--item", "lib-x")
     assert stopped.value.target.name == "a.js"
+
+
+# --- fix round 1 ------------------------------------------------------------
+
+
+def log_subjects(repo):
+    return git(repo, "log", "--format=%s").splitlines()
+
+
+def test_a_stamped_dropped_file_is_removed(monkeypatch, store, repo):
+    stamped = LIB1["gone.js"].replace("lib-x v1\n", "lib-x v1 sha256=" + "ab" * 32 + "\n", 1)
+    install(repo, ".github/workflows/lib-x/gone.js", stamped)
+    git(repo, "commit", "-qam", "stamp")
+    run_apply(monkeypatch, store, repo, "--item", "lib-x")
+    assert not (repo / ".github/workflows/lib-x/gone.js").exists()
+
+
+def test_apply_commits_only_the_pieces_own_paths(monkeypatch, store, repo):
+    (repo / "mine.txt").write_text("staged\n", encoding="utf-8")
+    git(repo, "add", "mine.txt")
+    run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert "mine.txt" not in git(repo, "show", "--name-only", "--format=", "HEAD")
+    assert git(repo, "diff", "--cached", "--name-only").strip() == "mine.txt"
+
+
+def test_a_bare_apply_installs_the_other_pieces_before_it_stops_on_an_edited_one(
+        monkeypatch, store, repo):
+    # lib-x sorts before ri-x, so a loop in name order would stop on it first.
+    install(repo, ".github/workflows/lib-x/a.js", LIB1["a.js"] + "// mine\n")
+    git(repo, "commit", "-qam", "edit")
+    with pytest.raises(apply.NeedsMerge):
+        run_apply(monkeypatch, store, repo)
+    assert "Install ri-x v2 from the repo-infra standard" in log_subjects(repo)
+
+
+def test_an_edited_piece_that_claims_the_current_version_is_not_pending(
+        monkeypatch, capsys, store, repo):
+    install(repo, ".github/workflows/ri-x.yml", NEW + "# mine\n")
+    git(repo, "commit", "-qam", "edit")
+    run_apply(monkeypatch, store, repo)
+    assert (repo / ".github/workflows/ri-x.yml").read_text(encoding="utf-8").endswith("# mine\n")
+    assert "Install ri-x" not in "\n".join(log_subjects(repo))
+
+
+def test_an_edited_piece_whose_only_edit_is_a_dropped_file_is_not_pending(
+        monkeypatch, store, repo):
+    install(repo, ".github/workflows/ri-x.yml", NEW)
+    install(repo, ".github/workflows/lib-x/gone.js", LIB1["gone.js"] + "// mine\n")
+    git(repo, "commit", "-qam", "edit")
+    run_apply(monkeypatch, store, repo)
+    assert (repo / ".github/workflows/lib-x/a.js").read_text(encoding="utf-8") == LIB1["a.js"]
+    assert log_subjects(repo)[0] == "edit"
+
+
+@pytest.fixture
+def wide_store(tmp_path):
+    lib = {"a.js": lib_file("lib-x", 2, "a2"), "b.js": lib_file("lib-x", 2, "b2")}
+    history = [("lib-x", f, t) for f, t in LIB1.items()]
+    return make_assets(tmp_path / "wide", {"lib-x": lib}, history, core=("lib-x",))
+
+
+def merge_lib(monkeypatch, wide_store, repo):
+    install(repo, ".github/workflows/lib-x/a.js", LIB1["a.js"] + "// mine\n")
+    git(repo, "commit", "-qam", "edit")
+    with pytest.raises(apply.NeedsMerge):
+        run_apply(monkeypatch, wide_store, repo, "--item", "lib-x")
+    merged = repo.parent / "merged.js"
+    merged.write_text(lib_file("lib-x", 2, "a2") + "// mine\n", encoding="utf-8")
+    return merged
+
+
+def test_a_hand_back_completes_the_piece(monkeypatch, wide_store, repo):
+    merged = merge_lib(monkeypatch, wide_store, repo)
+    run_apply(monkeypatch, wide_store, repo, "--item", "lib-x", "--from", str(merged))
+    lib = repo / ".github/workflows/lib-x"
+    assert (lib / "b.js").read_text(encoding="utf-8") == lib_file("lib-x", 2, "b2")
+    assert not (lib / "gone.js").exists()
+    assert log_subjects(repo)[0] == "Merge lib-x v2 from the repo-infra standard with local edits"
+
+
+def test_a_merged_piece_prints_the_notes_of_every_version_it_crosses(
+        monkeypatch, capsys, wide_store, repo):
+    merged = merge_lib(monkeypatch, wide_store, repo)
+    capsys.readouterr()
+    run_apply(monkeypatch, wide_store, repo, "--item", "lib-x", "--from", str(merged))
+    assert "lib-x v2\nNotes for lib-x v2." in capsys.readouterr().out
+
+
+def test_the_states_are_read_on_the_apply_branch(monkeypatch, store, repo):
+    git(repo, "branch", "repo-infra/apply")
+    install(repo, ".github/workflows/ri-x.yml", OLD + "# mine\n")
+    git(repo, "commit", "-qam", "an edit that only main has")
+    run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert git(repo, "log", "-1", "--format=%s").strip() == (
+        "Install ri-x v2 from the repo-infra standard")
+
+
+def test_from_is_refused_for_an_administration_item(monkeypatch, store, repo):
+    with pytest.raises(apply.ApplyError, match="--from"):
+        run_apply(monkeypatch, store, repo, "--item", "required-checks", "--from", "x")
+
+
+# --- release_in_progress ----------------------------------------------------
+
+CHANGES = "# Changes\n\n## [Unreleased]\n\n## 0.6.0 - 2026-09-30\n\n- x\n"
+
+
+def facts(**over):
+    base = dict(cli.CONFORMING_FACTS._asdict())
+    base.update(tags=frozenset({"v0.6.0"}))
+    base.update(over)
+    return Facts(**base)
+
+
+@pytest.fixture
+def changes(tmp_path):
+    (tmp_path / "CHANGES.md").write_text(CHANGES, encoding="utf-8")
+    return tmp_path
+
+
+def test_an_open_release_pull_request_is_a_release_in_progress(changes):
+    detail = apply.release_in_progress(changes, facts(release_prs=((12, "release/v0.6.1"),)))
+    assert "#12" in detail and "release/v0.6.1" in detail and "then run apply" in detail
+
+
+def test_an_untagged_latest_release_is_a_release_in_progress(changes):
+    detail = apply.release_in_progress(changes, facts(tags=frozenset({"v0.5.0"})))
+    assert "v0.6.0 is in CHANGES.md but has no tag" in detail
+
+
+def test_unknown_tags_and_tagged_releases_are_not_a_refusal(changes):
+    assert apply.release_in_progress(changes, facts(tags=None)) is None
+    assert apply.release_in_progress(changes, facts()) is None
+
+
+def test_the_latest_release_is_the_first_dated_heading():
+    assert apply.latest_release(CHANGES) == "0.6.0"
+    assert apply.latest_release("# Changes\n\n## [Unreleased]\n") is None
+
+
+# --- guards that survive the move to pieces ---------------------------------
+
+
+def prepared_merge(monkeypatch, store, repo):
+    install(repo, ".github/workflows/ri-x.yml", OLD + "# mine\n")
+    git(repo, "commit", "-qam", "edit")
+    with pytest.raises(apply.NeedsMerge) as stopped:
+        run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    return stopped.value
+
+
+def test_a_merged_file_at_the_wrong_version_is_refused(monkeypatch, store, repo):
+    prepared_merge(monkeypatch, store, repo)
+    merged = repo.parent / "merged.yml"
+    merged.write_text(OLD, encoding="utf-8")
+    with pytest.raises(apply.ApplyError, match="v1, the piece is v2"):
+        run_apply(monkeypatch, store, repo, "--item", "ri-x", "--from", str(merged))
+
+
+def test_a_merge_prepared_against_a_now_stale_file_is_refused(monkeypatch, store, repo):
+    prepared_merge(monkeypatch, store, repo)
+    target = repo / ".github/workflows/ri-x.yml"
+    target.write_text(OLD + "# someone else\n", encoding="utf-8")
+    merged = repo.parent / "merged.yml"
+    merged.write_text(NEW, encoding="utf-8")
+    with pytest.raises(apply.ApplyError, match="changed since the merge was prepared"):
+        run_apply(monkeypatch, store, repo, "--item", "ri-x", "--from", str(merged))
+    assert target.read_text(encoding="utf-8") == OLD + "# someone else\n"
+
+
+def test_from_without_a_prepared_merge_is_refused(monkeypatch, store, repo):
+    install(repo, ".github/workflows/ri-x.yml", OLD + "# mine\n")
+    merged = repo.parent / "merged.yml"
+    merged.write_text(NEW, encoding="utf-8")
+    with pytest.raises(apply.ApplyError, match="apply --item ri-x"):
+        run_apply(monkeypatch, store, repo, "--item", "ri-x", "--from", str(merged))
+
+
+def test_a_finished_merge_removes_its_own_scratch_files_but_not_anothers(
+        monkeypatch, store, repo):
+    prepared_merge(monkeypatch, store, repo)
+    scratch = repo / ".git" / apply.MERGE_DIR
+    for suffix in ("new", "current", "path", "log"):
+        (scratch / f"other.{suffix}").write_text("unrelated", encoding="utf-8")
+    merged = repo.parent / "merged.yml"
+    merged.write_text(NEW + "# mine\n", encoding="utf-8")
+    run_apply(monkeypatch, store, repo, "--item", "ri-x", "--from", str(merged))
+    for suffix in ("new", "current", "path", "log"):
+        assert not (scratch / f"ri-x.{suffix}").exists()
+        assert (scratch / f"other.{suffix}").read_text(encoding="utf-8") == "unrelated"
+
+
+def test_a_crlf_file_is_never_overwritten_and_can_be_merged(monkeypatch, store, repo):
+    target = repo / ".github/workflows/ri-x.yml"
+    crlf = (OLD + "# mine\n").replace("\n", "\r\n").encode("utf-8")
+    target.write_bytes(crlf)
+    git(repo, "commit", "-qam", "crlf")
+    with pytest.raises(apply.NeedsMerge):
+        run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert target.read_bytes() == crlf
+    merged = repo.parent / "merged.yml"
+    merged.write_text(NEW + "# mine\n", encoding="utf-8")
+    run_apply(monkeypatch, store, repo, "--item", "ri-x", "--from", str(merged))
+    assert target.read_text(encoding="utf-8") == NEW + "# mine\n"
+
+
+def test_changed_reads_paths_git_would_quote(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "a b.yml").write_text("x\n")
+    (tmp_path / 'q"uote.yml').write_text("x\n")
+    (tmp_path / "same.yml").write_text("x\n")
+    git(tmp_path, "add", "same.yml")
+    git(tmp_path, "commit", "-qm", "seed")
+    assert apply.changed(tmp_path, ["a b.yml", 'q"uote.yml', "same.yml"]) == [
+        "a b.yml", 'q"uote.yml']
+
+
+def test_a_failed_git_command_says_what_git_printed_on_stdout(tmp_path):
+    # `git commit` reports "nothing to commit" on stdout, not stderr.
+    git(tmp_path, "init", "-q")
+    with pytest.raises(apply.ApplyError, match="nothing to commit"):
+        apply.git(tmp_path, "commit", "-m", "x")
+
+
+def test_the_log_is_read_in_a_linked_worktree_and_from_a_relative_root(
+        monkeypatch, store, repo, tmp_path):
+    linked = tmp_path / "linked"
+    git(repo, "worktree", "add", "-q", "-b", "other", str(linked))
+    install(linked, ".github/workflows/ri-x.yml", OLD + "# mine\n")
+    git(linked, "commit", "-qam", "edit in the worktree")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "ASSETS", store)
+    monkeypatch.setattr(cli, "read_facts", lambda repo_name: cli.CONFORMING_FACTS)
+    with pytest.raises(apply.NeedsMerge) as stopped:
+        cli.main(["apply", "--root", "linked", "--repo", "o/r", "--item", "ri-x"])
+    log = stopped.value.log.read_text(encoding="utf-8")
+    assert "edit in the worktree" in log
+
+
+def test_without_git_history_the_log_says_so(tmp_path):
+    (tmp_path / ".git").mkdir()
+    install(tmp_path, ".github/workflows/ri-x.yml", OLD)
+    with pytest.raises(apply.NeedsMerge) as stopped:
+        apply._prepare_merge(tmp_path, "ri-x", ".github/workflows/ri-x.yml", NEW, OLD)
+    assert stopped.value.log.read_text(encoding="utf-8").startswith("(no history:")

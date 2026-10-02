@@ -44,7 +44,7 @@ _MARKER_LINE = re.compile(
 _STAMP = re.compile(rb" sha256=[0-9a-f]+(?=\r?$)")
 
 
-def _unstamped(data):
+def unstamped(data):
     lines = data.split(b"\n")
     for i, line in enumerate(lines):
         if _MARKER_LINE.match(line.rstrip(b"\r")):
@@ -56,7 +56,7 @@ def _unstamped(data):
 def piece_state(repo_root, piece, history):
     root = pathlib.Path(repo_root)
     paths = sorted(set(history) | set(piece.files))
-    installed = {p: _unstamped((root / p).read_bytes()) for p in paths if (root / p).is_file()}
+    installed = {p: unstamped((root / p).read_bytes()) for p in paths if (root / p).is_file()}
     if not installed:
         return PieceState("absent", None, [])
     versions, edited = {}, []

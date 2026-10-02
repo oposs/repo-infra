@@ -122,7 +122,6 @@ def test_only_an_opt_in_block_carries_build_assets():
             assert meta.get("optional"), "%s carries build assets but is not optional" % name
 
 
-
 # --- the warning check, run for real -------------------------------------------
 #
 # Its requirement is behavioural (a page roff cannot lay out fails, pandoc's own
@@ -222,14 +221,6 @@ def test_the_real_toolchain_fails_a_prose_table_and_passes_a_list(tmp_path, requ
 
 
 # --- the candidate hint ---------------------------------------------------------
-
-
-def _config(root, ci):
-    (root / ".github").mkdir(exist_ok=True)
-    (root / ".github/repo-infra.json").write_text(
-        json.dumps({"ci": ci, "publish": [], "build": []}), encoding="utf-8")
-
-
 
 
 def test_a_candidate_that_names_a_block_names_an_optional_one():

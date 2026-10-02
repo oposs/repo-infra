@@ -133,8 +133,6 @@ def test_an_addon_absent_from_the_manifest_is_refused():
         ci_addon_blocks(rust_result(), ["ci-nonexistent"], MANIFEST)
 
 
-
-
 def test_every_ci_block_is_either_detected_or_declared_optional():
     """An orphan block ships unreachable: nothing detects it and nothing may
     name it, so it is tested forever and installed never."""
