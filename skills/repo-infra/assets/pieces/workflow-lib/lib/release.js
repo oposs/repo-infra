@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v7
+// repo-infra: workflow-lib v8
 //
 // Purpose: The JavaScript the release flow and the publish pieces run (D8).
 // Choose: Always.

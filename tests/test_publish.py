@@ -46,7 +46,8 @@ def test_the_placeholder_must_appear_exactly_once():
 
 
 def _crates_io_job():
-    text = assemble_publish(ASSETS, ["publish-crates-io"], MANIFEST)
+    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+        encoding="utf-8")
     return yaml.safe_load(text)["jobs"]["publish-crates-io"]
 
 
@@ -86,10 +87,14 @@ def test_the_assembled_publish_workflow_is_loadable_yaml():
     assert set(doc["jobs"]) == {"publish", "publish-crates-io", "finalize"}
 
 
-def test_the_crates_io_addon_waits_for_publish_and_honours_the_guard():
+def test_the_crates_io_call_snippet_waits_for_publish_and_honours_the_guard():
+    # The caller carries needs and if, so the piece's header shows them.
+    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+        encoding="utf-8")
+    assert "#     needs: [publish]\n" in text
+    assert "#     if: needs.publish.outputs.release_id != ''\n" in text
     job = _crates_io_job()
-    assert job["needs"] == ["publish"]
-    assert job["if"] == "needs.publish.outputs.release_id != ''"
+    assert "needs" not in job and "if" not in job
 
 
 def test_the_crates_io_addon_requests_an_oidc_identity():

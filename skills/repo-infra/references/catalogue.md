@@ -366,7 +366,64 @@ release-pr-current:
     ref: ${{ inputs.ref }}
 ```
 
+## Release build: called from release-build.yml
+
+### ri-release-source-tarball v1
+
+Installed at `.github/workflows/ri-release-source-tarball.yml`.
+
+**Purpose:** Build the `make dist` tarball before the merge (D28).
+
+**Choose it when:** The project is autotools and ships a source tarball.
+
+**The repository supplies:** ./bootstrap, configure and `make dist`.
+
+**Produces:** The artifact release-asset-source-tarball (`*.tar.gz`); list `*.tar.gz` in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+tarball:
+  uses: ./.github/workflows/ri-release-source-tarball.yml
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+```
+
 ## Publish: called from release-publish.yml
+
+### ri-publish-crates-io v1
+
+Installed at `.github/workflows/ri-publish-crates-io.yml`.
+
+**Purpose:** Publish the crate to crates.io with trusted publishing.
+
+**Choose it when:** The crate is published on crates.io.
+
+**The repository supplies:** The trusted publisher configured on crates.io for this workflow.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `head` | string | yes |  | The commit the release was built from, from ri-publish-tag. |
+
+**Permissions it needs:** id-token: write, contents: read
+
+```yaml
+crates:
+  needs: [publish]
+  if: needs.publish.outputs.release_id != ''
+  uses: ./.github/workflows/ri-publish-crates-io.yml
+  permissions:
+    contents: read
+    id-token: write
+  with:
+    head: ${{ needs.publish.outputs.head }}
+```
 
 ### ri-publish-finalize v1
 
@@ -401,6 +458,42 @@ finalize:
     release_id: ${{ needs.publish.outputs.release_id }}
     tag: ${{ needs.publish.outputs.tag }}
     head: ${{ needs.publish.outputs.head }}
+```
+
+### ri-publish-gitea v1
+
+Installed at `.github/workflows/ri-publish-gitea.yml`.
+
+**Purpose:** Upload the release's .deb and .rpm files to a Gitea package registry.
+
+**Choose it when:** The project ships packages to Gitea.
+
+**The repository supplies:** gitea_packages (url, owner) in .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
+
+**Needs the pieces:** workflow-lib
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `release_id` | string | yes |  | The draft release holding the packages, from ri-publish-tag. |
+| `head` | string | yes |  | The commit the release was built from, from ri-publish-tag. |
+
+| Secret | Required | Description |
+|---|---|---|
+| `GITEA_PACKAGE_TOKEN` | no | Token of the Gitea package user, scope write:package. The job fails and names it when it is empty. |
+
+**Permissions it needs:** contents: write
+
+```yaml
+gitea:
+  needs: [publish]
+  if: needs.publish.outputs.release_id != ''
+  uses: ./.github/workflows/ri-publish-gitea.yml
+  permissions:
+    contents: write
+  with:
+    release_id: ${{ needs.publish.outputs.release_id }}
+    head: ${{ needs.publish.outputs.head }}
+  secrets: inherit
 ```
 
 ### ri-publish-tag v1
@@ -467,7 +560,7 @@ Installed at `.github/workflows/release-pr.yml`.
 
 **Permissions it needs:** actions: write, checks: write, contents: write, pull-requests: write, statuses: write
 
-### workflow-lib v7
+### workflow-lib v8
 
 Installed at `.github/workflows/lib`.
 

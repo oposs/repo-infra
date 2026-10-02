@@ -13,8 +13,11 @@ MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 BLOCK = "publish-gitea-packages"
 
 
+PIECE = ASSETS / "pieces/ri-publish-gitea/ri-publish-gitea.yml"
+
+
 def workflow():
-    return yaml.safe_load(assemble_publish(ASSETS, [BLOCK], MANIFEST))
+    return yaml.safe_load(PIECE.read_text(encoding="utf-8"))
 
 
 def job():
@@ -33,12 +36,22 @@ def test_the_block_declares_its_one_job():
 def test_a_failed_upload_keeps_the_release_a_draft():
     # Blocking: a version public on GitHub but absent from apt and dnf is the
     # inconsistency worth preventing.
-    assert BLOCK in workflow()["jobs"]["finalize"]["needs"]
+    assembled = yaml.safe_load(assemble_publish(ASSETS, [BLOCK], MANIFEST))
+    assert BLOCK in assembled["jobs"]["finalize"]["needs"]
 
 
-def test_it_waits_for_publish_and_honours_the_guard():
-    assert job()["needs"] == ["publish"]
-    assert job()["if"] == "needs.publish.outputs.release_id != ''"
+def test_the_call_snippet_waits_for_publish_and_honours_the_guard():
+    # The caller carries needs and if, so the piece's header shows them.
+    text = PIECE.read_text(encoding="utf-8")
+    assert "#     needs: [publish]\n" in text
+    assert "#     if: needs.publish.outputs.release_id != ''\n" in text
+    assert "needs" not in job() and "if" not in job()
+
+
+def test_the_token_is_an_optional_declared_secret():
+    secrets = workflow()[True]["workflow_call"]["secrets"]
+    assert secrets["GITEA_PACKAGE_TOKEN"]["required"] is False
+    assert secrets["GITEA_PACKAGE_TOKEN"]["description"]
 
 
 def test_it_can_see_the_draft():

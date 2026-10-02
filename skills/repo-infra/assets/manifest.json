@@ -109,6 +109,18 @@
       "target": ".github/workflows/ri-publish-finalize.yml",
       "group": "publish",
       "core": true
+    },
+    "ri-release-source-tarball": {
+      "target": ".github/workflows/ri-release-source-tarball.yml",
+      "group": "release-build"
+    },
+    "ri-publish-crates-io": {
+      "target": ".github/workflows/ri-publish-crates-io.yml",
+      "group": "publish"
+    },
+    "ri-publish-gitea": {
+      "target": ".github/workflows/ri-publish-gitea.yml",
+      "group": "publish"
     }
   },
   "assets": {
