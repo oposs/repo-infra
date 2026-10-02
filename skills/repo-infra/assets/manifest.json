@@ -1,5 +1,44 @@
 {
-  "pieces": {},
+  "pieces": {
+    "changelog": {
+      "target": ".github/workflows/changelog.yml",
+      "group": "release",
+      "core": true
+    },
+    "release-pr": {
+      "target": ".github/workflows/release-pr.yml",
+      "group": "release",
+      "core": true
+    },
+    "dependabot": {
+      "target": ".github/dependabot.yml",
+      "group": "release",
+      "core": true
+    },
+    "workflow-lib": {
+      "target": ".github/workflows/lib",
+      "group": "release",
+      "core": true,
+      "kind": "dir",
+      "header": "release.js"
+    },
+    "container": {
+      "target": "build/container.mk",
+      "group": "build"
+    },
+    "container-m4": {
+      "target": "m4/repo-infra-container.m4",
+      "group": "build"
+    },
+    "man": {
+      "target": "build/man.mk",
+      "group": "build"
+    },
+    "man-lua": {
+      "target": "build/man-deflist.lua",
+      "group": "build"
+    }
+  },
   "assets": {
     "release-pr": {
       "version": 5,

@@ -2,11 +2,12 @@ import json
 import pathlib
 
 from repo_infra.markers import parse_markers
+from repo_infra.pieces import load_pieces
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-FRAGMENT = ASSETS / "build/container.mk"
+FRAGMENT = ASSETS / "pieces/container/container.mk"
 
 
 def test_the_fragment_is_declared_in_the_manifest():
@@ -23,9 +24,10 @@ def test_the_old_test_only_fragment_is_gone():
 
 
 def test_the_fragment_carries_its_marker_at_the_declared_version():
+    piece = load_pieces()["container"]
     text = FRAGMENT.read_text(encoding="utf-8")
-    version = MANIFEST["build_assets"]["container"]["version"]
-    assert ("container", version) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert ("container", piece.version) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert MANIFEST["pieces"]["container"]["target"] == "build/container.mk"
 
 
 def test_a_repository_that_did_not_ask_for_it_does_not_get_it():

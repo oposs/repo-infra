@@ -20,8 +20,8 @@ from repo_infra.markers import parse_markers
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-MK = ASSETS / "build/man.mk"
-LUA = ASSETS / "build/man-deflist.lua"
+MK = ASSETS / "pieces/man/man.mk"
+LUA = ASSETS / "pieces/man-lua/man-deflist.lua"
 
 FIXTURE_MANUAL = """\
 ---
@@ -105,8 +105,10 @@ def test_a_repository_that_did_not_ask_for_them_does_not_get_them():
     assert "build/man.mk" not in plain
     assert "build/man-deflist.lua" not in plain
     named = render_all(ASSETS, result, MANIFEST, build=["man", "man-lua"])
-    assert named["build/man.mk"] == MK.read_text(encoding="utf-8")
-    assert named["build/man-deflist.lua"] == LUA.read_text(encoding="utf-8")
+    # render_all still reads the old assets until they go (D30).
+    assert named["build/man.mk"] == (ASSETS / "build/man.mk").read_text(encoding="utf-8")
+    assert named["build/man-deflist.lua"] == (
+        ASSETS / "build/man-deflist.lua").read_text(encoding="utf-8")
 
 
 def test_the_assets_carry_no_em_dash():

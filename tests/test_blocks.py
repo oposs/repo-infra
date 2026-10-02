@@ -101,7 +101,7 @@ def test_every_non_yaml_asset_is_covered_by_a_test():
     #   .mk  -> tests/test_build_assets.py, tests/test_man_build.py
     #   .m4  -> tests/test_container_m4.py
     #   .lua -> tests/test_man_build.py
-    others = {p.suffix for p in ASSETS.rglob("*") if p.is_file()} - {".yml", ".yaml", ".json", ".js"}
+    others = {p.suffix for p in ASSETS.rglob("*") if p.is_file()} - {".yml", ".yaml", ".json", ".js", ".md"}
     assert others == {".mk", ".m4", ".lua"}, "a new asset kind arrived with no test: %s" % others
 
 

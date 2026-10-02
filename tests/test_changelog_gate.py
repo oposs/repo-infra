@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-ASSET = ROOT / "skills/repo-infra/assets/workflows/changelog.yml"
+ASSET = ROOT / "skills/repo-infra/assets/pieces/changelog/changelog.yml"
 BOT = "github-actions[bot]"
 BLURB = ("the release branch changed after it was built (the Update branch button "
          "does this); close this pull request and dispatch Create release PR again")

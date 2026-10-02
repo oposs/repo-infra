@@ -12,7 +12,7 @@ from repo_infra.markers import parse_markers
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-ASSET = ASSETS / "workflows/release-pr.yml"
+ASSET = ASSETS / "pieces/release-pr/release-pr.yml"
 REPO_INFRA = ROOT / "skills/repo-infra/scripts/repo_infra"
 
 
@@ -128,7 +128,7 @@ def test_finish_downloads_both_artifact_kinds():
 
 
 def test_the_rust_lockfile_note_survives():
-    assert "detection lists Cargo.lock in version_files" in ASSET.read_text(encoding="utf-8")
+    assert "a Rust repository lists Cargo.lock in version_files" in ASSET.read_text(encoding="utf-8")
 
 
 def test_the_variant_is_gone():

@@ -5,3 +5,99 @@ secrets of every piece. Do not edit it by hand.
 
 `apply --item <piece>` installs a piece 1:1 and commits it. A workflow piece
 then needs a job in a caller; the snippet under each one is that job.
+
+## Release flow: installed, never called by hand
+
+### changelog v5
+
+Installed at `.github/workflows/changelog.yml`.
+
+**Purpose:** The changelog-updated required check (D2, D6).
+
+**Choose it when:** Always.
+
+**The repository supplies:** CHANGES.md with an Unreleased section; the no-changelog label.
+
+**Needs the pieces:** workflow-lib
+
+**Permissions it needs:** contents: read, pull-requests: read, statuses: read
+
+### dependabot v2
+
+Installed at `.github/dependabot.yml`.
+
+**Purpose:** Keep the pinned GitHub Actions current.
+
+**Choose it when:** Always.
+
+**The repository supplies:** The no-changelog label.
+
+### release-pr v6
+
+Installed at `.github/workflows/release-pr.yml`.
+
+**Purpose:** Create release PR: build, test and open the release pull request (D28).
+
+**Choose it when:** Always.
+
+**The repository supplies:** ci.yml and release-build.yml callers that declare the inputs it passes; version_files in .github/repo-infra.json.
+
+**Needs the pieces:** workflow-lib
+
+**Permissions it needs:** actions: write, checks: write, contents: write, pull-requests: write, statuses: write
+
+### workflow-lib v7
+
+Installed at `.github/workflows/lib`.
+
+**Purpose:** The JavaScript the release flow and the publish pieces run (D8).
+
+**Choose it when:** Always.
+
+**The repository supplies:** Nothing.
+
+## Build files
+
+### container v3
+
+Installed at `build/container.mk`.
+
+**Purpose:** Autotools as a container driver (D18).
+
+**Choose it when:** The build needs a container (D16).
+
+**The repository supplies:** A Containerfile and the CONTAINER_DRIVER conditional in configure.ac.
+
+**Needs the pieces:** container-m4
+
+### container-m4 v2
+
+Installed at `m4/repo-infra-container.m4`.
+
+**Purpose:** The container-driver mode switch for configure.ac (D18).
+
+**Choose it when:** With container.
+
+**The repository supplies:** The macro call in configure.ac.
+
+### man v4
+
+Installed at `build/man.mk`.
+
+**Purpose:** Build the man page from docs/manual.md (D23).
+
+**Choose it when:** The project ships a man page.
+
+**The repository supplies:** docs/manual.md with section: and date: in its front matter; MAN_NAME in the Makefile.
+
+**Needs the pieces:** man-lua
+
+### man-lua v2
+
+Installed at `build/man-deflist.lua`.
+
+**Purpose:** The pandoc filter man.mk runs for term lists.
+
+**Choose it when:** With man.
+
+**The repository supplies:** Nothing.

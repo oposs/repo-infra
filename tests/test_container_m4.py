@@ -2,11 +2,12 @@ import json
 import pathlib
 
 from repo_infra.markers import parse_markers
+from repo_infra.pieces import load_pieces
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-MACRO = ASSETS / "m4/repo-infra-container.m4"
+MACRO = ASSETS / "pieces/container-m4/repo-infra-container.m4"
 
 
 def test_the_macro_is_declared_in_the_manifest():
@@ -17,9 +18,10 @@ def test_the_macro_is_declared_in_the_manifest():
 
 
 def test_the_macro_carries_its_marker_at_the_declared_version():
-    version = MANIFEST["build_assets"]["container-m4"]["version"]
+    piece = load_pieces()["container-m4"]
     text = MACRO.read_text(encoding="utf-8")
-    assert ("container-m4", version) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert ("container-m4", piece.version) in [(m.asset, m.version) for m in parse_markers(text)]
+    assert MANIFEST["pieces"]["container-m4"]["target"] == "m4/repo-infra-container.m4"
 
 
 def _bracketed_body(text, marker):

@@ -70,6 +70,11 @@ def entry(piece):
 
 
 def render(pieces):
+    known = {group for group, _ in GROUPS}
+    for piece in sorted(pieces.values(), key=lambda p: p.name):
+        if piece.group not in known:
+            raise ValueError(f"piece {piece.name}: group {piece.group!r} is not one of "
+                             f"{', '.join(sorted(known))}")
     parts = [INTRO]
     for group, title in GROUPS:
         members = sorted((p for p in pieces.values() if p.group == group),

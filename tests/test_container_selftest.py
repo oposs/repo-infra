@@ -31,8 +31,8 @@ def tree(tmp_path_factory):
     shutil.copytree(FIXTURE, work, dirs_exist_ok=True)
     (work / "m4").mkdir()
     (work / "build").mkdir()
-    shutil.copy(ASSETS / "m4/repo-infra-container.m4", work / "m4")
-    shutil.copy(ASSETS / "build/container.mk", work / "build")
+    shutil.copy(ASSETS / "pieces/container-m4/repo-infra-container.m4", work / "m4")
+    shutil.copy(ASSETS / "pieces/container/container.mk", work / "build")
     done = run(["autoreconf", "-i"], work)
     # D18's contract guards the project's own `test:` with `if !CONTAINER_DRIVER`
     # precisely so automake does not warn about a duplicate definition.

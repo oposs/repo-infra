@@ -1,5 +1,6 @@
 import pathlib
 
+import pytest
 from piecekit import make_assets, workflow_piece
 
 from repo_infra import catalogue
@@ -25,3 +26,11 @@ def test_an_entry_shows_header_inputs_permissions_and_the_call(tmp_path):
     assert "| `target` | string | yes |  | The make target. |" in text
     assert "**Permissions it needs:** contents: read" in text
     assert "```yaml\nx:\n  uses: ./.github/workflows/ri-x.yml\n" in text
+
+
+def test_a_piece_in_an_unknown_group_is_an_error_not_a_gap(tmp_path):
+    store = make_assets(tmp_path, {"ri-x": workflow_piece("ri-x", 1)})
+    pieces = load_pieces(store)
+    pieces["ri-x"].group = "nowhere"
+    with pytest.raises(ValueError, match="ri-x.*nowhere"):
+        catalogue.render(pieces)
