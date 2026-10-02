@@ -8,17 +8,83 @@
   "build/man.mk": {
     "3": "15d4ebe336f97e0a97d81cc5a7f4523e260bfc5f88ca878eb8a5b0f398c64a7f"
   },
+  "ci/ci-aggregator.yml": {
+    "2": "4aa5b79c2a8e43d627eb67806579d9fc2a9d6b87d2f80b95af5defeff4614731"
+  },
+  "ci/ci-checkmk-plugin.yml": {
+    "2": "4fad7384a82ac1b55d91432eb26a3507f13765a35fbda0d9f11de86050840d75"
+  },
+  "ci/ci-claude-plugin.yml": {
+    "2": "51835e9b67f3bff46199ae0aca251aaa002f8d4c99a21a5cbd9d60ac6bd72a9b"
+  },
   "ci/ci-frame.yml": {
     "2": "d175e6f552ac39eaea9f19556654451de6560043ef12043ef8a52cb1781555e6"
+  },
+  "ci/ci-github-action.yml": {
+    "2": "94a9cc06af0a25c19c52780fec6ca00845597e4b949ac0167ed00862a12d79c7"
+  },
+  "ci/ci-go.yml": {
+    "2": "9df2c8e2bd16fa3cea26a20f8a8983df25c3e8b8a4a7539e3f422b46010b54d4"
+  },
+  "ci/ci-lib.yml": {
+    "2": "44e6cedcee513de51a8a48feb496519da90a5d526b76ca44bd8474f67bd80a4d"
+  },
+  "ci/ci-local.yml": {
+    "2": "8f7518efb1e7b8319b72d53652eff068640398b6575fd095df2826ff8e080f52"
+  },
+  "ci/ci-man.yml": {
+    "3": "985604e33bf92a08c1dba12dc9291f9b6d1ca0e8c5bc9fca8d7f7a3b948e5a8a"
+  },
+  "ci/ci-node-bun.yml": {
+    "2": "34267534e7f8e22ace64de2d90171e4a68c9ea2da57a8f80d996ea38fa483324"
+  },
+  "ci/ci-node-pnpm.yml": {
+    "2": "36661756357e4d855a25af0d5b83d560ca5fb134d1ecb021e505de11528a3ae0"
+  },
+  "ci/ci-perl-autotools.yml": {
+    "3": "4c20fd8246c96867262d911195425114c70326b492a8134ce8e3e314f63a518c"
+  },
+  "ci/ci-perl-mkpl.yml": {
+    "2": "7adf0c8c80775ce2c710b60891968a9bdc9618fc518c7b8a5e9d2380d4407e24"
+  },
+  "ci/ci-python.yml": {
+    "3": "0c1b2991f9858beab9fe1e0ddf254b049e99b8046b026731149ea38ecef24865"
+  },
+  "ci/ci-repo-infra-selftest.yml": {
+    "4": "c80d51444fea1ad57e7450d20e6508b0f5a5e5ff50fb40947e6ef4f8c5176919"
+  },
+  "ci/ci-rust-musl.yml": {
+    "2": "2bd32d10e7d5ceabb4aee852dc6e202ebdd7fa6b83a2470ac23f80efd42d4e42"
+  },
+  "ci/ci-rust.yml": {
+    "3": "61e9566fa759714affd0cd1d4b5e6cc6691a6a631733bf6da0fccda5e45d3a11"
+  },
+  "gh/ruleset-main.json": {
+    "2": "017c281538f9bf5315fbc44af7c4a3c49ea8b2b6d3b420728b31e5ae45c0f4d2"
   },
   "m4/repo-infra-container.m4": {
     "1": "f4985b605a851750bb87e56fe77261aee4d25d19369ac6ba0d0d712ea3f5c8e2"
   },
+  "publish/publish-crates-io.yml": {
+    "3": "9caa9c9835cc214a2560683e258da69c53bb4487a45ffe7a98a9b39fc2ddb9aa"
+  },
+  "publish/publish-finalize.yml": {
+    "5": "1cecda2b122c3df26999a0049f11f1b1a869b6c85961dc8c04302ccafc519af5"
+  },
   "publish/publish-frame.yml": {
     "5": "8e3c649d4aabe882a2486e45a8fd0113986b29c9d40b2dcc3c429ffec02cad82"
   },
+  "publish/publish-gitea-packages.yml": {
+    "1": "b7817edb5b9a1aaddfb847e34858d694833720fc9596bc65725b99f564945f77"
+  },
   "release-build/release-build-frame.yml": {
     "1": "cef67a75f5c2052ed806bae31dabc9f66253811685e6410e6ee622bb349ece6d"
+  },
+  "release-build/release-build-local-job.yml": {
+    "1": "48df67b4f7ce25c9c7426b987b009e0704ee381d2dc7fd40413f79e694eee5ce"
+  },
+  "release-build/release-source-tarball.yml": {
+    "1": "6df0671d76ee90b56eb20bafa71d70e1f0c173275e19e04507dc07e754f06932"
   },
   "workflows/changelog.yml": {
     "4": "0b3c07fd59dd4255052b2b3a3b45e1ccdf5ad790eb26e6db85a7c79465ade79c"
