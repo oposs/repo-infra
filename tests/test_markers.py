@@ -1,6 +1,6 @@
 import pytest
 
-from repo_infra.markers import Marker, marker_line, parse_markers
+from repo_infra.markers import Marker, marker_line, parse_markers, pristine, stamp, strip_stamp
 
 
 def test_parses_a_yaml_marker_on_the_second_line():
@@ -104,3 +104,69 @@ def test_a_double_dash_is_a_marker_comment():
 def test_a_lua_doc_comment_is_not_a_marker():
     # `---` opens a LuaDoc comment. The marker is exactly `--`.
     assert parse_markers("--- repo-infra: man-lua v1\n") == []
+
+
+ASSEMBLED = ("name: CI\n# repo-infra: ci v2\njobs:\n"
+             "  # repo-infra: ci-rust v3\n  rust:\n    runs-on: x\n")
+
+
+def test_stamp_goes_on_the_first_marker_only():
+    stamped = stamp(ASSEMBLED)
+    lines = stamped.splitlines()
+    assert lines[1].startswith("# repo-infra: ci v2 sha256=")
+    assert len(lines[1].rsplit("=", 1)[1]) == 16
+    assert lines[3] == "  # repo-infra: ci-rust v3"
+
+
+def test_a_stamped_file_still_parses_to_the_same_markers():
+    assert parse_markers(stamp(ASSEMBLED)) == parse_markers(ASSEMBLED)
+
+
+def test_strip_stamp_undoes_stamp():
+    assert strip_stamp(stamp(ASSEMBLED)) == ASSEMBLED
+
+
+def test_stamping_twice_gives_the_same_text():
+    assert stamp(stamp(ASSEMBLED)) == stamp(ASSEMBLED)
+
+
+def test_pristine_is_true_for_untouched_stamped_text():
+    assert pristine(stamp(ASSEMBLED)) is True
+
+
+def test_pristine_is_false_after_an_edit_anywhere():
+    edited = stamp(ASSEMBLED).replace("runs-on: x", "runs-on: y")
+    assert pristine(edited) is False
+
+
+def test_pristine_is_false_when_a_digit_of_the_stamp_changes():
+    stamped = stamp(ASSEMBLED)
+    digit = stamped.index("sha256=") + len("sha256=")
+    flipped = "0" if stamped[digit] != "0" else "1"
+    assert pristine(stamped[:digit] + flipped + stamped[digit + 1:]) is False
+
+
+def test_pristine_is_none_without_a_stamp():
+    assert pristine(ASSEMBLED) is None
+
+
+def test_pristine_is_none_without_a_marker():
+    assert pristine("no marker here\n") is None
+
+
+def test_stamp_keeps_trailing_prose_on_the_marker_line():
+    text = "# repo-infra: ci v2 do not delete this line\nx\n"
+    stamped = stamp(text)
+    assert stamped.splitlines()[0].startswith("# repo-infra: ci v2 do not delete this line sha256=")
+    assert pristine(stamped) is True
+
+
+def test_stamp_works_for_each_comment_style():
+    for comment in ("#", "//", "--", "dnl"):
+        text = f"{comment} repo-infra: x v1\nbody\n"
+        assert pristine(stamp(text)) is True
+
+
+def test_crlf_text_is_never_pristine_after_conversion():
+    lf = stamp("# repo-infra: ci v2\njobs:\n")
+    assert pristine(lf.replace("\n", "\r\n")) is not True
