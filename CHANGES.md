@@ -16,6 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `apply` with the installed plugin no longer stops on every changed workflow file with "local edits present". Files it writes now carry a stamp, and an unedited file is upgraded in place. A file without a stamp, from earlier versions, stops once with its git history next to it, so the merge can tell an edit from an older version.
+- `apply` keeps short lists in `.github/repo-infra.json` on one line, such as `"ci": ["ci-man", "ci-rust-musl"]`, instead of rewriting the file one value per line.
 
 ## 0.3.0 - 2026-10-02
 ### New
