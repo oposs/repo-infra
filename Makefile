@@ -1,4 +1,4 @@
-.PHONY: test test-js lint check test-container
+.PHONY: test test-js lint check test-container generations
 
 # `-m` here overrides pytest.ini's addopts, so the pandoc-marked tests run
 # locally. The plain `python3 -m pytest` that ci-python runs deselects them,
@@ -23,3 +23,8 @@ check: lint test test-js
 # after changing either asset, instead of finding out on the required CI job.
 test-container:
 	python3 -m pytest -m container -v tests
+
+# D29: records each marked asset's text under its marker version. Run after
+# bumping a marker; it refuses when the text changed and the marker did not.
+generations:
+	python3 tests/generations.py

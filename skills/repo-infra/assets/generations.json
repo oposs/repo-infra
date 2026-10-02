@@ -1,0 +1,92 @@
+{
+  "build/container.mk": {
+    "2": "beadc3b07b1d85262b00b823ad277b26f93723a72991f28b947bff3ebedfc0cd"
+  },
+  "build/man-deflist.lua": {
+    "1": "f9f597b3e6a13209fdd4254b73764bb39ed52de7f878d8aa3bc3bbd6adb3beef"
+  },
+  "build/man.mk": {
+    "3": "15d4ebe336f97e0a97d81cc5a7f4523e260bfc5f88ca878eb8a5b0f398c64a7f"
+  },
+  "ci/ci-frame.yml": {
+    "2": "d175e6f552ac39eaea9f19556654451de6560043ef12043ef8a52cb1781555e6"
+  },
+  "m4/repo-infra-container.m4": {
+    "1": "f4985b605a851750bb87e56fe77261aee4d25d19369ac6ba0d0d712ea3f5c8e2"
+  },
+  "publish/publish-frame.yml": {
+    "5": "8e3c649d4aabe882a2486e45a8fd0113986b29c9d40b2dcc3c429ffec02cad82"
+  },
+  "release-build/release-build-frame.yml": {
+    "1": "cef67a75f5c2052ed806bae31dabc9f66253811685e6410e6ee622bb349ece6d"
+  },
+  "workflows/changelog.yml": {
+    "4": "0b3c07fd59dd4255052b2b3a3b45e1ccdf5ad790eb26e6db85a7c79465ade79c"
+  },
+  "workflows/dependabot.yml": {
+    "1": "1961c1f95daa6c148005abc4d19b3393f3365cf71c90b291de93cb28793f1ec0"
+  },
+  "workflows/lib/assets.js": {
+    "6": "dad330962988bf07890d792172cf8db456c2a0fdd931473fa17880012c5408f0"
+  },
+  "workflows/lib/assets.test.js": {
+    "6": "1bf4d6558ad727950a28b43f3178e7a2200bbbbd21dfdebc8f54f60f90b0df91"
+  },
+  "workflows/lib/bump.js": {
+    "6": "838f710dbd6f501e6355720d40f4060a673ad94fdca8e2d196616509c2fb3576"
+  },
+  "workflows/lib/bump.test.js": {
+    "6": "f7f094d3c0528ddfb205e2d35f7f329715b025b155cd5a3ad3172de9d51e095e"
+  },
+  "workflows/lib/changes.js": {
+    "6": "8d38eff2204a342a48c872497d2ef3ebaafa2773fd3905a3c67d2934fb602cf2"
+  },
+  "workflows/lib/changes.test.js": {
+    "6": "487361c9ca97a26fef5f81607b6bdee3a2c23e9dc1aabc6ee32b57d0b5994f5c"
+  },
+  "workflows/lib/checks.js": {
+    "6": "d643651b1516b0722b5df7a78cb449e4e7fa987d530fa21934f7a42493b0dd91"
+  },
+  "workflows/lib/checks.test.js": {
+    "6": "fea382d398446db7f7ed339f9715a12f34092fde701c5282e38e1ddcc5d4d1e1"
+  },
+  "workflows/lib/commit.js": {
+    "6": "235a583dd0fe8703e7db249131789f64ed7297d56170df64d672c7d7549b6eca"
+  },
+  "workflows/lib/commit.test.js": {
+    "6": "57f152bef685414749573d3db10947de84243bdf3004e75c3bc7204644bb0854"
+  },
+  "workflows/lib/gitea.js": {
+    "6": "bbc5e0426a646ee355ee5b541551d9120568d2a7bfc250c5d6922105858a1975"
+  },
+  "workflows/lib/gitea.test.js": {
+    "6": "c6518b21909d9db8e2e61a4d4b20fb3a6091f4b0396de41320e7cc245b10e467"
+  },
+  "workflows/lib/publish.js": {
+    "6": "4171fd3b6a93256be2cd20321bb7fffc4dec8a8422730125ac689c105cd62523"
+  },
+  "workflows/lib/publish.test.js": {
+    "6": "732368444863274d9c98a7c75309ddbe103428d0c919095b022a97520ee13cd5"
+  },
+  "workflows/lib/release.js": {
+    "6": "9a11807e13bd3e677c562b7851832d8f0df23768ccfbebb655ecac14efc011d1"
+  },
+  "workflows/lib/release.test.js": {
+    "6": "2f94c6d8b07cf410016b49d2e53b684a200763153ebd90def1df6907696ed517"
+  },
+  "workflows/lib/rust-plan.js": {
+    "6": "2259ec23cd9127ddf4f60e28f63018ba3ab57accfdb16f81cb79ecf9edb818f6"
+  },
+  "workflows/lib/rust-plan.test.js": {
+    "6": "f771fa60cc43f81f5cb5eed1602c0178b0781f20808df07a16765512d1d1af0f"
+  },
+  "workflows/lib/version.js": {
+    "6": "738f66d6551dfd2af52de08ff1cd4bd789261dea76e8ce8d03efc6fc0340d8a6"
+  },
+  "workflows/lib/version.test.js": {
+    "6": "3c461015edf4af07d8a412a46b7b877a2701e1d915b16463a3fd806c1a594f5f"
+  },
+  "workflows/release-pr.yml": {
+    "5": "02b11b7c843a7d452f7131234378e34c63314e772420fdb4707259f5b19bc1e2"
+  }
+}
