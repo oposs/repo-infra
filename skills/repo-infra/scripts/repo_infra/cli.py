@@ -16,6 +16,7 @@ from .apply import (
 )
 from .assemble import render_all
 from .detect import Detection
+from .markers import pristine
 from .remote import Facts, Gh
 from .state import (
     NEEDS_ATTENTION_STATES,
@@ -160,7 +161,6 @@ def apply_command(args):
     blocker = _blocker(args.root, facts, items, rendered, args.item)
     if blocker:
         raise ApplyError(f"release-in-progress: {blocker.detail}")
-    plugin_root = ASSETS.parent
 
     ensure_branch(args.root)
     if migrations and (args.item is None or args.item in migrate.NAMES):
@@ -186,14 +186,19 @@ def apply_command(args):
         # acting, so a later block acts only on what still differs.
         current = _file_state(name, classify(args.root, rendered, manifest, facts))
         written = changed(args.root, apply_file_item(
-            args.root, name, rendered, current, plugin_root, merged=args.from_file))
+            args.root, name, rendered, current, merged=args.from_file))
         if not written:
             writers = sorted({written_by[p] for p, _ in targets_for(name, rendered)
                               if p in written_by})
             print(f"{name}: installed with {', '.join(writers)}" if writers
                   else f"{name}: already installed")
             continue
-        commit_item(args.root, name, written)
+        # A hand-back that is the rendering came out stamped (D29), and its
+        # commit must not claim local edits the next upgrade would act on.
+        edited = bool(args.from_file) and not all(
+            pristine((pathlib.Path(args.root) / path).read_text(encoding="utf-8"))
+            for path in written)
+        commit_item(args.root, name, written, merged=edited)
         written_by.update(dict.fromkeys(written, name))
         print(f"applied {name}")
     return 0

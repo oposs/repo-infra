@@ -4,17 +4,19 @@ Everything mechanical is scripted and every write is read back and asserted --
 the pattern that exists because `|| true` once swallowed a failed version bump
 and shipped a tag whose Cargo.toml and Cargo.lock disagreed.
 
-There is exactly one thing this module refuses to do. Merging a new asset
-generation into a file that carries local edits is judgement, not mechanism, so
-it writes the three versions out and raises NeedsMerge. The model merges; the
-script keeps the irreversible half.
+There is exactly one thing this module refuses to do. A file that is not byte
+for byte what apply last wrote (D29: its stamp is missing or does not match)
+may carry local edits, and merging a new generation into those is judgement,
+not mechanism. It writes the new rendering, the current file and the file's git
+log out and raises NeedsMerge. The model merges; the script keeps the
+irreversible half.
 """
 
 import json
 import pathlib
 import subprocess
 
-from .markers import parse_markers
+from .markers import parse_markers, pristine, stamp, strip_stamp
 from .remote import protects_default_branch
 
 # Below the repository's git dir, which is `.git/` in a plain clone and
@@ -36,11 +38,13 @@ class ApplyError(Exception):
 
 
 class NeedsMerge(Exception):
-    def __init__(self, name, base, new, current):
+    def __init__(self, name, new, current, log, target):
         super().__init__(
-            f"{name}: local edits present; merge {base} and {new} over {current}, "
-            "then re-run with --from")
-        self.name, self.base, self.new, self.current = name, base, new, current
+            f"{name}: {target} is not what apply last wrote (no stamp, or edited "
+            f"since). Read {current}, {new} and the file's history in {log}, "
+            f"merge, then re-run with --item {name} --from <merged file>")
+        self.name, self.new, self.current, self.log, self.target = (
+            name, new, current, log, target)
 
 
 def write_asset(repo_root, path, content):
@@ -59,51 +63,6 @@ def git(cwd, *args):
         said = "\n".join(t for t in (result.stderr.strip(), result.stdout.strip()) if t)
         raise ApplyError(f"git {' '.join(args)} failed: {said}")
     return result.stdout
-
-
-def _asset_source(plugin_root, name):
-    """Where `name` lives inside the plugin checkout, found by its own marker.
-
-    Deriving this from the marker rather than from the manifest keeps the
-    lookup correct for the assembled ci.yml, whose frame lives in
-    assets/ci/ci-frame.yml and has no target of its own.
-    """
-    assets = pathlib.Path(plugin_root) / "assets"
-    if not assets.is_dir():
-        return None
-    for path in sorted(assets.rglob("*")):
-        if not path.is_file():
-            continue
-        found = parse_markers(path.read_text(encoding="utf-8", errors="ignore"))
-        if found and found[0].asset == name:
-            return str(path.relative_to(plugin_root))
-    return None
-
-
-def base_version_of(plugin_root, asset_path, version):
-    """The asset as it was at `version`, from the plugin's own git history.
-
-    Returns None when the plugin is not a git checkout, or when that generation
-    is not in the history -- in which case the merge proceeds without a base
-    rather than failing.
-    """
-    try:
-        revisions = git(plugin_root, "log", "--format=%H", "--", asset_path).split()
-    except ApplyError:
-        return None
-    for revision in revisions:
-        try:
-            # `git show rev:path` resolves `path` from the repository root, not
-            # from cwd -- the leading `./` is what tells git to resolve it
-            # relative to `plugin_root` instead, which is a subdirectory of the
-            # real plugin checkout (`skills/repo-infra`), never its root.
-            text = git(plugin_root, "show", f"{revision}:./{asset_path}")
-        except ApplyError:
-            continue
-        found = parse_markers(text)
-        if found and found[0].version == version:
-            return text
-    return None
 
 
 def targets_for(name, rendered):
@@ -126,14 +85,26 @@ def targets_for(name, rendered):
 def _git_dir(repo_root):
     """The git dir, read without running git so a bare `.git/` in a test
     still counts. In a linked worktree `.git` is a file saying
-    `gitdir: <path>`, and writing below it fails with NotADirectoryError."""
-    dot_git = pathlib.Path(repo_root) / ".git"
+    `gitdir: <path>`, and writing below it fails with NotADirectoryError.
+
+    Absolute, because `git` runs with the root as its working directory: a
+    relative `--root` would otherwise name the root twice."""
+    root = pathlib.Path(repo_root).resolve()
+    dot_git = root / ".git"
     if dot_git.is_file():
         line = dot_git.read_text(encoding="utf-8").strip()
         if not line.startswith("gitdir:"):
             raise ApplyError(f"{dot_git}: not a gitdir pointer")
-        return (pathlib.Path(repo_root) / line[len("gitdir:"):].strip()).resolve()
+        return (root / line[len("gitdir:"):].strip()).resolve()
     return dot_git
+
+
+def _read_raw(path):
+    """The file with its line endings as they are: a CRLF checkout must reach
+    `pristine` as CRLF, or it would read as the stamped LF text and be
+    overwritten."""
+    with open(path, encoding="utf-8", newline="") as handle:
+        return handle.read()
 
 
 def _scratch_dir(repo_root):
@@ -162,7 +133,7 @@ def changed(repo_root, paths):
     return [p for p in paths if p in dirty]
 
 
-def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
+def apply_file_item(repo_root, name, rendered, items, merged=None):
     state = next((i.state for i in items if i.name == name), None)
     if state is None:
         raise ApplyError(f"{name}: not in the report")
@@ -209,109 +180,85 @@ def apply_file_item(repo_root, name, rendered, items, plugin_root, merged=None):
         got = next((m.version for m in parse_markers(text) if m.asset == name), None)
         if got != wanted:
             raise ApplyError(f"{name}: the merged file says v{got}, the asset is v{wanted}")
-        written = [write_asset(repo_root, path, text)]
+        # Handed back unchanged, the file is what apply would write, and the
+        # stamp says so: a file installed before D29 stops once, not on every
+        # upgrade. Anything else carries local edits and stays unstamped.
+        bare = strip_stamp(text)
+        written = [write_asset(repo_root, path,
+                               stamp(bare) if bare == dict(targets)[path] else bare)]
         # The staleness guard above fails closed even on a stale snapshot, so
         # leaving these behind is untidy rather than unsafe -- but a finished
         # merge has nothing left to guard, so clear this item's own scratch
         # files. Other items may still have a merge in progress, so only
         # `name`'s own files go, never the whole directory.
-        for suffix in ("base", "new", "current", "path"):
+        for suffix in ("new", "current", "path", "log"):
             (_scratch_dir(repo_root) / f"{name}.{suffix}").unlink(missing_ok=True)
         return written
 
     if len(targets) > 1:
-        return _apply_dir_asset(repo_root, name, targets, wanted, plugin_root)
+        return _apply_dir_asset(repo_root, name, targets, wanted)
 
     if state == "missing":
-        return [write_asset(repo_root, path, expected)]
+        return [write_asset(repo_root, path, stamp(expected))]
 
     # outdated
-    installed = (pathlib.Path(repo_root) / path).read_text(encoding="utf-8")
-    found = parse_markers(installed)
-    source = _asset_source(plugin_root, found[0].asset)
-    base = base_version_of(plugin_root, source, found[0].version) if source else None
-    if base is not None and base == installed:
-        return [write_asset(repo_root, path, expected)]
-
-    _prepare_merge(repo_root, name, path, base, expected, installed)
+    installed = _read_raw(pathlib.Path(repo_root) / path)
+    if pristine(installed):
+        return [write_asset(repo_root, path, stamp(expected))]
+    _prepare_merge(repo_root, name, path, expected, installed)
 
 
-def _prepare_merge(repo_root, name, path, base, expected, installed):
+def _prepare_merge(repo_root, name, path, expected, installed):
     scratch = _scratch_dir(repo_root)
     scratch.mkdir(parents=True, exist_ok=True)
     new_path = scratch / f"{name}.new"
     new_path.write_text(expected, encoding="utf-8")
-    base_path = scratch / f"{name}.base"
-    base_path.write_text(base if base is not None else "", encoding="utf-8")
     # The snapshot of what is on disk right now, so a later --from can refuse
     # to overwrite a different edit that lands while the merge is prepared.
-    (scratch / f"{name}.current").write_text(installed, encoding="utf-8")
+    current_path = scratch / f"{name}.current"
+    current_path.write_text(installed, encoding="utf-8")
     # Which file the merge is for, so --from writes it back to that file even
     # when the asset ships several.
     (scratch / f"{name}.path").write_text(path + "\n", encoding="utf-8")
-    raise NeedsMerge(name, base_path, new_path, pathlib.Path(repo_root) / path)
+    # The history tells an edit from an older generation: a file only apply
+    # commits touched has no local edits (commands/apply.md). --git-dir keeps
+    # git from walking up out of a repository it cannot read into an enclosing
+    # one and answering with the wrong history.
+    try:
+        log = git(repo_root, f"--git-dir={_git_dir(repo_root)}", "log",
+                  "--format=%h %ad %s", "--date=short", "--", path)
+        if not log:
+            log = f"(no history: no commit touches {path})\n"
+    except ApplyError as error:
+        log = f"(no history: {error})\n"
+    log_path = scratch / f"{name}.log"
+    log_path.write_text(log, encoding="utf-8")
+    raise NeedsMerge(name, new_path, current_path, log_path, pathlib.Path(repo_root) / path)
 
 
-def _dir_sources(plugin_root, name, targets):
-    """Each target's source inside the plugin, by its path below the asset root.
-
-    The manifest versions a directory asset as one unit, but every file has a
-    history of its own. Looking a file's base up under a sibling's path (the
-    first file carrying the marker) compares it against the wrong history.
-    """
-    assets = pathlib.Path(plugin_root) / "assets"
-    sources = []
-    if assets.is_dir():
-        sources = sorted(
-            p for p in assets.rglob("*") if p.is_file()
-            and any(m.asset == name for m in parse_markers(
-                p.read_text(encoding="utf-8", errors="ignore"))))
-    if not sources:
-        return {}
-    source_root = pathlib.Path(*_common_parts([p.parts for p in sources]))
-    target_root = pathlib.PurePosixPath(
-        *_common_parts([pathlib.PurePosixPath(t).parts for t, _ in targets]))
-    return {target: str((source_root / pathlib.PurePosixPath(target).relative_to(target_root))
-                        .relative_to(plugin_root))
-            for target, _ in targets}
-
-
-def _common_parts(all_parts):
-    common = []
-    # Paths of different depth are expected; the common prefix is the shorter.
-    for parts in zip(*[p[:-1] for p in all_parts], strict=False):
-        if len(set(parts)) != 1:
-            break
-        common.append(parts[0])
-    return common
-
-
-def _apply_dir_asset(repo_root, name, targets, wanted, plugin_root):
+def _apply_dir_asset(repo_root, name, targets, wanted):
     """Install or upgrade a directory asset one file at a time.
 
     A missing file is written. A file at the current generation is left alone,
     local edits included. A file at an older generation is overwritten only
-    when it is byte for byte that generation from the plugin's own history.
+    when it carries a matching stamp (D29).
     One edited file stops the whole run before anything is written, so a
     refusal never leaves a half-upgraded directory behind it.
     """
-    sources = _dir_sources(plugin_root, name, targets)
     to_write = []
     for path, expected in targets:
         target = pathlib.Path(repo_root) / path
         if not target.is_file():
-            to_write.append((path, expected))
+            to_write.append((path, stamp(expected)))
             continue
-        installed = target.read_text(encoding="utf-8")
+        installed = _read_raw(target)
         have = next((m.version for m in parse_markers(installed) if m.asset == name), None)
         if have == wanted:
             continue
-        source = sources.get(path)
-        base = base_version_of(plugin_root, source, have) if source and have else None
-        if base is not None and base == installed:
-            to_write.append((path, expected))
+        if pristine(installed):
+            to_write.append((path, stamp(expected)))
             continue
-        _prepare_merge(repo_root, name, path, base, expected, installed)
+        _prepare_merge(repo_root, name, path, expected, installed)
     return [write_asset(repo_root, path, text) for path, text in to_write]
 
 
@@ -496,17 +443,46 @@ def ensure_branch(repo_root):
     return BRANCH
 
 
-def commit_item(repo_root, name, paths):
-    """One commit per item, so any single item can be dropped at review."""
+def commit_item(repo_root, name, paths, merged=False):
+    """One commit per item, so any single item can be dropped at review.
+
+    A hand merge with local edits gets its own subject: the next NeedsMerge
+    hands the LLM the file's log, and an Install commit there means "no local
+    edits" (D29). A merge handed back unchanged is an install.
+    """
     if not paths:
         return None
+    subject = (f"Merge {name} from the repo-infra standard with local edits" if merged
+               else f"Install {name} from the repo-infra standard")
     git(repo_root, "add", *paths)
-    git(repo_root, "commit", "-m",
-         f"Install {name} from the repo-infra standard\n\n{TRAILER}")
+    git(repo_root, "commit", "-m", f"{subject}\n\n{TRAILER}")
     return git(repo_root, "rev-parse", "HEAD").strip()
 
 
 CONFIG = ".github/repo-infra.json"
+
+WIDTH = 80
+
+
+def _compact(value, indent, level, prefix=0):
+    unit = indent if isinstance(indent, str) else " " * indent
+    if isinstance(value, (dict, list)) and value:
+        items = list(value.values()) if isinstance(value, dict) else value
+        one_line = json.dumps(value, separators=(", ", ": "))
+        # A tab counts as the 8 columns an editor shows it as.
+        if (not any(isinstance(v, (dict, list)) for v in items)
+                and len(unit.expandtabs()) * level + prefix + len(one_line) + 1 <= WIDTH):
+            return one_line
+        inner = unit * (level + 1)
+        if isinstance(value, dict):
+            parts = []
+            for key, item in value.items():
+                head = json.dumps(key) + ": "
+                parts.append(inner + head + _compact(item, indent, level + 1, len(head)))
+            return "{\n" + ",\n".join(parts) + "\n" + unit * level + "}"
+        parts = [inner + _compact(item, indent, level + 1) for item in value]
+        return "[\n" + ",\n".join(parts) + "\n" + unit * level + "]"
+    return json.dumps(value)
 
 
 def config_text(data, original=None):
@@ -516,6 +492,10 @@ def config_text(data, original=None):
     was indented by four spaces, so the migration's one-key change showed up
     as a diff of the whole file. The indent and the final newline are read
     from the file; key order is the order of `data`.
+
+    An array or object of scalars stays on one line when it fits in 80 columns;
+    oetiker/mdmost#30 showed `"ci": ["ci-man", "ci-rust-musl"]` turned into
+    four lines.
     """
     indent, newline = 2, "\n"
     if original is not None:
@@ -526,7 +506,7 @@ def config_text(data, original=None):
                 lead = line[:len(line) - len(stripped)]
                 indent = lead if "\t" in lead else len(lead)
                 break
-    return json.dumps(data, indent=indent) + newline
+    return _compact(data, indent, 0) + newline
 
 
 def write_config(repo_root, result, answers=None):

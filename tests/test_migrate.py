@@ -8,6 +8,7 @@ import pytest
 
 from repo_infra import cli
 from repo_infra.apply import ApplyError
+from repo_infra.markers import pristine
 from repo_infra.migrate import release_in_progress
 from repo_infra.remote import Facts
 
@@ -306,6 +307,7 @@ def test_a_bare_apply_replaces_the_d26_release_pr(tmp_path, monkeypatch, capsys)
     text = (root / ".github/workflows/release-pr.yml").read_text()
     version = MANIFEST["assets"]["release-pr"]["version"]
     assert f"# repo-infra: release-pr v{version}" in text
+    assert pristine(text) is True
     assert "release-pr-build" not in text
     assert git(root, "status", "--porcelain") == ""
     code, items = run_check(root, monkeypatch, capsys, facts())

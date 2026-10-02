@@ -116,17 +116,40 @@ missing patterns.
 
 ## If it exits with `NeedsMerge`
 
-The file it names carries local edits. Read the three files it wrote under
-`repo-infra/merge/` in the git dir (`{name}.base`, `{name}.new`,
-`{name}.current`; the error prints their full paths), merge
-the new asset into the local edits by hand, save the result anywhere, and hand
-it back: `apply --item <name> --from <path to your merge>`. The merged file must
-carry the new marker version. For an asset that ships several files, such as
-`workflow-lib`, the merge covers the one file the error names (`{name}.path`
-holds its path), and nothing else is written until it is back. Run `apply`
-again afterwards: it upgrades the remaining files, or names the next edited
-one. Never overwrite the local edits outright. They are there for a reason, and the reason is usually
-not visible in the diff.
+The file it names is not what `apply` last wrote: it has no stamp (installed
+before v0.3.1) or was edited since. `apply` wrote four files under
+`repo-infra/merge/` in the git dir (the error prints their full paths):
+`{name}.new` (the new rendering), `{name}.current` (the file now),
+`{name}.path` (which file) and `{name}.log` (the file's `git log`, newest
+first).
+
+Read the log first.
+
+- Every commit is `Install <item> from the repo-infra standard`, `Migrate to
+  ...`, or a commit that brought a repo-infra file in by hand during a
+  conversion: the file has no local edits. Hand `.new` back unchanged:
+  `apply --item <name> --from <path to {name}.new>`. It is written with a
+  stamp and committed as `Install`, so the next upgrade goes through.
+- Any other commit, including `Merge <item> ... with local edits`, may carry
+  an edit. Read it (`git show <hash> -- <path>`), carry the edit into a copy
+  of `.new`, and hand that back with `--from`. To see what an edit changed,
+  compare with `git show <hash>:<path>` at the last `Install` commit before
+  it.
+- The log reads `(no history: ...)`: there is nothing to tell an edit by.
+  Compare `.current` with `.new`; any difference beyond the generation change
+  is an edit to carry over.
+
+If the apply pull request was squash-merged, the `Install` subjects live in
+the body of the squash commit; `git show <hash>` shows them.
+
+The merged file must carry the new marker version. One that differs from
+`.new` is committed as `Merge <item> from the repo-infra standard with local
+edits` and stops the next upgrade again. For an asset that ships several
+files, such as `workflow-lib`, the merge covers the one file the error names,
+and nothing else is written until it is back. Run `apply` again
+afterwards: it upgrades the remaining files, or names the next one. Never drop
+a local edit: it is there for a reason, and the reason is usually not visible
+in the diff.
 
 ## If it refuses an administration item
 

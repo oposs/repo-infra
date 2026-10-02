@@ -420,3 +420,16 @@ branch; `CHANGES.md`'s question is "what did a released version add", so a
 generation nobody outside this repository received earns no bullet. A marker
 bump with no matching changelog entry is not a gap between the two files -- it
 is the two files doing their separate jobs correctly.
+
+### The stamp (D29)
+
+Every file `apply` writes from a rendered asset ends its first marker line in
+` sha256=<16 hex digits>`, the start of the SHA-256 of the file without that
+suffix. It answers one question: is this file byte for byte what `apply`
+wrote? If so, an upgrade overwrites it. `check` never reads it, so the
+argument above stands. A file handed back through `--from` unchanged is the
+rendering, so it is stamped and committed as `Install`: a file from before the
+stamp stops once. A hand merge that differs gets no stamp and is committed as
+`Merge <item> ... with local edits`, so the next upgrade stops at it again.
+This replaced looking the old generation up in the plugin's git history, which
+an installed plugin does not have.

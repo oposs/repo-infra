@@ -13,7 +13,7 @@ import posixpath
 import re
 from collections import namedtuple
 
-from .markers import parse_markers
+from .markers import parse_markers, strip_stamp
 from .seam import seam_advice, seam_problems
 
 Item = namedtuple("Item", "name state detail")
@@ -160,7 +160,7 @@ def classify_files(repo_root, rendered, manifest):
 
         text = installed.read_text(encoding="utf-8")
         found = {m.asset: m.version for m in parse_markers(text)}
-        edited = text != expected_text
+        edited = strip_stamp(text) != expected_text
         filtered = path in _REQUIRED_WORKFLOWS and carries_a_path_filter(text)
         for marker in expected:
             have = found.get(marker.asset)

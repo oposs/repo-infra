@@ -1,53 +1,26 @@
 # tests/conftest.py
 import os
 import shutil
-import subprocess
 
 import pytest
-
-OLD = "name: CI\n# repo-infra: ci v1\njobs:\n  fmt:\n"
-NEW = "name: CI\n# repo-infra: ci v3\njobs:\n  fmt:\n"
 
 
 @pytest.fixture(autouse=True)
 def git_identity(monkeypatch):
-    """Give every git commit an author, including the ones apply makes.
+    """Run git as a fresh GitHub runner does: no global or system config, and
+    an identity from the environment.
 
-    A GitHub runner has no git identity and no host name git can build one
-    from, so "git commit" fails there with "Author identity unknown". A
-    developer machine guesses one, which hid six such tests until the
-    PR #44 run.
+    The runner has no git identity and no host name git can build one from,
+    so "git commit" fails there with "Author identity unknown". A developer
+    machine guesses one, which hid six such tests until the PR #44 run. A
+    global setting such as commit signing or init.defaultBranch would hide
+    the next difference the same way.
     """
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     for role in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{role}_NAME", "Test")
         monkeypatch.setenv(f"GIT_{role}_EMAIL", "test@example.com")
-
-
-@pytest.fixture
-def plugin_checkout(tmp_path_factory):
-    """A git checkout of the plugin whose history contains the v1 asset.
-
-    This is how apply recovers the base for a three-way merge: the marker says
-    which generation is installed, and the plugin's own history has that
-    generation's asset.
-    """
-    root = tmp_path_factory.mktemp("plugin")
-    assets = root / "assets/ci"
-    assets.mkdir(parents=True)
-
-    def run(*args):
-        return subprocess.run(args, cwd=root, check=True, capture_output=True)
-
-    run("git", "init", "-q")
-    run("git", "config", "user.email", "test@example.com")
-    run("git", "config", "user.name", "Test")
-    (assets / "ci-frame.yml").write_text(OLD, encoding="utf-8")
-    run("git", "add", "-A")
-    run("git", "commit", "-qm", "v1")
-    (assets / "ci-frame.yml").write_text(NEW, encoding="utf-8")
-    run("git", "add", "-A")
-    run("git", "commit", "-qm", "v3")
-    return root
 
 
 @pytest.fixture

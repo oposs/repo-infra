@@ -55,14 +55,17 @@ differences are gaps and which are just migration work.
    Applying it is a migration. Read `references/release-flow.md` before touching
    one.
 
-2. **`apply` refuses to merge a file that has local edits.** It writes
-   `{name}.base`, `{name}.new` and `{name}.current` under
-   `repo-infra/merge/` in the git dir (`.git/` in a plain clone; the error
-   prints the full paths) and stops. Merge `.base` and `.new` into the local
-   edits yourself, save the result anywhere, and hand it back:
-   `apply --item ci --from <path to your merge>`. If the target
-   changed since the refusal, the re-run refuses again rather than clobbering
-   the newer edit.
+2. **`apply` overwrites only what it wrote itself.** Each file it writes
+   carries a stamp on its first marker line. A file without a matching stamp
+   stops the run: `apply` writes `{name}.new`, `{name}.current`,
+   `{name}.path` and `{name}.log` under `repo-infra/merge/` in the git dir
+   and raises `NeedsMerge`. The log tells an edit from an older generation;
+   `commands/apply.md` says how to read it. Hand the result back with
+   `apply --item <name> --from <path>`. A file handed back unchanged is
+   written stamped and committed as `Install`; one with local edits stays
+   unstamped, is committed as `Merge <item> ... with local edits`, and stops
+   the next upgrade again. If the target changed since the refusal, the
+   re-run refuses again rather than clobbering the newer edit.
 
 3. **The ruleset precondition asks GitHub, not your checkout.** `apply` won't
    enable the ruleset until `ci.yml`/`changelog.yml` are confirmed on the

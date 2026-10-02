@@ -1,7 +1,10 @@
 import json
 import pathlib
 
+import pytest
+
 from repo_infra import cli
+from repo_infra.markers import pristine, strip_stamp
 from repo_infra.state import Item
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -125,4 +128,105 @@ def test_an_item_writes_only_the_files_an_earlier_item_left(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert out.count("applied by") == 1
     assert "Install by from the repo-infra standard\n\nb.yml\n" in log(root)
-    assert (root / "b.yml").read_text() == B
+    assert strip_stamp((root / "b.yml").read_text()) == B
+
+
+def last_subject(root):
+    import subprocess
+
+    return subprocess.run(["git", "log", "-1", "--format=%s"], cwd=root,
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def hand_back(tmp_path, monkeypatch, edit):
+    """Install fx v1 without a stamp (as before D29), let apply stop, and hand
+    the prepared `.new` back through --from, edited by `edit`."""
+    from repo_infra.apply import NeedsMerge
+
+    root = overlapping(tmp_path, monkeypatch, {"a.yml": "# repo-infra: fx v1\nlocal\n"})
+    argv = ["apply", "--repo", "o/r", "--root", str(root), "--item", "fx"]
+    with pytest.raises(NeedsMerge) as raised:
+        cli.main(argv)
+    merged = tmp_path / "merged.yml"
+    merged.write_text(edit(raised.value.new.read_text()))
+    assert cli.main(argv + ["--from", str(merged)]) == 0
+    return root, argv
+
+
+def next_generation(monkeypatch):
+    rendered = {"a.yml": A.replace("fx v2", "fx v3"), "b.yml": B}
+    monkeypatch.setattr(cli, "_prepare", lambda r: ({}, None, rendered, {}, []))
+    return rendered
+
+
+def test_a_hand_merge_with_local_edits_commits_as_a_merge_and_stops_again(
+        tmp_path, monkeypatch):
+    from repo_infra.apply import NeedsMerge
+
+    root, argv = hand_back(tmp_path, monkeypatch, lambda new: new + "local\n")
+    assert last_subject(root) == "Merge fx from the repo-infra standard with local edits"
+    assert pristine((root / "a.yml").read_text()) is None
+    next_generation(monkeypatch)
+    with pytest.raises(NeedsMerge):
+        cli.main(argv)
+
+
+def test_an_unchanged_hand_back_is_installed_stamped_and_upgrades_in_place(
+        tmp_path, monkeypatch):
+    """A file installed before the stamp stops once; handed back unchanged it
+    is what apply would write, so it gets the stamp and an Install commit, and
+    the next generation goes through without stopping (D29)."""
+    root, argv = hand_back(tmp_path, monkeypatch, lambda new: new)
+    assert last_subject(root) == "Install fx from the repo-infra standard"
+    text = (root / "a.yml").read_text()
+    assert pristine(text) is True and strip_stamp(text) == A
+    rendered = next_generation(monkeypatch)
+    assert cli.main(argv) == 0
+    assert strip_stamp((root / "a.yml").read_text()) == rendered["a.yml"]
+    assert last_subject(root) == "Install fx from the repo-infra standard"
+
+
+def test_a_plugin_installed_without_git_upgrades_an_unedited_stamped_file(tmp_path):
+    """The other CLI tests run the checkout; an installed plugin has no `.git`,
+    so the old generation cannot be looked up and only the stamp says the file
+    is unedited (D29). Runs apply from a copy of the plugin tree for real."""
+    import re
+    import shutil
+    import subprocess
+    import sys
+
+    from repo_infra.markers import stamp
+
+    plugin = tmp_path / "plugin"
+    shutil.copytree(ROOT / "skills/repo-infra", plugin / "skills/repo-infra",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    assert not list(plugin.rglob(".git"))
+
+    target = tmp_path / "repo"
+    target.mkdir()
+    path = ".github/workflows/changelog.yml"
+    _, _, rendered, _, _ = cli._prepare(str(target))
+    current = rendered[path]
+    old = re.sub(r"(repo-infra: changelog v)\d+", r"\g<1>0", current, count=1)
+    assert old != current
+    (target / path).parent.mkdir(parents=True)
+    (target / path).write_text(stamp(old), encoding="utf-8")
+    for args in (("init", "-q", "-b", "main"), ("add", "-A"),
+                 ("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed")):
+        subprocess.run(("git",) + args, cwd=target, check=True, capture_output=True)
+
+    # No network: the facts are the conforming ones, as in the tests above.
+    driver = (
+        "import sys; sys.path.insert(0, sys.argv[1])\n"
+        "from repo_infra import cli, migrate\n"
+        "cli.read_facts = lambda repo: cli.CONFORMING_FACTS\n"
+        "migrate.release_in_progress = lambda r, f: None\n"
+        "sys.exit(cli.main(sys.argv[2:]))\n")
+    done = subprocess.run(
+        [sys.executable, "-c", driver, str(plugin / "skills/repo-infra/scripts"),
+         "apply", "--repo", "o/r", "--root", str(target), "--item", "changelog"],
+        capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    text = (target / path).read_text(encoding="utf-8")
+    assert pristine(text) is True and strip_stamp(text) == current
+    assert last_subject(target) == "Install changelog from the repo-infra standard"
