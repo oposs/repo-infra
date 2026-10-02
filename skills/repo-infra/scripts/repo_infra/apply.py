@@ -451,6 +451,28 @@ def commit_item(repo_root, name, paths, merged=False):
 
 CONFIG = ".github/repo-infra.json"
 
+WIDTH = 80
+
+
+def _compact(value, indent, level, prefix=0):
+    unit = indent if isinstance(indent, str) else " " * indent
+    if isinstance(value, (dict, list)) and value:
+        items = list(value.values()) if isinstance(value, dict) else value
+        one_line = json.dumps(value, separators=(", ", ": "))
+        if (not any(isinstance(v, (dict, list)) for v in items)
+                and len(unit) * level + prefix + len(one_line) + 1 <= WIDTH):
+            return one_line
+        inner = unit * (level + 1)
+        if isinstance(value, dict):
+            parts = []
+            for key, item in value.items():
+                head = json.dumps(key) + ": "
+                parts.append(inner + head + _compact(item, indent, level + 1, len(head)))
+            return "{\n" + ",\n".join(parts) + "\n" + unit * level + "}"
+        parts = [inner + _compact(item, indent, level + 1) for item in value]
+        return "[\n" + ",\n".join(parts) + "\n" + unit * level + "]"
+    return json.dumps(value)
+
 
 def config_text(data, original=None):
     """`data` as JSON in the layout of `original`, the file it replaces.
@@ -459,6 +481,10 @@ def config_text(data, original=None):
     was indented by four spaces, so the migration's one-key change showed up
     as a diff of the whole file. The indent and the final newline are read
     from the file; key order is the order of `data`.
+
+    An array or object of scalars stays on one line when it fits in 80 columns;
+    oetiker/mdmost#30 showed `"ci": ["ci-man", "ci-rust-musl"]` turned into
+    four lines.
     """
     indent, newline = 2, "\n"
     if original is not None:
@@ -469,7 +495,7 @@ def config_text(data, original=None):
                 lead = line[:len(line) - len(stripped)]
                 indent = lead if "\t" in lead else len(lead)
                 break
-    return json.dumps(data, indent=indent) + newline
+    return _compact(data, indent, 0) + newline
 
 
 def write_config(repo_root, result, answers=None):

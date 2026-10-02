@@ -10,6 +10,7 @@ from repo_infra.apply import (
     NeedsMerge,
     apply_file_item,
     commit_item,
+    config_text,
     write_asset,
 )
 from repo_infra.markers import pristine, stamp, strip_stamp
@@ -400,3 +401,45 @@ def test_an_install_keeps_the_install_subject(tmp_path):
     installed(tmp_path, ASSET)
     commit_item(tmp_path, "ci", [".github/workflows/ci.yml"])
     assert subject(tmp_path) == "Install ci from the repo-infra standard"
+
+
+# --- config_text keeps short lists on one line ----------------------------
+
+MDMOST = {
+    "ecosystems": ["rust"],
+    "ci": ["ci-man", "ci-rust-musl"],
+    "release_assets": ["mdmost-*-x86_64-unknown-linux-musl.tar.gz",
+                       "mdmost-*-aarch64-unknown-linux-musl.tar.gz",
+                       "mdmost_*_amd64.deb"],
+    "rust": {"lint": ["mdmost"], "test": ["mdmost", "pulldown-latex"]},
+    "debian": {"distribution": "stable", "component": "main"},
+    "empty": [],
+}
+
+
+def test_short_scalar_lists_stay_on_one_line():
+    text = config_text(MDMOST)
+    assert '  "ecosystems": ["rust"],\n' in text
+    assert '  "ci": ["ci-man", "ci-rust-musl"],\n' in text
+    assert '  "debian": {"distribution": "stable", "component": "main"},\n' in text
+    assert '  "empty": []\n' in text
+
+
+def test_a_list_wider_than_80_columns_breaks_one_value_per_line():
+    text = config_text(MDMOST)
+    assert '  "release_assets": [\n    "mdmost-*-x86_64-unknown-linux-musl.tar.gz",\n' in text
+
+
+def test_a_nested_object_breaks_but_its_short_lists_do_not():
+    text = config_text(MDMOST)
+    assert '  "rust": {\n    "lint": ["mdmost"],\n    "test": ["mdmost", "pulldown-latex"]\n  },\n' in text
+
+
+def test_the_text_reads_back_as_the_same_data():
+    assert json.loads(config_text(MDMOST)) == MDMOST
+
+
+def test_the_indent_of_the_original_is_kept():
+    text = config_text({"a": {"b": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]}},
+                       original='{\n    "a": 1\n}\n')
+    assert text.startswith('{\n    "a": {\n        "b": [')
