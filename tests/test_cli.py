@@ -4,7 +4,7 @@ import pathlib
 import pytest
 
 from repo_infra import cli
-from repo_infra.markers import strip_stamp
+from repo_infra.markers import pristine, strip_stamp
 from repo_infra.state import Item
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -131,16 +131,56 @@ def test_an_item_writes_only_the_files_an_earlier_item_left(tmp_path, monkeypatc
     assert strip_stamp((root / "b.yml").read_text()) == B
 
 
-def test_a_hand_merge_handed_back_with_from_commits_as_a_merge(tmp_path, monkeypatch):
+def last_subject(root):
     import subprocess
 
+    return subprocess.run(["git", "log", "-1", "--format=%s"], cwd=root,
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def hand_back(tmp_path, monkeypatch, edit):
+    """Install fx v1 without a stamp (as before D29), let apply stop, and hand
+    the prepared `.new` back through --from, edited by `edit`."""
     from repo_infra.apply import NeedsMerge
 
     root = overlapping(tmp_path, monkeypatch, {"a.yml": "# repo-infra: fx v1\nlocal\n"})
     argv = ["apply", "--repo", "o/r", "--root", str(root), "--item", "fx"]
     with pytest.raises(NeedsMerge) as raised:
         cli.main(argv)
-    assert cli.main(argv + ["--from", str(raised.value.new)]) == 0
-    subject = subprocess.run(["git", "log", "-1", "--format=%s"], cwd=root,
-                             capture_output=True, text=True, check=True).stdout.strip()
-    assert subject == "Merge fx from the repo-infra standard with local edits"
+    merged = tmp_path / "merged.yml"
+    merged.write_text(edit(raised.value.new.read_text()))
+    assert cli.main(argv + ["--from", str(merged)]) == 0
+    return root, argv
+
+
+def next_generation(monkeypatch):
+    rendered = {"a.yml": A.replace("fx v2", "fx v3"), "b.yml": B}
+    monkeypatch.setattr(cli, "_prepare", lambda r: ({}, None, rendered, {}, []))
+    return rendered
+
+
+def test_a_hand_merge_with_local_edits_commits_as_a_merge_and_stops_again(
+        tmp_path, monkeypatch):
+    from repo_infra.apply import NeedsMerge
+
+    root, argv = hand_back(tmp_path, monkeypatch, lambda new: new + "local\n")
+    assert last_subject(root) == "Merge fx from the repo-infra standard with local edits"
+    assert pristine((root / "a.yml").read_text()) is None
+    next_generation(monkeypatch)
+    with pytest.raises(NeedsMerge):
+        cli.main(argv)
+
+
+def test_an_unchanged_hand_back_is_installed_stamped_and_upgrades_in_place(
+        tmp_path, monkeypatch):
+    """A file installed before the stamp stops once; handed back unchanged it
+    is what apply would write, so it gets the stamp and an Install commit, and
+    the next generation goes through without stopping (D29)."""
+    root, argv = hand_back(tmp_path, monkeypatch, lambda new: new)
+    assert last_subject(root) == "Install fx from the repo-infra standard"
+    text = (root / "a.yml").read_text()
+    assert pristine(text) is True and strip_stamp(text) == A
+    rendered = next_generation(monkeypatch)
+    assert cli.main(argv) == 0
+    assert strip_stamp((root / "a.yml").read_text()) == rendered["a.yml"]
+    assert last_subject(root) == "Install fx from the repo-infra standard"

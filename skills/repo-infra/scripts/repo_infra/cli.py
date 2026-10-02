@@ -16,6 +16,7 @@ from .apply import (
 )
 from .assemble import render_all
 from .detect import Detection
+from .markers import pristine
 from .remote import Facts, Gh
 from .state import (
     NEEDS_ATTENTION_STATES,
@@ -192,7 +193,12 @@ def apply_command(args):
             print(f"{name}: installed with {', '.join(writers)}" if writers
                   else f"{name}: already installed")
             continue
-        commit_item(args.root, name, written, merged=bool(args.from_file))
+        # A hand-back that is the rendering came out stamped (D29), and its
+        # commit must not claim local edits the next upgrade would act on.
+        edited = bool(args.from_file) and not all(
+            pristine((pathlib.Path(args.root) / path).read_text(encoding="utf-8"))
+            for path in written)
+        commit_item(args.root, name, written, merged=edited)
         written_by.update(dict.fromkeys(written, name))
         print(f"applied {name}")
     return 0

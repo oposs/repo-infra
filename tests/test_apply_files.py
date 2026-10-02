@@ -143,6 +143,19 @@ def test_a_merge_handed_back_is_written_without_a_stamp(tmp_path):
         assert not (tmp_path / ".git" / MERGE_DIR / f"ci.{suffix}").exists()
 
 
+def test_a_merge_handed_back_unchanged_is_written_stamped(tmp_path):
+    """A file from before D29 handed back as `.new` is the rendering: stamping
+    it is what lets the next upgrade go through without stopping again."""
+    git_repo(tmp_path)
+    installed(tmp_path, OLD)
+    with pytest.raises(NeedsMerge) as raised:
+        apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
+    apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")],
+                    merged=str(raised.value.new))
+    text = (tmp_path / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert pristine(text) is True and strip_stamp(text) == ASSET
+
+
 def test_a_successful_from_write_removes_its_own_scratch_files_but_not_anothers(tmp_path):
     git_repo(tmp_path)
     installed(tmp_path, OLD.replace("fmt:", "fmt:\n    timeout-minutes: 15"))

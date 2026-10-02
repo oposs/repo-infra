@@ -61,8 +61,11 @@ differences are gaps and which are just migration work.
    `{name}.path` and `{name}.log` under `repo-infra/merge/` in the git dir
    and raises `NeedsMerge`. The log tells an edit from an older generation;
    `commands/apply.md` says how to read it. Hand the result back with
-   `apply --item <name> --from <path>`. If the target changed since the
-   refusal, the re-run refuses again rather than clobbering the newer edit.
+   `apply --item <name> --from <path>`. A file handed back unchanged is
+   written stamped and committed as `Install`; one with local edits stays
+   unstamped, is committed as `Merge <item> ... with local edits`, and stops
+   the next upgrade again. If the target changed since the refusal, the
+   re-run refuses again rather than clobbering the newer edit.
 
 3. **The ruleset precondition asks GitHub, not your checkout.** `apply` won't
    enable the ruleset until `ci.yml`/`changelog.yml` are confirmed on the

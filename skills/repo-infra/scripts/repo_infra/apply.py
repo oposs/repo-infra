@@ -176,7 +176,12 @@ def apply_file_item(repo_root, name, rendered, items, merged=None):
         got = next((m.version for m in parse_markers(text) if m.asset == name), None)
         if got != wanted:
             raise ApplyError(f"{name}: the merged file says v{got}, the asset is v{wanted}")
-        written = [write_asset(repo_root, path, strip_stamp(text))]
+        # Handed back unchanged, the file is what apply would write, and the
+        # stamp says so: a file installed before D29 stops once, not on every
+        # upgrade. Anything else carries local edits and stays unstamped.
+        bare = strip_stamp(text)
+        written = [write_asset(repo_root, path,
+                               stamp(bare) if bare == dict(targets)[path] else bare)]
         # The staleness guard above fails closed even on a stale snapshot, so
         # leaving these behind is untidy rather than unsafe -- but a finished
         # merge has nothing left to guard, so clear this item's own scratch
@@ -437,8 +442,9 @@ def ensure_branch(repo_root):
 def commit_item(repo_root, name, paths, merged=False):
     """One commit per item, so any single item can be dropped at review.
 
-    A hand merge gets its own subject: the next NeedsMerge hands the LLM the
-    file's log, and an Install commit there means "no local edits" (D29).
+    A hand merge with local edits gets its own subject: the next NeedsMerge
+    hands the LLM the file's log, and an Install commit there means "no local
+    edits" (D29). A merge handed back unchanged is an install.
     """
     if not paths:
         return None

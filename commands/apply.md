@@ -128,7 +128,8 @@ Read the log first.
 - Every commit is `Install <item> from the repo-infra standard`, `Migrate to
   ...`, or a commit that brought a repo-infra file in by hand during a
   conversion: the file has no local edits. Hand `.new` back unchanged:
-  `apply --item <name> --from <path to {name}.new>`.
+  `apply --item <name> --from <path to {name}.new>`. It is written with a
+  stamp and committed as `Install`, so the next upgrade goes through.
 - Any other commit, including `Merge <item> ... with local edits`, may carry
   an edit. Read it (`git show <hash> -- <path>`), carry the edit into a copy
   of `.new`, and hand that back with `--from`. When a base helps,
@@ -137,7 +138,9 @@ Read the log first.
 
 The merged file must carry the new marker version. For an asset that ships
 several files, such as `workflow-lib`, the merge covers the one file the
-error names, and nothing else is written until it is back. Run `apply` again
+error names, and nothing else is written until it is back. A merged file that
+differs from `.new` is committed as `Merge <item> from the repo-infra standard
+with local edits` and stops the next upgrade again. Run `apply` again
 afterwards: it upgrades the remaining files, or names the next one. Never drop
 a local edit: it is there for a reason, and the reason is usually not visible
 in the diff.
