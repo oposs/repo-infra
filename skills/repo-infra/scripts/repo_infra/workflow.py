@@ -215,6 +215,8 @@ class _Reader:
                     and _item(peeked[1])):
                 return self.sequence(indent)
             return ""
+        if text.replace(" ", "") == "{}":
+            return {}
         _refuse(text, line)
         if text[0] == "[":
             return _flow(text, line)

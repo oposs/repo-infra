@@ -193,7 +193,9 @@ def grant(value):
     if value is None:
         return None
     if value in ("read-all", "write-all"):
-        return dict.fromkeys(SCOPES, 1 if value == "read-all" else 2)
+        # GitHub has no read level for id-token.
+        return {scope: 1 if value == "read-all" else 2
+                for scope in SCOPES if value == "write-all" or scope != "id-token"}
     if isinstance(value, dict):
         return {scope: LEVELS.get(str(level), 0) for scope, level in value.items()}
     return {}
@@ -226,6 +228,16 @@ def permission_text(levels):
     return ", ".join(f"{scope}: {_LEVEL_NAMES[level]}" for scope, level in ordered if level)
 
 
+def _starts_runs(doc):
+    """True when the workflow has a trigger besides workflow_call."""
+    on = doc.get("on")
+    if isinstance(on, str):
+        return on != "workflow_call"
+    if isinstance(on, (list, dict)):
+        return any(trigger != "workflow_call" for trigger in on)
+    return False
+
+
 def permission_problems(docs):
     found = []
     for name, doc in docs.items():
@@ -237,9 +249,9 @@ def permission_problems(docs):
             have = _own(doc, job)
             if have is None:
                 # A called file inherits what its caller grants, and the
-                # caller is checked against this file's needs. A file that
-                # starts a run has nothing above it.
-                if want and workflow.interface(doc) is None:
+                # caller is checked against this file's needs. A file with a
+                # trigger of its own also starts runs, with nothing above it.
+                if want and _starts_runs(doc):
                     found.append((name, f"job {job_id} declares no permissions; {called} "
                                         f"needs {permission_text(want)}. Grant them on the job"))
                 continue

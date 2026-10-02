@@ -33,6 +33,7 @@ SNIPPETS = {
     "sequence of mappings": "steps:\n  - uses: a@v1\n    with:\n      ref: b\n  - run: c\n",
     "dash alone": "a:\n  -\n    b: c\n",
     "flow sequence": "needs: [a, 'b', \"c\"]\nempty: []\n",
+    "empty flow mapping": "permissions: {}\njobs:\n  a:\n    with: { }\n",
     "comments": "a: b # note\n# whole line\nc: 'd # not a comment'\n",
     "empty value": "a:\nb: c\n",
     "literal": "run: |\n  one\n    two\n\n  three\nnext: x\n",

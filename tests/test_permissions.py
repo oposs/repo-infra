@@ -71,3 +71,33 @@ def test_a_cycle_does_not_recurse_forever():
     loop = workflow.load("on:\n  workflow_call:\njobs:\n  again:\n"
                          "    uses: ./.github/workflows/loop.yml\n")
     assert callers.needed("loop.yml", {"loop.yml": loop}) == {}
+
+
+def test_an_empty_permissions_mapping_grants_nothing():
+    assert callers.grant({}) == {}
+    assert found(caller(top="permissions: {}\n")) == [(
+        "ci.yml", "job mark grants nothing and p.yml needs checks: write, contents: read; "
+        "GitHub refuses to start the run")]
+
+
+def test_a_job_level_grant_replaces_a_workflow_level_write_all():
+    low = "    permissions:\n      contents: read\n"
+    assert found(caller(low, top="permissions: write-all\n")) == [(
+        "ci.yml", "job mark grants contents: read and p.yml needs checks: write; GitHub "
+        "refuses to start the run")]
+
+
+def test_read_all_does_not_cover_a_write_need_and_has_no_id_token_level():
+    piece = PIECE.replace("checks: write", "id-token: write")
+    docs = {"ci.yml": caller(top="permissions: read-all\n"), "p.yml": workflow.load(piece)}
+    [(name, text)] = callers.permission_problems(docs)
+    assert "id-token: read" not in text
+    assert text.endswith("p.yml needs id-token: write; GitHub refuses to start the run")
+
+
+def test_a_file_with_its_own_trigger_and_workflow_call_is_checked_at_the_top():
+    ci = workflow.load("on:\n  push:\n  pull_request:\n  workflow_call:\njobs:\n  mark:\n"
+                       "    uses: ./.github/workflows/p.yml\n")
+    assert found(ci) == [(
+        "ci.yml", "job mark declares no permissions; p.yml needs checks: write, "
+        "contents: read. Grant them on the job")]
