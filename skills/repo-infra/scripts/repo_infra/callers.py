@@ -181,6 +181,28 @@ def ref_contract_problems(docs, piece_files):
     return list(dict.fromkeys(found))
 
 
+def ref_passing_problems(docs):
+    """D28: ci.yml and release-build.yml run on the release commit only when
+    each workflow they call that declares `ref` is handed `${{ inputs.ref }}`.
+    A call without it tests the commit that triggered the run, so the release
+    pull request would report a test of the wrong commit as its own."""
+    found = []
+    for name in ("ci.yml", "release-build.yml"):
+        for job_id, job in jobs(docs.get(name)).items():
+            called = local_target(job.get("uses"))
+            target = docs.get(called)
+            face = workflow.interface(target) if isinstance(target, dict) else None
+            if face is None or "ref" not in face.inputs:
+                continue
+            given = job.get("with") if isinstance(job.get("with"), dict) else {}
+            if not _INPUT_REF.fullmatch(str(given.get("ref", "")).strip()):
+                found.append((name, f"job {job_id} calls {called}, which takes `ref`, "
+                                    "without `with: ref: ${{ inputs.ref }}`; the release "
+                                    "pull request would test the triggering commit "
+                                    "instead of the release commit (D28). Add it"))
+    return found
+
+
 LEVELS = {"none": 0, "read": 1, "write": 2}
 _LEVEL_NAMES = {0: "none", 1: "read", 2: "write"}
 SCOPES = ("actions", "attestations", "checks", "contents", "deployments", "discussions",
@@ -282,5 +304,6 @@ def validate(docs, pieces, assets=ASSETS):
                 items += [Item("callers", name, "problem", p)
                           for p in call_problems(job_id, job, docs)]
     found = (closing_problems(docs, assets) + ref_contract_problems(docs, piece_files)
+             + ref_passing_problems(docs)
              + permission_problems(docs))
     return items + [Item("callers", name, "problem", detail) for name, detail in found]

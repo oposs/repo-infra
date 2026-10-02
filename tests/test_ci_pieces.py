@@ -35,6 +35,7 @@ def test_no_ci_piece_filters_on_paths(name):
     # blocks the pull request. A job skipped by a job-level `if:` reports
     # Success. Only the second is safe behind a required check.
     doc = workflow.load(piece_text(name))
+    # path_filter_items judges only the REQUIRED_WORKFLOWS names, so feed the piece as ci.yml.
     assert check.path_filter_items({"ci.yml": doc}) == []
 
 
@@ -158,3 +159,14 @@ def test_the_plain_pytest_run_deselects_the_pandoc_tests():
     assert 'addopts = -m "not container and not pandoc"' in ini
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert 'python3 -m pytest -q -m "not container" tests' in makefile
+
+
+def test_every_non_yaml_asset_is_covered_by_a_test():
+    # Anything under pieces/ other than YAML, JSON, JavaScript and Markdown needs
+    # its own test file, or it ships unchecked.
+    #   .mk  -> tests/test_build_assets.py, tests/test_man_build.py
+    #   .m4  -> tests/test_container_m4.py
+    #   .lua -> tests/test_man_build.py
+    others = {p.suffix for p in (ASSETS / "pieces").rglob("*") if p.is_file()} - {
+        ".yml", ".yaml", ".json", ".js", ".md"}
+    assert others == {".mk", ".m4", ".lua"}, "a new asset kind arrived with no test: %s" % others

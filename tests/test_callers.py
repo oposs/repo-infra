@@ -1,4 +1,7 @@
 # tests/test_callers.py
+import json
+import re
+
 import pytest
 from piecekit import CI_PASSED, install, make_assets, workflow_piece
 
@@ -381,3 +384,91 @@ def test_a_comment_after_with_is_not_a_value():
     text = GOOD.replace("          fetch-depth: 0\n", "").replace("        with:\n",
                                                                    "        with: # pinned\n")
     assert ref_found(text, reserved=True) == []
+
+
+# D28: a call that takes `ref` must be handed `${{ inputs.ref }}`, or the release
+# pull request tests the triggering commit and reports it as the release.
+WITH_REF = "    with:\n      ref: ${{ inputs.ref }}\n"
+
+
+def ref_problems_found(tmp_path, store, ci):
+    found = problems(tmp_path, store, ci=ci)
+    return [d for _, _, d in found if "inputs.ref" in d and "triggering commit" in d]
+
+
+def test_a_piece_call_without_with_is_a_problem(tmp_path, store):
+    found = ref_problems_found(tmp_path, store, CI.replace(WITH_REF, ""))
+    assert found == ["job a calls ri-a.yml, which takes `ref`, without `with: ref: "
+                     "${{ inputs.ref }}`; the release pull request would test the "
+                     "triggering commit instead of the release commit (D28). Add it"]
+
+
+@pytest.mark.parametrize("value", ["${{ github.sha }}", "main", "${{ inputs.ref || 'x' }}"])
+def test_a_call_passing_another_ref_is_a_problem(tmp_path, store, value):
+    ci = CI.replace("ref: ${{ inputs.ref }}\n  ci-passed", f"ref: {value}\n  ci-passed")
+    assert ci != CI
+    assert len(ref_problems_found(tmp_path, store, ci)) == 1
+
+
+@pytest.mark.parametrize("value", ["${{ inputs.ref }}", "${{inputs.ref}}", "'${{ inputs.ref }}'"])
+def test_a_correct_ref_call_is_clean(tmp_path, store, value):
+    ci = CI.replace("ref: ${{ inputs.ref }}\n  ci-passed", f"ref: {value}\n  ci-passed")
+    assert ref_problems_found(tmp_path, store, ci) == []
+
+
+def test_a_project_workflow_taking_ref_is_held_to_it_too(tmp_path, store):
+    local = ("name: x\non:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\n"
+             "        required: false\n        default: ''\njobs:\n  t:\n    runs-on: ubuntu-latest\n"
+             "    timeout-minutes: 5\n    steps:\n      - run: echo\n")
+    ci = CI.replace("ri-a.yml", "ci-local.yml").replace(WITH_REF, "")
+    found = [d for _, _, d in problems(tmp_path, store, ci=ci, ci_local=local)
+             if "triggering commit" in d]
+    assert len(found) == 1 and "ci-local.yml" in found[0]
+
+
+def test_a_call_to_a_workflow_without_a_ref_input_is_not_affected(tmp_path, store):
+    plain = ("name: x\non:\n  workflow_call:\n    inputs: {}\njobs:\n  t:\n"
+             "    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: echo\n")
+    plain = plain.replace("inputs: {}\n", "secrets:\n      k:\n        required: false\n")
+    ci = CI.replace("ri-a.yml", "plain.yml").replace(WITH_REF, "")
+    found = [d for _, _, d in problems(tmp_path, store, ci=ci, plain=plain)
+             if "triggering commit" in d]
+    assert found == []
+
+
+def test_a_call_from_release_publish_is_not_affected(tmp_path, store):
+    publish = PUBLISH.replace("  publish:\n    runs-on", "  other:\n    uses: ./.github/workflows/ri-a.yml\n"
+                              "  publish:\n    runs-on", 1).replace("needs: [publish]",
+                                                                    "needs: [publish, other]")
+    found = [d for _, _, d in problems(tmp_path, store, release_publish=publish)
+             if "triggering commit" in d]
+    assert found == []
+
+
+def test_a_bare_dash_step_is_read_like_any_other():
+    text = STEPS + "      -\n        uses: actions/checkout@v7\n        with:\n" \
+                   "          ref: ${{ inputs.ref }}\n"
+    assert ref_found(text, True) == []
+
+
+def test_an_anchor_without_a_preceding_run_step_is_refused():
+    text = STEPS + "      - &co\n        uses: actions/checkout@v7\n      - *co\n"
+    with pytest.raises(workflow.ReadError):
+        ref_found(text, True)
+
+
+@pytest.mark.parametrize("path", sorted((callers.ASSETS / "callers").glob("*.yml")),
+                         ids=lambda p: p.name)
+def test_a_caller_template_pins_its_actions_to_the_manifest(path):
+    manifest = json.loads((callers.ASSETS / "manifest.json").read_text(encoding="utf-8"))
+    wrong = []
+    for job in jobs_of(path).values():
+        for step in job.get("steps", []):
+            match = re.match(r"^([\w.-]+/[\w.-]+)@(v\d+)$", step.get("uses", ""))
+            if match and manifest["actions"].get(match[1]) != match[2]:
+                wrong.append(step["uses"])
+    assert wrong == []
+
+
+def jobs_of(path):
+    return callers.jobs(workflow.load(path.read_text(encoding="utf-8")))
