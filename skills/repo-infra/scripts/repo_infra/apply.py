@@ -469,8 +469,9 @@ def _compact(value, indent, level, prefix=0):
     if isinstance(value, (dict, list)) and value:
         items = list(value.values()) if isinstance(value, dict) else value
         one_line = json.dumps(value, separators=(", ", ": "))
+        # A tab counts as the 8 columns an editor shows it as.
         if (not any(isinstance(v, (dict, list)) for v in items)
-                and len(unit) * level + prefix + len(one_line) + 1 <= WIDTH):
+                and len(unit.expandtabs()) * level + prefix + len(one_line) + 1 <= WIDTH):
             return one_line
         inner = unit * (level + 1)
         if isinstance(value, dict):

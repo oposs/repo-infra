@@ -473,3 +473,31 @@ def test_the_indent_of_the_original_is_kept():
     text = config_text({"a": {"b": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]}},
                        original='{\n    "a": 1\n}\n')
     assert text.startswith('{\n    "a": {\n        "b": [')
+
+
+def _list_of_width(width):
+    """A one-string list whose one-line JSON text is `width` columns wide."""
+    return ["x" * (width - 4)]
+
+
+def test_a_list_at_exactly_80_columns_with_its_comma_stays_on_one_line():
+    # `  "k": ` is 7 columns; the list takes 72 and the comma 1.
+    items = _list_of_width(72)
+    text = config_text({"k": items, "z": 1})
+    line = f'  "k": ["{items[0]}"],\n'
+    assert len(line) - 1 == 80
+    assert text == "{\n" + line + '  "z": 1\n}\n'
+
+
+def test_a_list_one_column_wider_than_80_breaks():
+    items = _list_of_width(73)
+    text = config_text({"k": items, "z": 1})
+    assert text == f'{{\n  "k": [\n    "{items[0]}"\n  ],\n  "z": 1\n}}\n'
+
+
+def test_a_tab_indent_counts_eight_columns_when_measuring_the_width():
+    # The list is 70 columns, `"a": ` 5 and the comma 1: with the tab as one
+    # column the line is 77 wide, with it as eight it is 84.
+    items = _list_of_width(70)
+    text = config_text({"a": items}, original='{\n\t"a": 1\n}\n')
+    assert text == f'{{\n\t"a": [\n\t\t"{items[0]}"\n\t]\n}}\n'
