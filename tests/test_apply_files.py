@@ -106,6 +106,20 @@ def test_a_deleted_stamp_hands_over_the_merge(tmp_path):
         apply_file_item(tmp_path, "ci", RENDERED, [Item("ci", "outdated", "")])
 
 
+def test_a_relative_root_still_reads_the_files_history(tmp_path, monkeypatch):
+    """git runs inside the root, so a git dir relative to the caller's
+    directory would be looked up below the root a second time."""
+    repo = git_repo(tmp_path / "sub")
+    installed(repo, OLD)
+    commit_all(repo, "Install ci from the repo-infra standard")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(NeedsMerge) as raised:
+        apply_file_item("sub", "ci", RENDERED, [Item("ci", "outdated", "")])
+    log = raised.value.log.read_text(encoding="utf-8").splitlines()
+    assert [line.split(" ", 2)[2] for line in log] == [
+        "Install ci from the repo-infra standard"]
+
+
 def test_without_git_history_the_log_says_so(tmp_path):
     (tmp_path / ".git").mkdir()
     installed(tmp_path, OLD)

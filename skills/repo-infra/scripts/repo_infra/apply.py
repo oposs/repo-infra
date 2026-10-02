@@ -85,13 +85,17 @@ def targets_for(name, rendered):
 def _git_dir(repo_root):
     """The git dir, read without running git so a bare `.git/` in a test
     still counts. In a linked worktree `.git` is a file saying
-    `gitdir: <path>`, and writing below it fails with NotADirectoryError."""
-    dot_git = pathlib.Path(repo_root) / ".git"
+    `gitdir: <path>`, and writing below it fails with NotADirectoryError.
+
+    Absolute, because `git` runs with the root as its working directory: a
+    relative `--root` would otherwise name the root twice."""
+    root = pathlib.Path(repo_root).resolve()
+    dot_git = root / ".git"
     if dot_git.is_file():
         line = dot_git.read_text(encoding="utf-8").strip()
         if not line.startswith("gitdir:"):
             raise ApplyError(f"{dot_git}: not a gitdir pointer")
-        return (pathlib.Path(repo_root) / line[len("gitdir:"):].strip()).resolve()
+        return (root / line[len("gitdir:"):].strip()).resolve()
     return dot_git
 
 
