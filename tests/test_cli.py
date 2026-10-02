@@ -184,3 +184,50 @@ def test_an_unchanged_hand_back_is_installed_stamped_and_upgrades_in_place(
     assert cli.main(argv) == 0
     assert strip_stamp((root / "a.yml").read_text()) == rendered["a.yml"]
     assert last_subject(root) == "Install fx from the repo-infra standard"
+
+
+def test_a_plugin_installed_without_git_upgrades_an_unedited_stamped_file(tmp_path):
+    """The other CLI tests run the checkout; an installed plugin has no `.git`,
+    so the old generation cannot be looked up and only the stamp says the file
+    is unedited (D29). Runs apply from a copy of the plugin tree for real."""
+    import re
+    import shutil
+    import subprocess
+    import sys
+
+    from repo_infra.markers import stamp
+
+    plugin = tmp_path / "plugin"
+    shutil.copytree(ROOT / "skills/repo-infra", plugin / "skills/repo-infra",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    assert not list(plugin.rglob(".git"))
+
+    target = tmp_path / "repo"
+    target.mkdir()
+    path = ".github/workflows/changelog.yml"
+    _, _, rendered, _, _ = cli._prepare(str(target))
+    current = rendered[path]
+    old = re.sub(r"(repo-infra: changelog v)\d+", r"\g<1>0", current, count=1)
+    assert old != current
+    (target / path).parent.mkdir(parents=True)
+    (target / path).write_text(stamp(old), encoding="utf-8")
+    for args in (("init", "-q", "-b", "main"), ("add", "-A"),
+                 ("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "seed")):
+        subprocess.run(("git",) + args, cwd=target, check=True, capture_output=True)
+
+    # No network: the facts are the conforming ones, as in the tests above.
+    driver = (
+        "import sys; sys.path.insert(0, sys.argv[1])\n"
+        "from repo_infra import cli, migrate\n"
+        "cli.read_facts = lambda repo: cli.CONFORMING_FACTS\n"
+        "migrate.release_in_progress = lambda r, f: None\n"
+        "sys.exit(cli.main(sys.argv[2:]))\n")
+    done = subprocess.run(
+        [sys.executable, "-c", driver, str(plugin / "skills/repo-infra/scripts"),
+         "apply", "--repo", "o/r", "--root", str(target), "--item", "changelog"],
+        capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    text = (target / path).read_text(encoding="utf-8")
+    assert pristine(text) is True and strip_stamp(text) == current
+    assert last_subject(target) == "Install changelog from the repo-infra standard"
+

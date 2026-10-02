@@ -430,5 +430,6 @@ wrote? If so, an upgrade overwrites it. `check` never reads it, so the
 argument above stands. A file handed back through `--from` unchanged is the
 rendering, so it is stamped and committed as `Install`: a file from before the
 stamp stops once. A hand merge that differs gets no stamp and is committed as
-`Merge <item> ... with local edits`, so the next upgrade stops at it again. This replaced looking the old generation up in the
-plugin's git history, which an installed plugin does not have.
+`Merge <item> ... with local edits`, so the next upgrade stops at it again.
+This replaced looking the old generation up in the plugin's git history, which
+an installed plugin does not have.
