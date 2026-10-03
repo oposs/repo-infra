@@ -14,10 +14,10 @@ The report has four sections.
   versions, and the core pieces that are missing.
 - `callers`: `ci.yml`, `release-build.yml`, `release-publish.yml` and the
   workflows they call, checked against the pieces they call (inputs, secrets,
-  `needs:` lists, token permissions, `ref`). A workflow its reader cannot
-  follow (flow mappings, anchors) is reported only when it is one of those
-  three, is called by a workflow, or carries a piece marker. Any other
-  such workflow is skipped.
+  `needs:` lists, the `if:` and `with:` of `finalize`, token permissions,
+  `ref`). A workflow its reader cannot follow (flow mappings, anchors) is
+  reported only when it is one of those three, is called by a workflow, or
+  carries a piece marker. Any other such workflow is skipped.
 - `config`: `.github/repo-infra.json`.
 - `administration`: the default branch, the ruleset, the label and the Actions
   setting, read from GitHub.

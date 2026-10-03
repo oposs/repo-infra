@@ -1,5 +1,6 @@
 # tests/test_callers.py
 import json
+import pathlib
 import re
 
 import pytest
@@ -504,3 +505,52 @@ def test_a_caller_template_pins_its_actions_to_the_manifest(path):
 
 def jobs_of(path):
     return callers.jobs(workflow.load(path.read_text(encoding="utf-8")))
+
+
+# --- finalize's guard and wiring (M1) ---------------------------------------
+
+REPO = pathlib.Path(__file__).resolve().parents[1]
+GUARD = "    if: needs.publish.outputs.release_id != ''\n"
+
+
+def finalize_problems(tmp_path, publish):
+    """This repository's own workflows, with release-publish.yml replaced,
+    validated against the shipped pieces."""
+    folder = tmp_path / ".github/workflows"
+    folder.mkdir(parents=True)
+    for path in (REPO / ".github/workflows").glob("*.yml"):
+        (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    (folder / "release-publish.yml").write_text(publish, encoding="utf-8")
+    docs = callers.read_workflows(tmp_path)
+    return [i.detail for i in callers.validate(docs, load_pieces()) if
+            i.name == "release-publish.yml"]
+
+
+def own_publish():
+    return (REPO / ".github/workflows/release-publish.yml").read_text(encoding="utf-8")
+
+
+def test_the_shipped_finalize_call_has_no_problem(tmp_path):
+    assert GUARD in own_publish()
+    assert finalize_problems(tmp_path, own_publish()) == []
+
+
+def test_finalize_without_its_release_id_guard_is_a_problem(tmp_path):
+    found = finalize_problems(tmp_path, own_publish().replace(GUARD, ""))
+    assert found == [
+        "finalize lacks `if: needs.publish.outputs.release_id != ''`; it would run "
+        "after every push of CHANGES.md that publishes nothing, with an empty "
+        "release_id, and fail"]
+
+
+def test_a_finalize_guard_written_as_an_expression_counts(tmp_path):
+    wrapped = "    if: ${{ needs.publish.outputs.release_id != '' }}\n"
+    assert finalize_problems(tmp_path, own_publish().replace(GUARD, wrapped)) == []
+
+
+def test_finalize_wired_to_another_output_is_a_problem(tmp_path):
+    text = own_publish().replace("tag: ${{ needs.publish.outputs.tag }}",
+                                 "tag: ${{ needs.publish.outputs.head }}")
+    assert finalize_problems(tmp_path, text) == [
+        "finalize passes tag: ${{ needs.publish.outputs.head }}; ri-publish-finalize.yml "
+        "takes tag: ${{ needs.publish.outputs.tag }} (its Call: header)"]

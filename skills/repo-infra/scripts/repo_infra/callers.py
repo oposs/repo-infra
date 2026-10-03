@@ -141,6 +141,49 @@ def closing_problems(docs, assets=ASSETS):
     return found
 
 
+FINALIZE = "ri-publish-finalize"
+_EXPRESSION = re.compile(r"^\$\{\{(.*)\}\}$", re.DOTALL)
+
+
+def _expression(value):
+    """An expression as GitHub reads it: `${{ }}` around an `if:` is optional,
+    and the spacing inside does not matter."""
+    text = str(value).strip()
+    match = _EXPRESSION.match(text)
+    return " ".join((match[1] if match else text).split())
+
+
+def finalize_problems(docs, pieces):
+    """finalize's `if:` and `with:` as the piece's Call: header has them.
+
+    The guard used to be generated. Without it finalize runs after every push
+    of CHANGES.md, also one that publishes nothing, gets an empty release_id
+    and turns the Publish run red after every ordinary merge."""
+    piece = pieces.get(FINALIZE)
+    job = jobs(docs.get("release-publish.yml")).get("finalize")
+    if piece is None or job is None or local_target(job.get("uses")) != f"{FINALIZE}.yml":
+        return []
+    # The Call: header is the caller's job, keyed by its id.
+    snippet = workflow.load(piece.header.get("Call", ""))
+    pattern = snippet.get("finalize") if isinstance(snippet, dict) else None
+    if not isinstance(pattern, dict):
+        return []
+    found = []
+    if "if" in pattern and _expression(job.get("if", "")) != _expression(pattern["if"]):
+        found.append(("release-publish.yml",
+                      f"finalize lacks `if: {pattern['if']}`; it would run after every push "
+                      "of CHANGES.md that publishes nothing, with an empty release_id, "
+                      "and fail"))
+    given = job.get("with") if isinstance(job.get("with"), dict) else {}
+    wanted = pattern.get("with") if isinstance(pattern.get("with"), dict) else {}
+    for key, value in wanted.items():
+        if key in given and _expression(given[key]) != _expression(value):
+            found.append(("release-publish.yml",
+                          f"finalize passes {key}: {given[key]}; {FINALIZE}.yml takes "
+                          f"{key}: {value} (its Call: header)"))
+    return found
+
+
 def ref_problems(doc, reserved, skip=()):
     """D28: every checkout takes `ref`, and only the release build uploads
     release-asset-* or release-files."""
@@ -320,7 +363,8 @@ def validate(docs, pieces, assets=ASSETS):
             elif local_target(uses):
                 items += [Item("callers", name, "problem", p)
                           for p in call_problems(job_id, job, docs)]
-    found = (closing_problems(docs, assets) + ref_contract_problems(docs, piece_files)
+    found = (closing_problems(docs, assets) + finalize_problems(docs, pieces)
+             + ref_contract_problems(docs, piece_files)
              + ref_passing_problems(docs)
              + permission_problems(docs))
     return items + [Item("callers", name, "problem", detail) for name, detail in found]

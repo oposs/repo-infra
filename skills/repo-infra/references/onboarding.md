@@ -84,6 +84,10 @@ What `check` enforces on the callers:
   is still running.
 - `ci-passed` has `if: always()`. Without it the job is skipped when a need
   fails, and a skipped required check counts as passed.
+- `finalize` has `if: needs.publish.outputs.release_id != ''` and passes
+  `release_id`, `tag` and `head` from the `publish` job's outputs, as the
+  `Call:` header of `ri-publish-finalize` shows. Without the `if:` it runs after
+  every push of `CHANGES.md`, also one that publishes nothing, and fails.
 - Each call passes only inputs the called file declares, passes every required
   input, and passes every required secret or writes `secrets: inherit`.
 - Each call job grants at least the token permissions the called file asks for,
