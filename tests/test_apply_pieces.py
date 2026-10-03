@@ -225,6 +225,12 @@ def test_apply_item_on_a_merged_piece_says_how_to_restore_it(monkeypatch, capsys
     assert "delete .github/workflows/ri-x.yml and run `apply --item ri-x`" in out
 
 
+def test_apply_commits_end_with_the_model_neutral_trailer(monkeypatch, store, repo):
+    run_apply(monkeypatch, store, repo)
+    body = git(repo, "log", "-1", "--format=%B").rstrip("\n")
+    assert body.endswith("\n\nCo-Authored-By: Claude <noreply@anthropic.com>")
+
+
 def test_an_edited_dropped_file_does_not_stop_the_other_files_being_written(
         monkeypatch, store, repo):
     install(repo, ".github/workflows/ri-x.yml", NEW)

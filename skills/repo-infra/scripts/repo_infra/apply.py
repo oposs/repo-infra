@@ -481,7 +481,7 @@ def _stage_ruleset_payload(repo_root, payload):
 BRANCH = "repo-infra/apply"
 
 # Ends every commit apply makes in the target repository.
-TRAILER = "Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
 
 
 def ensure_branch(repo_root):
