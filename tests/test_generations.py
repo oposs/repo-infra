@@ -4,6 +4,9 @@ import pathlib
 import generations
 import pytest
 
+from repo_infra import check
+from repo_infra.pieces import _source, load_pieces, load_published
+
 ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 RECORD = ASSETS / "generations.json"
 
@@ -61,3 +64,73 @@ def test_record_refuses_to_drop_a_path_that_is_no_longer_scanned(tmp_path):
     record = {"gone.yml": {"1": "0" * 64}}
     with pytest.raises(ValueError, match="gone.yml is recorded but no longer scanned"):
         generations.updated(record, generations.scan(tmp_path))
+
+
+def _tags():
+    try:
+        return generations.release_tags()
+    except generations.NoHistory as error:
+        pytest.skip(str(error))
+
+
+def test_every_released_piece_file_is_recorded_under_its_version():
+    """Decision L: a repository still on a released version reads outdated,
+    never edited. v0.2.0 shipped changelog v2, release-pr v3, workflow-lib v4
+    and container v1, and none was recorded, so an unedited v0.2.0 repository
+    read edited and apply asked for a hand merge of every file."""
+    tags = _tags()
+    if not tags:
+        pytest.skip("this checkout has no release tags (a shallow clone)")
+    recorded = json.loads(RECORD.read_text(encoding="utf-8"))
+    problems = []
+    for tag in tags:
+        for path, (version, digest) in generations.released(tag).items():
+            known = recorded.get(path, {}).get(str(version))
+            if known != digest:
+                problems.append(f"{tag}: {path} v{version} is "
+                                f"{'not recorded' if known is None else 'recorded with other text'}"
+                                "; run make generations")
+    assert not problems, "\n".join(problems)
+
+
+def test_a_release_maps_old_asset_paths_to_the_piece_paths():
+    if "v0.2.0" not in _tags():
+        pytest.skip("this checkout lacks the v0.2.0 tag")
+    found = generations.released("v0.2.0")
+    assert found["pieces/changelog/changelog.yml"][0] == 2
+    assert found["pieces/release-pr/release-pr.yml"][0] == 3
+    assert found["pieces/container/container.mk"][0] == 1
+    assert found["pieces/workflow-lib/lib/bump.js"][0] == 4
+    assert found["pieces/workflow-lib/lib/bump.test.js"][0] == 4
+
+
+def test_a_released_version_is_added_and_a_conflicting_one_refused():
+    record = {"a.yml": {"2": "1" * 64}}
+    merged = generations.with_released(record, {"a.yml": (1, "0" * 64)})
+    assert merged == {"a.yml": {"1": "0" * 64, "2": "1" * 64}}
+    with pytest.raises(ValueError, match="a.yml: v2 is recorded with other text"):
+        generations.with_released(record, {"a.yml": (2, "0" * 64)})
+
+
+def test_an_unedited_repository_of_every_release_reads_outdated_or_current(tmp_path):
+    """The repository side of the record: every piece copied as a release
+    shipped it reads outdated or current, never edited."""
+    tags = _tags()
+    if not tags:
+        pytest.skip("this checkout has no release tags (a shallow clone)")
+    pieces, published = load_pieces(ASSETS), load_published(ASSETS)
+    wrong = []
+    for tag in tags:
+        root = tmp_path / tag
+        files = generations.released_files(tag)
+        for name, piece in pieces.items():
+            source = _source(name, {"target": piece.target})
+            for path, (_, data) in files.items():
+                if path == source or path.startswith(source + "/"):
+                    target = root / (piece.target + path[len(source):])
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+        wrong += [f"{tag}: {name} reads edited" for name, piece in pieces.items()
+                  if check.piece_state(root, piece, published.get(name, {})).state
+                  == "edited"]
+    assert not wrong, "\n".join(wrong)

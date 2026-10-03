@@ -26,6 +26,8 @@ test-container:
 
 # D29: records each marked asset's text under its marker version. Run after
 # bumping a marker; it refuses when the text changed and the marker did not.
+# It also records the piece files of every release tag under the piece's
+# current path, so a repository still on a released version reads outdated.
 generations:
 	python3 tests/generations.py
 
