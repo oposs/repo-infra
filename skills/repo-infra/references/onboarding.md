@@ -34,8 +34,9 @@ what is wrong and never gates the work.
 6. **Open the pull request with the `no-changelog` label at creation.** GitHub
    keeps only the latest check run per context, so a label added after the
    changelog check failed produces a green, skipped run and waves the merge
-   through. After the merge, apply the administration items (below), each one
-   confirmed with the user first.
+   through. Apply the administration items in the order below, each one confirmed
+   with the user first: the rename and the label before the push, the rest
+   after the merge.
 
 A piece is never edited in the repository. Whatever the repository needs that
 the piece does not do goes into a caller, into `ci-local.yml`, or into a new
@@ -90,8 +91,8 @@ What `check` enforces on the callers:
   too little makes GitHub refuse to start the run.
 - Every checkout in `ci.yml` (except in `ci-passed`) and `release-build.yml`,
   and in every project-owned workflow called with `ref`, has
-  `ref: ${{ inputs.ref }}`. Every call to a file that declares `ref` passes
-  `ref: ${{ inputs.ref }}`.
+  `ref: ${{ inputs.ref }}`. In `ci.yml` and `release-build.yml`, every call to a
+  file that declares `ref` passes `ref: ${{ inputs.ref }}`.
 - Only the release build uploads artifacts named `release-asset-*` or
   `release-files`.
 - No call names a workflow in another repository. Everything stays local.
@@ -186,7 +187,7 @@ For `Cargo.toml` change `path` and keep the rest.
 }
 ```
 
-`VERSION` (the Perl and autotools repositories):
+`VERSION` (Perl autotools repositories, with `configure.ac` and `cpanfile`):
 
 ```json
 {

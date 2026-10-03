@@ -49,8 +49,10 @@ A new piece needs:
 
 - a folder under `skills/repo-infra/assets/pieces/<name>/` holding the file;
 - the marker `# repo-infra: <name> v1` on the first comment line;
-- the header block after the marker (`Purpose`, `Choose`, `Supplies`, and
-  `Call` for every workflow a caller calls);
+- the header block after the marker: `Purpose`, `Choose` and `Supplies`;
+  `Pieces` naming the pieces it needs (the only way `apply` knows to install
+  them with it); `Produces` for the assets it makes; and `Call`, the caller job,
+  for every workflow a caller calls;
 - a `CHANGES.md` in that folder with a `## v1` section: the upgrade notes `apply`
   prints, saying what a caller or the config must change;
 - an entry in `assets/manifest.json` giving the install path, the group and

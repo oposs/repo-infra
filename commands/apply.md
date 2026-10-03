@@ -34,7 +34,8 @@ Bare `apply` installs and replaces pieces, prints what it did and stops. It
 never edits a caller or the config. In order:
 
 1. It refuses while a release is in progress (`release-in-progress`): an open
-   release pull request, or a version in `CHANGES.md` that has no tag yet. This
+   release pull request, or a latest released version in `CHANGES.md` that has
+   no tag yet (checked when GitHub's tag list could be read). This
    blocks the install of every piece, not only the release-flow pieces, because
    the pieces call each other and a new copy cannot finish a release the old
    one started. Let the release pull request merge and publish, or close it,
@@ -49,7 +50,8 @@ never edits a caller or the config. In order:
    from v2 to v4 prints the notes of v3 and v4. They say what a caller or the
    config must change.
 5. It prints the findings: what `check` now reports about the callers and the
-   config, and the edited files a piece no longer ships.
+   config, and the edited files a piece no longer ships. When `apply` stops for a
+   merge it prints the notes but not the findings; run `check` after the merge.
 
 Then you change the callers and the config from the notes and findings, and run
 `check` until it exits 0.
@@ -80,11 +82,21 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --ite
 not there yet. That is how a repository copies the pieces it chooses from the
 catalogue. The release check of step 1 applies to it as well.
 
-## Push, label, merge
+## Administration items, push, merge
 
-1. **Push and open the pull request.** If `check` reported `no-changelog-label`
-   as missing, create it first (`apply --item no-changelog-label`), or
-   `gh pr create --label` fails on a label that does not exist:
+The order is one sequence, the same as in `references/onboarding.md`:
+
+1. **Before the push**, each confirmed with the user:
+   - `default-branch`: rename the default branch to `main` by hand in Settings,
+     General (`apply --item default-branch` only says so), then run `check`.
+     `gh pr create --base main` fails while the default branch has another name.
+   - `no-changelog-label`, when `check` reports it missing:
+
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item no-changelog-label
+     ```
+
+2. **Push and open the pull request** with the label at creation:
 
    ```bash
    git push -u origin repo-infra/apply
@@ -98,20 +110,18 @@ catalogue. The release check of step 1 applies to it as well.
    creation, not after: GitHub keeps only the latest check run per context, so
    adding the label once the changelog check has failed produces a fresh,
    skipped, green run and waves the merge through with no second look.
-2. **Get that pull request merged into `main`.**
-3. **Then the administration items**, in this order, each confirmed with the
-   user first:
+3. **Get that pull request merged into `main`**, so `ci.yml` and `changelog.yml`
+   are on the default branch.
+4. **After the merge**, each confirmed with the user:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item default-branch
    python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item required-checks
    python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item actions-open-pr
    ```
 
-   The default branch is renamed by hand first (`default-branch` only says so),
-   `ci.yml` and `changelog.yml` land on `main` through the pull request, and
-   `required-checks` (alias `branch-protection`) comes last because it turns on
-   the ruleset. `references/onboarding.md` has the reasons for the order.
+   `required-checks` (alias `branch-protection`) turns on the ruleset, which is
+   why it waits for the merge. `references/onboarding.md` has the reasons for the
+   order.
 
 On a repository that is already onboarded, an upgrade has no administration item
 pending: a bare `apply`, the caller changes, a push and the pull request are

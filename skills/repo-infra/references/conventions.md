@@ -83,8 +83,9 @@ them (D30). The callers state the same facts directly.
   to confirm the write took (D5, D6). `references/onboarding.md` has the entries
   per build file, including one `Cargo.lock` entry per released crate.
 - `release_assets`, `release_files`: every file the release must carry, as name
-  patterns, and the repository paths the build may rewrite (D26). `check` refuses
-  an entry that is `CHANGES.md`, a version file or under `.github/`.
+  patterns, and the repository paths the build may rewrite (D26). `check`
+  refuses a `release_files` entry that is `CHANGES.md`, a version file or under
+  `.github/`.
 - `gitea_packages`: the Gitea server (`url`), the owner and the channels
   `ri-publish-gitea` uploads to. `references/release-flow.md` has the shape.
 - `moving_major_tag`: whether publishing also moves a floating `vN` tag

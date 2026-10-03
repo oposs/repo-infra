@@ -23,8 +23,10 @@ A piece is in one of these states:
 
 - `current`: the latest version, unedited.
 - `outdated`: an older published version, unedited. `apply` replaces it.
-- `edited`: the bytes match no published version. `apply` stops with the files
-  for a hand merge.
+- `edited`: the bytes match no published version. When the marker claims an
+  older version or none, `apply` stops with the files for a hand merge. When it
+  claims the current or a newer version, `apply` leaves the file alone and
+  `check` says to update the plugin or move the change into a caller.
 - `unknown`: the marker names a piece repo-infra does not ship.
 - `missing`: a piece every repository carries, or one an installed piece needs,
   is not installed.
@@ -35,8 +37,8 @@ rows read `ok`, `missing`, `outdated` or `conflict`.
 Report the output as it is. Do not summarise a `conflict` into "needs updating":
 that state says what breaks. Do not act on an `edited` piece before asking the
 user: the edit may be deliberate, and moving it into a caller is a decision for
-them. A repository that has no pieces yet is not an error, it is a repository
-to onboard: `references/onboarding.md` in the skill has the procedure.
+them. A repository that has no pieces yet gets onboarded: `references/onboarding.md`
+in the skill has the procedure.
 
 `check` exits 1 when any row needs attention and 0 otherwise. That exit code is
 the whole result, so trust it over guessing from the text.

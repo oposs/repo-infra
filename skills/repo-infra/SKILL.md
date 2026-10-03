@@ -70,8 +70,8 @@ full text.
   container driver. `references/teaching-the-standard.md`, `conventions.md`
 - D20, D25: the repository brings the test and the CI jobs, called through a
   fixed path. `references/onboarding.md`
-- D21, D27: crates.io through Trusted Publishing; Gitea package registries.
-  `references/release-flow.md`
+- D21, D27: crates.io through Trusted Publishing (`references/conventions.md`);
+  Gitea package registries (`references/release-flow.md`).
 - D22, D23: musl and man pages are pieces a caller chooses. `references/catalogue.md`
 - D24: a Rust workspace names its lint and test crates. `references/conventions.md`
 - D26: folded into D28. D28: every release is built and tested before the
@@ -98,7 +98,7 @@ full text.
    `--item`; confirm each with the user.
 
 4. **A release in progress blocks `apply`.** An open release pull request, or a
-   version in `CHANGES.md` without a tag, stops every piece install.
+   latest released version without a tag, stops every piece install.
 
 5. **An `edited` piece is merged by hand.** `apply` writes `{name}.new`,
    `{name}.current`, `{name}.path` and `{name}.log` under `repo-infra/merge/` in
