@@ -35,7 +35,7 @@ the job also sets `name:`, in which case the context becomes that name instead.
 `changelog-updated` and `ci-passed` are job ids with no `name:` for exactly this
 reason: give either one a friendly `name:` later and the check context changes
 with it, silently un-requiring the check the ruleset was written against. Every
-*other* job in a generated workflow is free to carry a `name:`; only the two the
+*other* job in a caller or a piece is free to carry a `name:`; only the two the
 ruleset names by id are not.
 
 ## Never add `paths` or `paths-ignore` to a required workflow
