@@ -37,38 +37,14 @@ def test_record_adds_a_new_version_and_keeps_the_old(tmp_path):
     assert set(record["a.yml"]) == {"1", "2"}
 
 
-def blocks(tmp_path, body):
-    tmp_path.mkdir(exist_ok=True)
+def test_the_ruleset_is_recorded_under_its_manifest_version(tmp_path):
+    """The ruleset carries no marker; the manifest gives its version."""
     (tmp_path / "manifest.json").write_text(json.dumps({
-        "ci_blocks": {"ci-x": {"version": 3, "jobs": ["x"]}},
         "gh": {"rules": {"version": 2, "source": "gh/rules.json"}},
     }), encoding="utf-8")
-    (tmp_path / "ci").mkdir()
-    (tmp_path / "ci/ci-frame.yml").write_text("# repo-infra: ci v4\njobs:\n", encoding="utf-8")
-    (tmp_path / "ci/ci-x.yml").write_text(body, encoding="utf-8")
-    (tmp_path / "ci/ci-aggregator.yml").write_text("  ci-passed:\n", encoding="utf-8")
     (tmp_path / "gh").mkdir()
     (tmp_path / "gh/rules.json").write_text("{}\n", encoding="utf-8")
-    return generations.scan(tmp_path)
-
-
-def test_a_block_is_recorded_under_its_manifest_version(tmp_path):
-    """A block carries no marker; the manifest gives its version (D11), and
-    the frame's tail belongs to the frame's generation."""
-    scanned = blocks(tmp_path, "  x:\n")
-    assert scanned["ci/ci-x.yml"][0] == 3
-    assert scanned["ci/ci-aggregator.yml"][0] == 4
-    assert scanned["gh/rules.json"][0] == 2
-
-
-def test_a_block_reworded_under_the_same_manifest_version_is_refused(tmp_path):
-    record = generations.updated({}, blocks(tmp_path, "  x:\n"))
-    try:
-        generations.updated(record, blocks(tmp_path / "again", "  x:\n    # reworded\n"))
-    except ValueError as error:
-        assert "ci/ci-x.yml" in str(error)
-    else:
-        raise AssertionError("a reworded block kept its manifest version")
+    assert generations.scan(tmp_path)["gh/rules.json"][0] == 2
 
 
 def test_a_recorded_path_that_is_no_longer_scanned_is_reported(tmp_path):

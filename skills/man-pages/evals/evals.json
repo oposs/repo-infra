@@ -18,12 +18,12 @@
     {
       "id": 2,
       "prompt": "evals/files/setup/ is the root of mytool, a Rust tool. It has a docs/manual.md now. Wire up the man page: the build, the CI check, and shipping it in the .deb. Show every file you change.",
-      "expected_output": "The Makefile, .gitignore, .github/repo-infra.json and Cargo.toml changed so that make man builds the page, ci-man checks it and cargo-deb ships it.",
+      "expected_output": "The Makefile, .gitignore, ci.yml and Cargo.toml changed so that make man builds the page, ri-ci-man checks it and cargo-deb ships it.",
       "files": ["evals/files/setup/Makefile", "evals/files/setup/Cargo.toml", "evals/files/setup/.gitignore", "evals/files/setup/.github/repo-infra.json", "evals/files/setup/docs/manual.md"],
       "expectations": [
         "The Makefile sets MAN_NAME = mytool and has 'include build/man.mk', with no hand-written pandoc rule",
         ".gitignore lists man/",
-        ".github/repo-infra.json has \"ci\": [\"ci-man\"] and its other keys unchanged",
+        "The answer installs the man and man-lua pieces with apply --item and adds a man job calling ./.github/workflows/ri-ci-man.yml to ci.yml, listed in the needs of ci-passed",
         "Cargo.toml's [package.metadata.deb] assets include man/mytool.1 installed to usr/share/man/man1/",
         "The answer says make man must run before cargo deb",
         "No generated man/mytool.1 is added to version control"

@@ -12,7 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "skills"
 PROSE_SKILLS = ["writing-style", "man-pages"]
 TERM_EXAMPLE = "- `--listen <ip:port>`: Address and port to listen on."
-LUA = ROOT / "skills/repo-infra/assets/build/man-deflist.lua"
+LUA = ROOT / "skills/repo-infra/assets/pieces/man-lua/man-deflist.lua"
 
 
 def skill(name):
@@ -155,7 +155,7 @@ def test_man_pages_states_the_section_order_of_man_pages_7():
 def test_man_pages_shows_the_term_list_form_and_names_every_setup_step():
     text = skill("man-pages").read_text(encoding="utf-8")
     for needle in (TERM_EXAMPLE, "MAN_NAME = ", "include build/man.mk", "man/\n",
-                   '"ci": ["ci-man"]', "make man", "usr/share/man/man1/"):
+                   "apply --item man", "make man", "usr/share/man/man1/"):
         assert needle in text, needle
 
 

@@ -1,0 +1,126 @@
+# repo-infra: ri-publish-crates-io v1
+#
+# Purpose: Publish the crate to crates.io with trusted publishing.
+# Choose: The crate is published on crates.io.
+# Supplies: The trusted publisher configured on crates.io for this workflow.
+# Call:
+#   crates:
+#     needs: [publish]
+#     if: needs.publish.outputs.release_id != ''
+#     uses: ./.github/workflows/ri-publish-crates-io.yml
+#     permissions:
+#       contents: read
+#       id-token: write
+#     with:
+#       head: ${{ needs.publish.outputs.head }}
+
+name: Publish to crates.io
+
+on:
+  workflow_call:
+    inputs:
+      head:
+        description: The commit the release was built from, from ri-publish-tag.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish-crates-io:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Trusted Publishing (D21): the job's OIDC identity is exchanged for a
+    # short-lived crates.io token, so no repository holds a CRATES_IO_TOKEN.
+    # `id-token: write` is what mints that identity -- without it the exchange
+    # below fails. `contents: read` is all the job needs.
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      # The commit `publish` tagged: the head the release pull request built
+      # (D26). Its Cargo.toml and Cargo.lock carry the bumped version: the
+      # release pull request rewrites both through version_files (D28).
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.head }}
+
+      # @stable, matching ci-rust. The action publishes no floating major tag;
+      # `stable` is its documented channel selector.
+      - uses: dtolnay/rust-toolchain@stable
+
+      # crates.io pins a Trusted Publisher to a (repository, workflow filename)
+      # pair. The filename half is `release-publish.yml` for every repository
+      # the standard converts -- but a repository that published before it was
+      # converted has its publisher registered against whatever its old
+      # workflow was called, and that pin does NOT follow the rename. Register
+      # a new one per crate before the first converted release.
+      - name: Authenticate to crates.io (Trusted Publishing)
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      # A whole-workflow re-run repeats this job after a first attempt that
+      # already uploaded some or all crates, and `cargo publish` refuses a
+      # version crates.io already has. So ask crates.io first and exclude
+      # what is there. `publish = false` shows as an empty list in the
+      # metadata; such a crate is never asked about.
+      - name: Find the crates crates.io does not have yet
+        id: pending
+        run: |
+          set -euo pipefail
+          crates=$(cargo metadata --format-version 1 --no-deps \
+            | jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"')
+          exclude=()
+          pending=0
+          while read -r name version; do
+            [ -n "$name" ] || continue
+            status=$(curl -sS -o /dev/null -w '%{http_code}' \
+              -A 'repo-infra publish-crates-io (https://github.com/oposs/repo-infra)' \
+              "https://crates.io/api/v1/crates/${name}/${version}")
+            case "$status" in
+              200)
+                echo "::notice::${name} ${version} is already on crates.io - not publishing it again."
+                exclude+=(--exclude "$name")
+                ;;
+              404) pending=$((pending + 1)) ;;
+              *)
+                echo "crates.io answered HTTP ${status} for ${name} ${version}" >&2
+                exit 1
+                ;;
+            esac
+          done <<< "$crates"
+          echo "pending=${pending}" >> "$GITHUB_OUTPUT"
+          echo "exclude=${exclude[*]}" >> "$GITHUB_OUTPUT"
+
+      # One invocation for both the single-crate and the workspace case:
+      # --workspace publishes every publishable member in dependency order, so
+      # the standard needs no per-crate list, no ordering configuration and no
+      # hand-rolled wait for the index to propagate. A helper crate opts out
+      # with `publish = false` in its own manifest.
+      #
+      # --locked guards every pin in Cargo.lock: the release pull request
+      # bumped the workspace's own entries, and nothing here re-resolves.
+      - name: Publish
+        run: |
+          set -euo pipefail
+          if [ "$PENDING" -eq 0 ]; then
+            echo "::notice::Every crate of this release is already on crates.io."
+            exit 0
+          fi
+          read -ra exclude <<< "$EXCLUDE"
+          cargo publish --workspace --locked "${exclude[@]}"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          PENDING: ${{ steps.pending.outputs.pending }}
+          EXCLUDE: ${{ steps.pending.outputs.exclude }}
+
+      # Nothing is attached to the draft release and there is no summary step:
+      # the job publishes to an external registry, and `cargo publish` already
+      # names every crate and version it uploaded. The caller lists this job in
+      # the `needs:` of ri-publish-finalize, so if it fails the release stays a
+      # draft and a version is never visible on GitHub while absent from
+      # crates.io.

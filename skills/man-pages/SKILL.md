@@ -7,7 +7,7 @@ description: Use when writing, restructuring or setting up a program's man page 
 
 A program's man page has one source, `docs/manual.md`. pandoc converts it to
 roff at build time and `man/` is gitignored, so the page is a build artifact.
-The `ci-man` job proves on every pull request that the manual converts and that
+The `ri-ci-man` workflow proves on every pull request that the manual converts and that
 roff can lay it out. GitHub renders the same file as the web version of the
 manual.
 
@@ -90,7 +90,7 @@ colon, or two code spans such as `` `-h`, `--help` ``, does not match, and one
 item that does not match leaves the whole list as bullets.
 
 A Markdown table with a prose column does not fit a man page. roff warns
-`table wider than line length minus indentation`, and `ci-man` fails on that
+`table wider than line length minus indentation`, and `ri-ci-man` fails on that
 warning. A table of short cells, such as a key and a one-word action, fits.
 
 ## Setting it up in a repository
@@ -112,17 +112,23 @@ warning. A table of short cells, such as a key and a one-word action, fits.
    man/
    ```
 
-3. Add `"ci": ["ci-man"]` next to the repository's other keys in
-   `.github/repo-infra.json` and run `/repo-infra:apply`. It installs the
-   `man` job and the two files `make man` runs, `build/man.mk` and
-   `build/man-deflist.lua`.
+3. Install the `man` and `man-lua` pieces and call `ri-ci-man` from `ci.yml`:
 
-   ```json
-   {
-     "ecosystems": ["rust"],
-     "ci": ["ci-man"],
-     "build": []
-   }
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item man
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item man-lua
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item ri-ci-man
+   ```
+
+   They install `build/man.mk`, `build/man-deflist.lua` and
+   `.github/workflows/ri-ci-man.yml`. Add the call to `ci.yml` and list its job
+   in the `needs:` of `ci-passed`:
+
+   ```yaml
+   man:
+     uses: ./.github/workflows/ri-ci-man.yml
+     with:
+       ref: ${{ inputs.ref }}
    ```
 
 4. Packaging takes the page from the working tree after `make man`. For a

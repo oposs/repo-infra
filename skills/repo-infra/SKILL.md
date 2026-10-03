@@ -5,90 +5,116 @@ description: Use when bringing a repository onto the shared infrastructure stand
 
 # repo-infra
 
-Bring **the repository you are standing in** onto the shared infrastructure
-standard, and report how far behind it has fallen when the standard moves.
+repo-infra is a toolbox for one repository at a time: the one you are standing
+in. It ships pieces (reusable workflows, release files, build fragments) that a
+repository copies 1:1, a catalogue that says what each is for, and two commands.
+You choose the pieces and write the callers that use them. The tool replaces a
+piece that has a newer version and reports what is wrong. There is no fleet
+sweep, and nothing refuses a repository because no rule matched it (D30).
 
-One repository per run. There is no fleet sweep and no organisation-wide pass.
+## The three kinds of file
 
-## Check first, always
+| Kind | Examples | Owner | On update |
+|---|---|---|---|
+| Piece | `ri-*.yml`, `changelog.yml`, `release-pr.yml`, `lib/*.js`, `build/*.mk` | repo-infra | `apply` replaces it |
+| Caller | `ci.yml`, `release-build.yml`, `release-publish.yml`, `ci-local.yml` | the repository | you adapt it from the upgrade notes |
+| Config | `.github/repo-infra.json` | the repository | you adapt it from the upgrade notes |
+
+A piece opens with the marker `# repo-infra: <piece> vN` and is never edited in
+the repository: what it lacks goes into a caller.
+
+## The two jobs
+
+**Onboarding** a repository: read it, map each need to a piece, copy the pieces
+with `apply --item <piece>`, write the callers, run `check` until it exits 0.
+`references/onboarding.md` has the procedure, the caller rules, the
+`version_files` entries and the administration items.
+`references/catalogue.md` lists the pieces and `references/examples/repo-infra/`
+holds real callers.
+
+**Updating** a repository already in the fold:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" check
-```
-
-Read the report before doing anything. `check` never writes; it exits 1 when
-anything needs attention and 0 when the repository is current.
-
-## Then apply
-
-```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply
 ```
 
-`apply` works on the `repo-infra/apply` branch. A file item (a workflow, the
-changelog gate, the dependabot config) gets one commit there; an administration
-item (the label, workflow permissions, the ruleset) writes straight to the live
-repository through the GitHub API instead, with no commit and no branch. `apply`
-does not push the branch or open the pull request itself. That is the next
-step, and `/repo-infra:apply` walks through it.
+`apply` installs and replaces pieces on the `repo-infra/apply` branch, one
+commit each, prints the upgrade notes of every version it crossed, and stops.
+You then change the callers and the config from those notes and run `check`
+until it exits 0. `/repo-infra:check` and `/repo-infra:apply` walk through it.
 
-## When the standard has no answer
+When no piece fits a need, do not patch the repository around the gap: ask the
+user, prove the answer here, upstream it as a new piece
+(`references/teaching-the-standard.md`).
 
-`check` and `apply` assume the standard knows what this repository is. Sometimes
-it does not. The report says `the standard does not recognise this repository`,
-or you read the repository and find the standard silent about something it needs,
-or in conflict with something that already works.
+## Settled decisions
 
-Do not patch the repository around the gap, and do not grow a variant asset for
-it. Teach the standard, then convert: ask the user, prove the answer in this
-repository's tree, upstream it to repo-infra, and merge this repository's pull
-request only once that has shipped.
+Each line points at the file that explains it. `docs/superpowers/specs/` has the
+full text.
 
-`references/teaching-the-standard.md` has the procedure, including which
-differences are gaps and which are just migration work.
+- D1, D3, D4: `main` is protected, Actions may open pull requests, protection is
+  per repository. `references/release-flow.md`
+- D2: the ruleset requires exactly `ci-passed` and `changelog-updated`.
+  `references/onboarding.md`
+- D5, D6: `CHANGES.md` is the version source; the first section is `### New`.
+  `references/conventions.md`
+- D7, D8, D9: logic in github-script from `lib/*.js`, git through the Git Data
+  API. `references/conventions.md`
+- D10, D12, D14, D19: skills carry decisions, the tool never guesses, names
+  answer the question where they are read, pieces are tested by running them.
+- D11, D29: superseded by D30. Markers name a version and bytes decide.
+  `references/conventions.md`
+- D13: a required workflow never carries `paths`. `references/conventions.md`
+- D15, D16, D17, D18: unified infrastructure, the container threshold, the
+  container driver. `references/teaching-the-standard.md`, `conventions.md`
+- D20, D25: the repository brings the test and the CI jobs, called through a
+  fixed path. `references/onboarding.md`
+- D21, D27: crates.io through Trusted Publishing (`references/conventions.md`);
+  Gitea package registries (`references/release-flow.md`).
+- D22, D23: musl and man pages are pieces a caller chooses. `references/catalogue.md`
+- D24: a Rust workspace names its lint and test crates. `references/conventions.md`
+- D26: folded into D28. D28: every release is built and tested before the
+  merge. `references/release-flow.md`
+- D30: pieces and callers instead of detection and assembly. This file.
 
-## The four things that will surprise you
+## Traps that stay
 
-1. **A `conflict` is not a bigger `missing`.** It means adopting the item breaks
-   something that already works: a release that pushes to `main`, a default
-   branch that is not `main`, a required workflow behind a `paths` filter.
-   Applying it is a migration. Read `references/release-flow.md` before touching
-   one.
+1. **`ci-passed` is an inline job, word for word.** Copy
+   `assets/callers/ci-passed.yml` and fill in `needs:`. A job that calls a
+   workflow reports as `ci-passed / <job>`, which the ruleset does not match.
+   Its `needs:` lists every other job of `ci.yml`, and `finalize` needs every
+   other job of `release-publish.yml`; `check` verifies both.
 
-2. **`apply` overwrites only what it wrote itself.** Each file it writes
-   carries a stamp on its first marker line. A file without a matching stamp
-   stops the run: `apply` writes `{name}.new`, `{name}.current`,
-   `{name}.path` and `{name}.log` under `repo-infra/merge/` in the git dir
-   and raises `NeedsMerge`. The log tells an edit from an older generation;
-   `commands/apply.md` says how to read it. Hand the result back with
-   `apply --item <name> --from <path>`. A file handed back unchanged is
-   written stamped and committed as `Install`; one with local edits stays
-   unstamped, is committed as `Merge <item> ... with local edits`, and stops
-   the next upgrade again. If the target changed since the refusal, the
-   re-run refuses again rather than clobbering the newer edit.
+2. **The ruleset waits for `main`.** `apply --item required-checks` asks GitHub
+   whether `ci.yml` and `changelog.yml` are on the default branch and refuses
+   until they are. A required check with no workflow blocks every pull request,
+   including the one that installs it. Rename the default branch, land the files
+   on `main`, then enable the ruleset.
 
-3. **The ruleset precondition asks GitHub, not your checkout.** `apply` won't
-   enable the ruleset until `ci.yml`/`changelog.yml` are confirmed on the
-   default branch itself. Committing them locally isn't enough, and neither is
-   pushing a branch that hasn't merged yet; either state refuses with "not on
-   main yet." If the confirmation call itself fails (network, permissions), it
-   refuses too, with a different message, rather than guessing which way to
-   fail. So land the file items' pull request first; the administration items
-   simply won't succeed until you do. `commands/apply.md` sequences this.
+3. **Administration items are outward-facing.** `default-branch`,
+   `required-checks`, `no-changelog-label` and `actions-open-pr` change the live
+   repository with no commit and no review. `apply` runs one only when named with
+   `--item`; confirm each with the user.
 
-4. **Order is not negotiable.** Rename the default branch, land `ci.yml` and
-   `changelog.yml` on `main`, *then* enable the ruleset. A required check whose
-   workflow does not exist blocks every pull request in the repository,
-   including the one that would install the workflow.
+4. **A release in progress blocks `apply`.** An open release pull request, or a
+   latest released version without a tag, stops every piece install.
+
+5. **An `edited` piece is merged by hand.** `apply` writes `{name}.new`,
+   `{name}.current`, `{name}.path` and `{name}.log` under `repo-infra/merge/` in
+   the git dir and raises `NeedsMerge`. `commands/apply.md` has the procedure.
+   Hand the result back with `apply --item <piece> --from <file>`.
 
 ## Reading further
 
-- `references/release-flow.md`: how a release actually happens, what the guard
-  is for, and how to recover a half-finished one.
-- `references/conventions.md`: the house rules that are not derivable: the
-  changelog deviation, the github-script injected names, the marker protocol.
-- `references/teaching-the-standard.md`: what to do when the standard has no
-  answer for this repository, and which differences count.
+- `references/catalogue.md`: every piece, what it is for, its inputs and a
+  caller snippet.
+- `references/onboarding.md`: the procedure for a repository not yet in the fold.
+- `references/examples/repo-infra/`: repo-infra's own callers and config.
+- `references/conventions.md`: the house rules that cannot be derived: the
+  changelog deviation, injected names, markers and bytes, the config keys.
+- `references/release-flow.md`: how a release happens, and how to recover one.
+- `references/teaching-the-standard.md`: what to do when no piece fits.
 - The `writing-style` and `man-pages` skills in this plugin: the voice of a
   README, manual, changelog entry or comment, and how a man page is written,
-  built and checked by `ci-man`. They trigger on their own, without a check.
+  built and checked by `ri-ci-man`. They trigger on their own, without a check.

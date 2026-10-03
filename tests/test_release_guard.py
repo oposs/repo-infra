@@ -13,8 +13,8 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-RELEASE_PR = ASSETS / "workflows/release-pr.yml"
-CHECKS_JS = ASSETS / "workflows/lib/checks.js"
+RELEASE_PR = ASSETS / "pieces/release-pr/release-pr.yml"
+CHECKS_JS = ASSETS / "pieces/workflow-lib/lib/checks.js"
 
 
 @pytest.fixture

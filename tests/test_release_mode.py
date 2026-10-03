@@ -9,12 +9,8 @@ import subprocess
 import pytest
 import yaml
 
-from repo_infra.assemble import assemble_ci, render_all
-from repo_infra.detect import Detection
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
 BOT = "github-actions[bot]"
 REF = "${{ inputs.ref }}"
 BUILT = [{"context": "release-built", "state": "success", "creator": {"login": BOT}}]
@@ -29,54 +25,31 @@ def on(doc):
     return doc.get("on", doc.get(True))
 
 
-def ci_jobs(blocks=()):
-    return yaml.safe_load(assemble_ci(ASSETS, list(blocks), MANIFEST))["jobs"]
+def ci_passed_job():
+    pattern = yaml.safe_load((ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8"))
+    return pattern["jobs"]["ci-passed"]
 
 
-def test_ci_yml_is_also_a_reusable_workflow_with_an_optional_ref():
-    doc = yaml.safe_load(assemble_ci(ASSETS, [], MANIFEST))
-    assert on(doc)["workflow_call"] == {
-        "inputs": {"ref": {"type": "string", "required": False, "default": ""}}}
-    assert set(on(doc)) == {"push", "pull_request", "workflow_call"}
-    assert doc["permissions"] == {"contents": "read"}
-
-
-@pytest.mark.parametrize("block", sorted(MANIFEST["ci_blocks"]))
-def test_every_ci_fragment_checks_out_the_called_ref(block):
-    jobs = yaml.safe_load((ASSETS / "ci" / (block + ".yml")).read_text(encoding="utf-8"))
-    for job_id, job in jobs.items():
-        for step in job.get("steps", []):
-            if str(step.get("uses", "")).startswith("actions/checkout@"):
-                assert (step.get("with") or {}).get("ref") == REF, "%s: %s" % (block, job_id)
-
-
-def test_every_called_workflow_gets_ref_and_secrets(tmp_path):
-    (tmp_path / "action.yml").write_text("name: x\n")
-    result = Detection.load(ASSETS / "detection.json").detect(tmp_path)
-    jobs = yaml.safe_load(render_all(ASSETS, result, MANIFEST, ci_local=True)[
-        ".github/workflows/ci.yml"])["jobs"]
-    called = {k: j for k, j in jobs.items() if str(j.get("uses", "")).startswith("./")}
-    assert sorted(called) == ["action-test", "ci-local"]
-    for job in called.values():
-        assert job["with"] == {"ref": REF}
-        assert job["secrets"] == "inherit"
+def release_pr_current_job():
+    piece = yaml.safe_load((ASSETS / "pieces/ri-release-pr-current/ri-release-pr-current.yml")
+                           .read_text(encoding="utf-8"))
+    return piece["jobs"]["release-pr-current"]
 
 
 def test_ci_passed_raises_only_what_release_mode_reads():
-    assert ci_jobs()["ci-passed"]["permissions"] == {
+    assert ci_passed_job()["permissions"] == {
         "contents": "read", "pull-requests": "read", "statuses": "read"}
 
 
 def test_release_pr_current_runs_on_push_only_and_may_write_checks():
-    job = ci_jobs()["release-pr-current"]
+    job = release_pr_current_job()
     assert job["if"] == "github.event_name == 'push'"
     assert job["permissions"] == {
         "contents": "read", "pull-requests": "read", "checks": "write"}
-    assert "release-pr-current" not in ci_jobs()["ci-passed"]["needs"]
 
 
 def test_release_mode_loads_the_library_from_the_base_commit():
-    steps = ci_jobs()["ci-passed"]["steps"]
+    steps = ci_passed_job()["steps"]
     checkout = next(s for s in steps if str(s.get("uses", "")).startswith("actions/checkout@"))
     assert checkout["with"] == {"ref": "${{ github.event.pull_request.base.sha }}",
                                 "path": "repo-infra-base"}
@@ -87,7 +60,7 @@ def test_release_mode_loads_the_library_from_the_base_commit():
 def test_the_release_mode_steps_run_on_pull_requests_from_release_branches():
     # The harness never evaluates these expressions, so only an exact
     # comparison notices a dropped condition.
-    job = ci_jobs()["ci-passed"]
+    job = ci_passed_job()
     assert job["env"] == {"RELEASE_BRANCH_PR": "${{ github.event_name == 'pull_request' && "
                                                "startsWith(github.head_ref, 'release/') }}"}
     release_steps = [s for s in job["steps"] if "run" not in s]
@@ -101,11 +74,11 @@ def test_an_api_error_in_release_mode_fails_the_step(tmp_path):
     # after it is skipped (no always()), so ci-passed cannot turn green.
     out = ci_passed(tmp_path, statuses=BUILT, fail_compare=True)
     assert out["thrown"] == "Server Error"
-    assert "always()" not in ci_jobs()["ci-passed"]["steps"][-1]["if"]
+    assert "always()" not in ci_passed_job()["steps"][-1]["if"]
 
 
 def test_the_failure_step_is_skipped_in_release_mode():
-    last = ci_jobs()["ci-passed"]["steps"][-1]
+    last = ci_passed_job()["steps"][-1]
     assert last["run"] == "exit 1"
     assert last["if"] == ("steps.release.outputs.mode != 'release' && "
                           "(contains(needs.*.result, 'failure') || "
@@ -153,7 +126,7 @@ const core = { setFailed: (m) => failures.push(m), setOutput: (k, v) => { output
 def ci_passed(tmp_path, *, head_ref="release/v1.2.0", login=BOT, head_repo="o/r",
               statuses=(), behind=0, sabotage_merge_lib=False, fail_compare=False):
     """Run ci-passed's release step against a fake API; the D28 verdict table."""
-    script = next(s for s in ci_jobs()["ci-passed"]["steps"]
+    script = next(s for s in ci_passed_job()["steps"]
                   if s.get("id") == "release")["with"]["script"]
     ws = _workspace(tmp_path)
     if sabotage_merge_lib:
@@ -204,7 +177,7 @@ def test_ci_passed_reads_the_library_of_the_base_commit(tmp_path):
 
 
 def release_pr_current(tmp_path, prs, behind, fail_compare=(), fail_list=False):
-    script = ci_jobs()["release-pr-current"]["steps"][-1]["with"]["script"]
+    script = release_pr_current_job()["steps"][-1]["with"]["script"]
     ws = _workspace(tmp_path, base_too=False)
     prelude = PRELUDE + """
 const prs = %s; const behind = %s; const failCompare = %s; const failList = %s;

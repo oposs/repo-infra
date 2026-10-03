@@ -5,13 +5,9 @@ reworded a comment in changelog.yml and kept v3, so two repositories both at
 "v3" held different files. `make generations` records a new version and
 refuses to change a recorded one.
 
-A file with a marker is recorded under the marker's version. A block of an
-assembled file carries no marker of its own; assemble.py writes one from the
-version manifest.json gives it, so that is the version it is recorded under.
-The unmarked rest of a block folder (the CI aggregator, the publish finalize
-job) is part of the frame, and is recorded under the frame's marker version.
-An unmarked file named as a `source` in manifest.json (the ruleset) is
-recorded under that entry's version.
+A piece is recorded under its marker's version, file by file. An unmarked
+file the manifest names under `gh` (the ruleset) is recorded under that
+entry's version.
 """
 
 import hashlib
@@ -25,40 +21,20 @@ from repo_infra.markers import parse_markers  # noqa: E402
 ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 RECORD = ASSETS / "generations.json"
 
-# Where assemble.py reads each kind of block from: `<folder>/<name>.yml`.
-BLOCK_FOLDERS = {"ci_blocks": "ci", "publish_blocks": "publish",
-                 "release_build_blocks": "release-build"}
-
-
 def _digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _manifest_versions(assets_root, marked):
-    """{path: version} for the unmarked files whose version lives in the
-    manifest; `marked` maps every marked path to its marker version."""
+    """{path: version} for the unmarked files whose version the manifest
+    gives (the ruleset under `gh`)."""
     manifest_path = assets_root / "manifest.json"
     if not manifest_path.is_file():
         return {}
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    versions = {}
-    for section in manifest.values():
-        if not isinstance(section, dict):
-            continue
-        for meta in section.values():
-            if isinstance(meta, dict) and "source" in meta and "version" in meta:
-                versions[meta["source"]] = meta["version"]
-    for section, folder in BLOCK_FOLDERS.items():
-        names = manifest.get(section, {})
-        for name, meta in names.items():
-            versions[f"{folder}/{name}.yml"] = meta["version"]
-        frames = [v for p, v in marked.items() if p.startswith(folder + "/")]
-        if len(frames) != 1:
-            continue
-        for path in sorted((assets_root / folder).glob("*")):
-            relative = f"{folder}/{path.name}"
-            if path.is_file() and path.stem not in names:
-                versions.setdefault(relative, frames[0])
+    versions = {meta["source"]: meta["version"]
+                for meta in manifest.get("gh", {}).values()
+                if isinstance(meta, dict) and "source" in meta and "version" in meta}
     return {path: version for path, version in versions.items()
             if path not in marked and (assets_root / path).is_file()}
 
