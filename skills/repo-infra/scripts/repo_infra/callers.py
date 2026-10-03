@@ -13,6 +13,7 @@ import pathlib
 import re
 
 from . import workflow
+from .markers import parse_markers
 from .pieces import ASSETS
 from .report import Item
 
@@ -35,16 +36,20 @@ _RESERVED = re.compile(r"^(release-asset-.*|release-files)$", re.IGNORECASE)
 
 
 def read_workflows(repo_root):
-    """{file name: parsed workflow, or its ReadError} for each file GitHub runs."""
+    """{file name: parsed workflow, or its ReadError} for each file GitHub runs.
+    A ReadError carries `marker`, the piece its first marker names, or None."""
     folder = pathlib.Path(repo_root) / WORKFLOWS
     docs = {}
     if not folder.is_dir():
         return docs
     for path in sorted(folder.iterdir()):
         if path.is_file() and path.suffix in (".yml", ".yaml"):
+            text = path.read_text(encoding="utf-8")
             try:
-                docs[path.name] = workflow.load(path.read_text(encoding="utf-8"))
+                docs[path.name] = workflow.load(text)
             except workflow.ReadError as error:
+                markers = parse_markers(text)
+                error.marker = markers[0].asset if markers else None
                 docs[path.name] = error
     return docs
 
@@ -285,11 +290,23 @@ def permission_problems(docs):
     return found
 
 
+def unreadable_concerns(name, doc, docs, pieces):
+    """True when `doc` failed to read and check has a stake in it: a core
+    caller, a file a readable workflow calls, or a file whose marker names a
+    piece. The reader follows a subset of YAML; a repository's own deploy
+    workflow written with a flow mapping or an anchor, which GitHub accepts,
+    would otherwise keep check at exit 1 for a file repo-infra never reads."""
+    if not isinstance(doc, workflow.ReadError):
+        return False
+    return (name in CORE_CALLERS or getattr(doc, "marker", None) in pieces
+            or calls(docs, name))
+
+
 def validate(docs, pieces, assets=ASSETS):
     piece_files = {pathlib.PurePosixPath(p.target).name
                    for p in pieces.values() if p.workflow}
     items = [Item("callers", name, "problem", f"cannot be read: {doc}")
-             for name, doc in docs.items() if isinstance(doc, workflow.ReadError)]
+             for name, doc in docs.items() if unreadable_concerns(name, doc, docs, pieces)]
     items += [Item("callers", name, "missing", f"not there; {why}")
               for name, why in CORE_CALLERS.items() if name not in docs]
     for name, doc in docs.items():

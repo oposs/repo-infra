@@ -148,12 +148,44 @@ def test_a_remote_reusable_workflow_is_a_problem(tmp_path, store):
     assert any("another repository" in d for _, _, d in found)
 
 
+FLOW = "jobs:\n  x:\n    with: {ref: y}\n"
+UNREADABLE = "cannot be read: line 3: a flow mapping; write it in block style"
+
+
 def test_an_unreadable_caller_is_one_problem_and_the_rest_is_still_validated(tmp_path, store):
-    found = problems(tmp_path, store, ci_local="jobs:\n  x:\n    with: {ref: y}\n",
+    found = problems(tmp_path, store, release_build=FLOW,
                      ci=CI.replace("ri-a.yml", "ri-zz.yml"))
-    assert ("ci-local.yml", "problem",
-            "cannot be read: line 3: a flow mapping; write it in block style") in found
+    assert ("release-build.yml", "problem", UNREADABLE) in found
     assert any(d.endswith("ri-zz.yml, which does not exist") for _, _, d in found)
+
+
+@pytest.mark.parametrize("text", [
+    FLOW,
+    "env: &shared\n  A: 1\njobs:\n  x:\n    env: *shared\n    runs-on: ubuntu-latest\n",
+    "jobs:\n  x:\n    strategy:\n      matrix:\n        os: [ubuntu-latest,\n"
+    "             macos-latest]\n",
+])
+def test_an_unrelated_workflow_the_reader_cannot_follow_is_skipped(tmp_path, store, text):
+    """GitHub accepts flow mappings, anchors and multi-line flow sequences; a
+    repository's own deploy workflow written that way is none of check's
+    business and must not hold its exit code at 1."""
+    with pytest.raises(workflow.ReadError):
+        workflow.load(text)
+    assert problems(tmp_path, store, deploy=text) == []
+
+
+def test_an_unreadable_workflow_a_caller_calls_is_a_problem(tmp_path, store):
+    ci = CI.replace("ri-a.yml", "ci-local.yml")
+    found = problems(tmp_path, store, ci=ci, ci_local=FLOW)
+    assert ("ci-local.yml", "problem", UNREADABLE) in found
+
+
+def test_an_unreadable_file_carrying_a_piece_marker_is_a_problem(tmp_path, store):
+    found = problems(tmp_path, store, ri_a="# repo-infra: ri-a v1\n" + FLOW,
+                     ci=CI.replace("ri-a.yml", "ri-b.yml").replace(
+                         "      ref: ${{ inputs.ref }}\n",
+                         "      ref: ${{ inputs.ref }}\n      target: x\n", 1))
+    assert ("ri-a.yml", "problem", UNREADABLE.replace("line 3", "line 4")) in found
 
 
 def test_ci_passed_must_need_every_other_job(tmp_path, store):
