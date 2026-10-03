@@ -25,8 +25,10 @@ A piece is in one of these states:
 - `outdated`: an older published version, unedited. `apply` replaces it.
 - `edited`: the bytes match no published version. When the marker claims an
   older version or none, `apply` stops with the files for a hand merge. When it
-  claims the current or a newer version, `apply` leaves the file alone and
-  `check` says to update the plugin or move the change into a caller.
+  claims a newer version, the plugin is out of date. When it claims the current
+  version, as every finished merge leaves it, `apply` leaves the file alone: move
+  the change into a caller, delete the file and run `apply --item <piece>`, which
+  installs the published file again.
 - `unknown`: the marker names a piece repo-infra does not ship.
 - `missing`: a piece every repository carries, or one an installed piece needs,
   is not installed.

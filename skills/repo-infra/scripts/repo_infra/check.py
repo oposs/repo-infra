@@ -86,11 +86,19 @@ def missing_dependencies(pieces, states):
     return sorted(found.items())
 
 
-def _edited(piece, state):
+def edited_detail(piece, state):
     files = ", ".join(state.edited)
     if state.installed and state.installed > piece.version:
         return (f"{files} says v{state.installed}, newer than this plugin's "
                 f"v{piece.version}; update the plugin")
+    if state.installed == piece.version:
+        # A finished --from merge ends here. apply writes no file that claims
+        # the current version, so the way back to published bytes is to
+        # remove the file and install the piece again.
+        return (f"{files} claims v{piece.version}, the current version, but matches no "
+                f"published version of {piece.name}. Pieces are used as published: move "
+                f"the change into a caller, then delete {files} and run "
+                f"`apply --item {piece.name}` to restore it")
     return (f"{files} matches no published version of {piece.name}. Pieces are used as "
             "published: move the change into a caller. apply stops here with the files "
             "for a hand merge")
@@ -140,7 +148,7 @@ def piece_items(repo_root, pieces, published):
                           "apply replaces it")
             items.append(Item("pieces", name, "outdated", detail))
         else:
-            items.append(Item("pieces", name, "edited", _edited(piece, state)))
+            items.append(Item("pieces", name, "edited", edited_detail(piece, state)))
     reported = {i.name for i in items if i.state == "missing"}
     items += [Item("pieces", dep, "missing", f"{user} needs it")
               for dep, user in missing_dependencies(pieces, states) if dep not in reported]

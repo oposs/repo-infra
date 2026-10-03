@@ -100,7 +100,11 @@ def apply_command(args):
                      "ships it; remove it by hand if nothing uses it"
                      for path in kept_edits(piece, state)]
             if not written:
-                print(f"{name}: already v{piece.version}")
+                # A merged piece: say how it gets back to published bytes.
+                if state.state == "edited" and state.installed == piece.version:
+                    print(f"{name}: {checking.edited_detail(piece, state)}")
+                else:
+                    print(f"{name}: already v{piece.version}")
                 continue
             merged = args.from_file is not None and any(
                 (pathlib.Path(args.root) / path).is_file()

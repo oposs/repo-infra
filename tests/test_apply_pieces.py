@@ -186,6 +186,45 @@ def test_an_edited_piece_that_claims_the_current_version_is_not_pending(
     assert "Install ri-x" not in "\n".join(log_subjects(repo))
 
 
+def test_a_merged_piece_returns_to_the_published_bytes_by_delete_and_apply_item(
+        monkeypatch, capsys, store, repo):
+    """check's advice for an edited file at the current version, followed to
+    the end: delete the file, apply --item, and check reads current."""
+    install(repo, ".github/workflows/ri-x.yml", OLD + "# mine\n")
+    git(repo, "commit", "-qam", "edit")
+    with pytest.raises(apply.NeedsMerge):
+        run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    merged = repo.parent / "merged.yml"
+    merged.write_text(NEW + "# mine\n", encoding="utf-8")
+    run_apply(monkeypatch, store, repo, "--item", "ri-x", "--from", str(merged))
+    pieces, published = load_pieces(store), load_published(store)
+    assert check.piece_state(repo, pieces["ri-x"], published["ri-x"]).state == "edited"
+    (repo / ".github/workflows/ri-x.yml").unlink()
+    run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert (repo / ".github/workflows/ri-x.yml").read_text(encoding="utf-8") == NEW
+    assert check.piece_state(repo, pieces["ri-x"], published["ri-x"]).state == "current"
+    assert log_subjects(repo)[0] == "Install ri-x v2 from the repo-infra standard"
+
+
+def test_a_merged_file_of_a_directory_piece_is_restored_the_same_way(
+        monkeypatch, wide_store, repo):
+    merged = merge_lib(monkeypatch, wide_store, repo)
+    run_apply(monkeypatch, wide_store, repo, "--item", "lib-x", "--from", str(merged))
+    (repo / ".github/workflows/lib-x/a.js").unlink()
+    run_apply(monkeypatch, wide_store, repo, "--item", "lib-x")
+    pieces, published = load_pieces(wide_store), load_published(wide_store)
+    assert check.piece_state(repo, pieces["lib-x"], published["lib-x"]).state == "current"
+
+
+def test_apply_item_on_a_merged_piece_says_how_to_restore_it(monkeypatch, capsys, store, repo):
+    install(repo, ".github/workflows/ri-x.yml", NEW + "# mine\n")
+    git(repo, "commit", "-qam", "edit")
+    run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    out = capsys.readouterr().out
+    assert "ri-x: already v2" not in out
+    assert "delete .github/workflows/ri-x.yml and run `apply --item ri-x`" in out
+
+
 def test_an_edited_dropped_file_does_not_stop_the_other_files_being_written(
         monkeypatch, store, repo):
     install(repo, ".github/workflows/ri-x.yml", NEW)

@@ -43,10 +43,31 @@ def test_a_copy_of_an_older_version_is_outdated(tmp_path, store):
 
 def test_a_copy_that_matches_no_version_is_edited(tmp_path, store):
     root = tmp_path / "repo"
-    install(root, ".github/workflows/ri-x.yml", NEW + "# mine\n")
+    install(root, ".github/workflows/ri-x.yml", OLD + "# mine\n")
     (name, state, detail), = [r for r in rows(root, store) if r[0] == "ri-x"]
     assert state == "edited"
     assert detail.startswith(".github/workflows/ri-x.yml matches no published version")
+
+
+def test_an_edited_file_claiming_the_current_version_says_how_to_restore_it(
+        tmp_path, store):
+    """A finished --from merge leaves exactly this state; apply has nothing to
+    merge into it, so the way back is to delete the file and install it again."""
+    root = tmp_path / "repo"
+    install(root, ".github/workflows/ri-x.yml", NEW + "# mine\n")
+    (detail,) = [d for n, s, d in rows(root, store) if n == "ri-x"]
+    assert "hand merge" not in detail
+    assert detail == (".github/workflows/ri-x.yml claims v2, the current version, but "
+                      "matches no published version of ri-x. Pieces are used as published: "
+                      "move the change into a caller, then delete "
+                      ".github/workflows/ri-x.yml and run `apply --item ri-x` to restore it")
+
+
+def test_an_edited_file_claiming_an_older_version_is_left_for_a_hand_merge(tmp_path, store):
+    root = tmp_path / "repo"
+    install(root, ".github/workflows/ri-x.yml", OLD + "# mine\n")
+    (detail,) = [d for n, s, d in rows(root, store) if n == "ri-x"]
+    assert "apply stops here with the files for a hand merge" in detail
 
 
 def test_a_marker_newer_than_the_plugin_says_update_the_plugin(tmp_path, store):

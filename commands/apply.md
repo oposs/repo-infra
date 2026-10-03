@@ -66,6 +66,8 @@ One rule applies per file, for a bare `apply` and for `apply --item`:
 - An edited file that claims the current or a newer version is never written and
   never merged. There is nothing to merge into it, and writing it would be a
   downgrade. `check` names it, and a newer claim means the plugin is out of date.
+  For a current claim, delete the file and run `apply --item <piece>`: the file
+  then counts as absent, and `apply` writes the published one.
 
 Files an older version shipped and the new one does not (dropped files) are
 removed when their bytes are a published version. A dropped file with local edits
@@ -170,6 +172,10 @@ piece committed with local edits stops the next upgrade again: its bytes still
 match no published version. Run `apply` again afterwards: it installs the
 remaining pieces or names the next merge. Never drop a local edit: it is there
 for a reason, and the reason is usually not visible in the diff.
+
+After the merge, `check` reads the piece `edited` and exits 1 until its bytes are
+published ones again. Move the local edit into a caller, delete the file and run
+`apply --item <piece>`; it writes the published file and commits it as `Install`.
 
 ## If it refuses an administration item
 
