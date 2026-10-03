@@ -14,8 +14,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- `check` no longer stops with "the standard does not recognise this repository": it reports every installed piece as `current`, `outdated`, `edited` or `unknown`, checks the repository's own `ci.yml`, `release-build.yml` and `release-publish.yml` against the pieces they call, and lists the administration items. A repository picks its pieces from the catalogue in the skill and calls them from these files.
+- The workflows repo-infra ships are now separate files named `ri-*.yml` that the repository calls; `ci.yml`, `release-build.yml` and `release-publish.yml` are no longer generated and belong to the repository. A repository on the generated files sees `unknown` for them in `check` until they are rewritten (see `references/onboarding.md` in the skill).
+- `apply` replaces outdated pieces, one commit each named `Install <piece> vN from the repo-infra standard`, prints the upgrade notes of every version it crossed and what the callers must change, and stops. It refuses to install any piece while a release pull request is open or a released version has no tag yet, and branch protection, the `no-changelog` label and the Actions setting are applied only when named with `apply --item`.
+- `.github/repo-infra.json` no longer reads `ecosystems`, `ci`, `ci_local`, `publish`, `build`, `publish_local`, `release_build`, `release_build_local`, `skip` or `answers`; `check` asks for them to be removed.
 
 ### Fixed
+- `check` reports a call that would fail at the start of a run: an input or secret the called workflow does not declare or requires, a missing workflow file, or a job that grants fewer token permissions than the workflow it calls needs.
 
 ## 0.3.1 - 2026-10-02
 ### Fixed

@@ -31,9 +31,38 @@ def test_the_skill_points_at_the_entry_point_that_exists():
     assert "scripts/repo_infra" in SKILL.read_text(encoding="utf-8")
 
 
-def test_the_references_the_skill_names_are_there():
-    for name in ("release-flow", "conventions"):
-        assert (ROOT / "skills/repo-infra/references" / (name + ".md")).is_file()
+REFS = ROOT / "skills/repo-infra/references"
+
+
+def test_the_references_the_skill_names_exist():
+    skill = (ROOT / "skills/repo-infra/SKILL.md").read_text(encoding="utf-8")
+    for name in ("catalogue.md", "onboarding.md", "conventions.md", "release-flow.md",
+                 "teaching-the-standard.md", "examples/repo-infra"):
+        assert f"references/{name}" in skill
+        assert (REFS / name).exists()
+
+
+def test_the_skill_stays_short():
+    assert len((ROOT / "skills/repo-infra/SKILL.md").read_text(
+        encoding="utf-8").splitlines()) <= 120
+
+
+def test_onboarding_holds_what_detection_used_to_know():
+    text = (REFS / "onboarding.md").read_text(encoding="utf-8")
+    for needle in ("Cargo.lock", "pnpm-lock.yaml", "package-lock.json", "VERSION",
+                   ".claude-plugin/plugin.json", "assets/callers/ci-passed.yml",
+                   "apply --item"):
+        assert needle in text
+
+
+def test_nothing_points_at_the_removed_machinery():
+    for path in [ROOT / "skills/repo-infra/SKILL.md", ROOT / "commands/check.md",
+                 ROOT / "commands/apply.md", ROOT / "README.md",
+                 *REFS.glob("*.md"), ROOT / "skills/man-pages/SKILL.md"]:
+        text = path.read_text(encoding="utf-8")
+        for gone in ("detection.json", "does not recognise", "ci_local", "release_build_local",
+                     "publish_local", "sha256=", "\"ci\": [\"ci-man\"]"):
+            assert gone not in text, f"{path.name} still says {gone}"
 
 
 def test_the_entry_point_runs_exactly_as_the_skill_and_commands_invoke_it():
@@ -87,12 +116,3 @@ def test_the_skill_points_at_the_prose_skills():
     for name in ("writing-style", "man-pages"):
         assert "`%s`" % name in text
         assert (ROOT / "skills" / name / "SKILL.md").is_file()
-
-
-def test_conventions_documents_the_man_add_on_and_its_carried_assets():
-    # D23: a repository learns from conventions.md that ci-man exists and that
-    # choosing it installs build/man.mk.
-    text = (ROOT / "skills/repo-infra/references/conventions.md").read_text(encoding="utf-8")
-    assert '`["ci-man"]`' in text
-    assert "MAN_NAME" in text
-    assert "A CI block may carry build assets" in text
