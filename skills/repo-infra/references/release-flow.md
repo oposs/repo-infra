@@ -77,8 +77,9 @@ dispatched again. Three layers enforce this:
   run before it merges.
 - **`ri-release-pr-current`**, a piece the repository's `ci.yml` calls. Its job
   runs on every event but does its work on `push` only. For each open release
-  pull request that is behind `main`, it creates a failed check run `ci-passed` on its head with `main moved after vX.Y.Z was
-  built; close this pull request and dispatch Create release PR again`. The
+  pull request that is behind `main`, it creates a failed check run
+  `ci-passed` on its head with `main moved after vX.Y.Z was built; close this
+  pull request and dispatch Create release PR again`. The
   ruleset already blocks the merge; this check says why. The job never fails
   itself, and an API error is a warning: a failed job is a failed check run on
   the `main` commit, and the guard would refuse the next dispatch from it.
