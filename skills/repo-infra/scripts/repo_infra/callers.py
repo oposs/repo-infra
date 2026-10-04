@@ -432,9 +432,26 @@ def grant(value):
     return {}
 
 
+def _own_value(doc, job):
+    mine = job.get("permissions")
+    return mine if mine is not None else doc.get("permissions")
+
+
 def _own(doc, job):
-    mine = grant(job.get("permissions"))
-    return mine if mine is not None else grant(doc.get("permissions"))
+    return grant(_own_value(doc, job))
+
+
+def invalid_grant(value):
+    """Why GitHub refuses a `permissions:` value, or None."""
+    if isinstance(value, str) and value not in ("read-all", "write-all"):
+        return (f"`permissions: {value}`, which GitHub does not accept: write read-all, "
+                "write-all or a mapping of scopes")
+    if isinstance(value, dict):
+        for scope, level in value.items():
+            if str(level) not in LEVELS:
+                return (f"`{scope}: {level}`, which GitHub does not accept: each scope "
+                        "takes read, write or none")
+    return None
 
 
 def needed(name, docs, seen=()):
@@ -477,7 +494,12 @@ def permission_problems(docs):
             if called is None or not isinstance(docs.get(called), dict):
                 continue
             want = needed(called, docs)
-            have = _own(doc, job)
+            value = _own_value(doc, job)
+            invalid = invalid_grant(value)
+            if invalid:
+                found.append((name, f"job {job_id} grants {invalid}"))
+                continue
+            have = grant(value)
             if have is None:
                 # A called file inherits what its caller grants, and the
                 # caller is checked against this file's needs. A file with a
@@ -488,7 +510,8 @@ def permission_problems(docs):
                 continue
             short = {scope: level for scope, level in want.items() if have.get(scope, 0) < level}
             if short:
-                found.append((name, f"job {job_id} grants {permission_text(have) or 'nothing'} "
+                said = value if isinstance(value, str) else permission_text(have) or "nothing"
+                found.append((name, f"job {job_id} grants {said} "
                                     f"and {called} needs {permission_text(short)}; GitHub "
                                     "refuses to start the run"))
     return found

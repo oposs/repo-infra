@@ -101,3 +101,24 @@ def test_a_file_with_its_own_trigger_and_workflow_call_is_checked_at_the_top():
     assert found(ci) == [(
         "ci.yml", "job mark declares no permissions; p.yml needs checks: write, "
         "contents: read. Grant them on the job")]
+
+
+def test_read_all_is_named_as_written():
+    """The grant used to be spelt out scope by scope, fourteen of them."""
+    assert found(caller(top="permissions: read-all\n")) == [(
+        "ci.yml", "job mark grants read-all and p.yml needs checks: write; GitHub refuses "
+        "to start the run")]
+
+
+def test_a_scalar_github_does_not_accept_is_named_as_invalid():
+    """`permissions: write` used to read as "grants nothing"."""
+    assert found(caller(top="permissions: write\n")) == [(
+        "ci.yml", "job mark grants `permissions: write`, which GitHub does not accept: "
+        "write read-all, write-all or a mapping of scopes")]
+
+
+def test_a_level_github_does_not_accept_is_named_as_invalid():
+    grant = "    permissions:\n      contents: read\n      checks: admin\n"
+    assert found(caller(grant)) == [(
+        "ci.yml", "job mark grants `checks: admin`, which GitHub does not accept: each "
+        "scope takes read, write or none")]
