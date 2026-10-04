@@ -5,7 +5,6 @@ deselects them, `make test` and the repo-infra-man job run them. The make
 error paths need no pandoc and run everywhere.
 """
 
-import json
 import os
 import pathlib
 import shutil
@@ -13,15 +12,13 @@ import subprocess
 
 import pytest
 
-from repo_infra.assemble import render_all
-from repo_infra.detect import Detection
 from repo_infra.markers import parse_markers
+from repo_infra.pieces import load_pieces
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-MANIFEST = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))
-MK = ASSETS / "build/man.mk"
-LUA = ASSETS / "build/man-deflist.lua"
+MK = ASSETS / "pieces/man/man.mk"
+LUA = ASSETS / "pieces/man-lua/man-deflist.lua"
 
 FIXTURE_MANUAL = """\
 ---
@@ -81,32 +78,12 @@ def to_native(tmp_path, markdown):
 # --- declaration --------------------------------------------------------------
 
 
-def test_both_assets_are_declared_in_the_manifest():
-    assert MANIFEST["build_assets"]["man"] == {
-        "version": 3, "source": "build/man.mk", "target": "build/man.mk",
-        "comment": "#"}
-    assert MANIFEST["build_assets"]["man-lua"] == {
-        "version": 1, "source": "build/man-deflist.lua",
-        "target": "build/man-deflist.lua", "comment": "--"}
-
-
-@pytest.mark.parametrize("name", ["man", "man-lua"])
-def test_each_asset_carries_its_marker_at_the_declared_version(name):
-    spec = MANIFEST["build_assets"][name]
-    found = parse_markers((ASSETS / spec["source"]).read_text(encoding="utf-8"))
-    assert found, "%s has no readable marker" % spec["source"]
-    assert (found[0].asset, found[0].version) == (name, spec["version"])
-
-
-def test_a_repository_that_did_not_ask_for_them_does_not_get_them():
-    result = Detection.load(ASSETS / "detection.json").detect(
-        ROOT / "tests/fixtures/repo-rust")
-    plain = render_all(ASSETS, result, MANIFEST)
-    assert "build/man.mk" not in plain
-    assert "build/man-deflist.lua" not in plain
-    named = render_all(ASSETS, result, MANIFEST, build=["man", "man-lua"])
-    assert named["build/man.mk"] == MK.read_text(encoding="utf-8")
-    assert named["build/man-deflist.lua"] == LUA.read_text(encoding="utf-8")
+@pytest.mark.parametrize("name,path", [("man", MK), ("man-lua", LUA)])
+def test_each_asset_carries_its_marker_at_the_piece_version(name, path):
+    piece = load_pieces()[name]
+    found = parse_markers(path.read_text(encoding="utf-8"))
+    assert found, "%s has no readable marker" % path.name
+    assert (found[0].asset, found[0].version) == (name, piece.version)
 
 
 def test_the_assets_carry_no_em_dash():

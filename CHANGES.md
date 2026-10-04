@@ -14,8 +14,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- `check` no longer stops with "the standard does not recognise this repository": it reports every installed piece as `current`, `outdated`, `edited` or `unknown`, checks the repository's own `ci.yml`, `release-build.yml` and `release-publish.yml` against the pieces they call, and lists the administration items. A repository picks its pieces from the catalogue in the skill and calls them from these files.
+- The workflows repo-infra ships are now separate files named `ri-*.yml` that the repository calls; `ci.yml`, `release-build.yml` and `release-publish.yml` are no longer generated and belong to the repository. A repository on the generated files sees `unknown` for them in `check` until they are rewritten (see `references/onboarding.md` in the skill).
+- `apply` replaces outdated pieces, installs missing core pieces and the pieces they need, and removes files a newer version no longer ships, one commit per piece named `Install <piece> vN from the repo-infra standard`. It then prints the upgrade notes of every version it crossed and what the callers must change, and stops.
+- `apply` refuses to install any piece (`release-in-progress`) while a release pull request is open or the latest released version in `CHANGES.md` has no tag yet.
+- Branch protection, the `no-changelog` label and the Actions setting are applied only when named with `apply --item`.
+- A piece with a local edit that still carries the current version used to read `ok`; `check` now reads it `edited` and exits 1. It says how to get back to the published file: move the change into a caller, delete the file and run `apply --item <piece>`.
+- `apply` no longer prints "already vN" for a piece whose file carries a local edit and claims the current or a newer version. It prints what `check` says about it: the way back to the published file, or "update the plugin" when the file is newer than the plugin.
+- When `apply` stops for a hand merge or refuses, it prints the message (`NeedsMerge: ...`, exit status 3, or `refused: ...`, exit status 1) instead of a Python traceback.
+- When a `gh` call fails or the plugin's files are damaged, `check` and `apply` print the message (`gh: ...` or `the plugin's asset store is broken ...`) and exit 1 instead of a Python traceback. `apply` refuses a misspelt piece name or a misplaced `--from` before it contacts GitHub.
+- `apply` no longer appends ` sha256=` to the marker line of the files it writes. Files that carry it from v0.3.1 still read as the version they claim.
+- Commits made by `apply` end with `Co-Authored-By: Claude <noreply@anthropic.com>` instead of naming a model version.
+- `.github/repo-infra.json` no longer reads `ecosystems`, `ci`, `ci_local`, `publish`, `build`, `publish_local`, `release_build`, `release_build_local`, `skip` or `answers`; `check` asks for them to be removed.
 
 ### Fixed
+- `check` reports a call that would fail at the start of a run: an input or secret the called workflow does not declare or requires, a missing workflow file, or a job that grants fewer token permissions than the workflow it calls needs.
+- `check` reports a caller that would misbehave once it runs: a `ci-passed` job that differs from the shipped pattern, a `finalize` that does not need every other job, a `finalize` without `if: needs.publish.outputs.release_id != ''` (the Publish run turns red after every merge that releases nothing) or wired to the wrong outputs, a call to a workflow in another repository, and a call that does not hand `ref: ${{ inputs.ref }}` to a workflow taking it.
+- `check` reports a `ci.yml` that does not run on `push` and `pull_request` to `main` or does not call `ri-release-pr-current`, and a `release-publish.yml` that does not run on `push` to `main` with `paths: [CHANGES.md]` alone, lacks the `release-publish` concurrency group, cancels a running publish or has a `workflow_dispatch` trigger.
+- `check` reports an installed workflow piece that no workflow calls, such as `ri-ci-python.yml` left behind when its job was removed from `ci.yml`.
+- `apply` replaces the files a repository got from repo-infra v0.2.0 (`changelog` v2, `release-pr` v3, `workflow-lib` v4, `container` v1) instead of stopping for a hand merge of each one; `check` reads them `outdated`. Copies of `changelog.yml` and `release-pr.yml` taken from v0.1.0 read `outdated` as well.
 
 ## 0.3.1 - 2026-10-02
 ### Fixed

@@ -1,79 +1,126 @@
 {
-  "assets": {
-    "release-pr": {
-      "version": 5,
-      "source": "workflows/release-pr.yml",
-      "target": ".github/workflows/release-pr.yml"
-    },
+  "pieces": {
     "changelog": {
-      "version": 4,
-      "source": "workflows/changelog.yml",
-      "target": ".github/workflows/changelog.yml"
+      "target": ".github/workflows/changelog.yml",
+      "group": "release",
+      "core": true
+    },
+    "release-pr": {
+      "target": ".github/workflows/release-pr.yml",
+      "group": "release",
+      "core": true
     },
     "dependabot": {
-      "version": 1,
-      "source": "workflows/dependabot.yml",
-      "target": ".github/dependabot.yml"
+      "target": ".github/dependabot.yml",
+      "group": "release",
+      "core": true
     },
     "workflow-lib": {
-      "version": 6,
-      "source": "workflows/lib",
       "target": ".github/workflows/lib",
+      "group": "release",
+      "core": true,
       "kind": "dir",
-      "comment": "//"
-    }
-  },
-  "ci_blocks": {
-    "ci-lib": {"version": 2, "jobs": ["lib"]},
-    "ci-claude-plugin": {"version": 2, "jobs": ["plugin-manifest"]},
-    "ci-python": {"version": 3, "jobs": ["ruff", "pytest"]},
-    "ci-rust": {"version": 3, "jobs": ["rust-plan", "rust-check", "rust-test"]},
-    "ci-rust-musl": {"version": 2, "jobs": ["rust-musl"], "optional": true, "requires": "rust"},
-    "ci-man": {"version": 3, "jobs": ["man"], "optional": true, "build": ["man", "man-lua"]},
-    "ci-go": {"version": 2, "jobs": ["go-test", "go-lint"]},
-    "ci-node-pnpm": {"version": 2, "jobs": ["node-pnpm-check"]},
-    "ci-node-bun": {"version": 2, "jobs": ["node-bun-check"]},
-    "ci-perl-autotools": {"version": 3, "jobs": ["perl-autotools"]},
-    "ci-perl-mkpl": {"version": 2, "jobs": ["perl-mkpl"]},
-    "ci-repo-infra-selftest": {"version": 4, "jobs": ["repo-infra-selftest", "repo-infra-man"]},
-    "ci-checkmk-plugin": {"version": 2, "jobs": ["cmk-lint", "cmk-test", "cmk-package"]},
-    "ci-github-action": {"version": 2, "jobs": ["action-manifest", "action-test"]},
-    "ci-local": {"version": 2, "jobs": ["ci-local"], "optional": true, "seam": "ci_local"}
-  },
-  "publish_blocks": {
-    "publish-crates-io": {"version": 3, "jobs": ["publish-crates-io"], "assets": []},
-    "publish-gitea-packages": {"version": 1, "jobs": ["publish-gitea-packages"], "assets": []}
-  },
-  "release_build_blocks": {
-    "release-source-tarball": {"version": 1, "jobs": ["release-source-tarball"],
-                               "assets": ["*.tar.gz"]},
-    "release-build-local-job": {"version": 1, "jobs": ["release-build-local"], "assets": [],
-                                "seam": "release_build_local"}
-  },
-  "build_assets": {
+      "header": "release.js"
+    },
     "container": {
-      "version": 2,
-      "source": "build/container.mk",
       "target": "build/container.mk",
-      "comment": "#"
+      "group": "build"
     },
     "container-m4": {
-      "version": 1,
-      "source": "m4/repo-infra-container.m4",
       "target": "m4/repo-infra-container.m4",
-      "comment": "dnl"
+      "group": "build"
     },
     "man": {
-      "version": 3,
-      "source": "build/man.mk",
       "target": "build/man.mk",
-      "comment": "#"
+      "group": "build"
     },
     "man-lua": {
-      "version": 1,
-      "source": "build/man-deflist.lua",
       "target": "build/man-deflist.lua",
-      "comment": "--"
+      "group": "build"
+    },
+    "ri-ci-lib": {
+      "target": ".github/workflows/ri-ci-lib.yml",
+      "group": "ci",
+      "core": true
+    },
+    "ri-ci-claude-plugin": {
+      "target": ".github/workflows/ri-ci-claude-plugin.yml",
+      "group": "ci"
+    },
+    "ri-ci-python": {
+      "target": ".github/workflows/ri-ci-python.yml",
+      "group": "ci"
+    },
+    "ri-ci-go": {
+      "target": ".github/workflows/ri-ci-go.yml",
+      "group": "ci"
+    },
+    "ri-ci-node-pnpm": {
+      "target": ".github/workflows/ri-ci-node-pnpm.yml",
+      "group": "ci"
+    },
+    "ri-ci-node-bun": {
+      "target": ".github/workflows/ri-ci-node-bun.yml",
+      "group": "ci"
+    },
+    "ri-ci-perl-autotools": {
+      "target": ".github/workflows/ri-ci-perl-autotools.yml",
+      "group": "ci"
+    },
+    "ri-ci-perl-mkpl": {
+      "target": ".github/workflows/ri-ci-perl-mkpl.yml",
+      "group": "ci"
+    },
+    "ri-ci-checkmk-plugin": {
+      "target": ".github/workflows/ri-ci-checkmk-plugin.yml",
+      "group": "ci"
+    },
+    "ri-ci-rust": {
+      "target": ".github/workflows/ri-ci-rust.yml",
+      "group": "ci"
+    },
+    "ri-ci-rust-musl": {
+      "target": ".github/workflows/ri-ci-rust-musl.yml",
+      "group": "ci"
+    },
+    "ri-ci-man": {
+      "target": ".github/workflows/ri-ci-man.yml",
+      "group": "ci"
+    },
+    "ri-ci-github-action": {
+      "target": ".github/workflows/ri-ci-github-action.yml",
+      "group": "ci"
+    },
+    "ri-ci-repo-infra-selftest": {
+      "target": ".github/workflows/ri-ci-repo-infra-selftest.yml",
+      "group": "ci"
+    },
+    "ri-release-pr-current": {
+      "target": ".github/workflows/ri-release-pr-current.yml",
+      "group": "ci",
+      "core": true
+    },
+    "ri-publish-tag": {
+      "target": ".github/workflows/ri-publish-tag.yml",
+      "group": "publish",
+      "core": true
+    },
+    "ri-publish-finalize": {
+      "target": ".github/workflows/ri-publish-finalize.yml",
+      "group": "publish",
+      "core": true
+    },
+    "ri-release-source-tarball": {
+      "target": ".github/workflows/ri-release-source-tarball.yml",
+      "group": "release-build"
+    },
+    "ri-publish-crates-io": {
+      "target": ".github/workflows/ri-publish-crates-io.yml",
+      "group": "publish"
+    },
+    "ri-publish-gitea": {
+      "target": ".github/workflows/ri-publish-gitea.yml",
+      "group": "publish"
     }
   },
   "actions": {
@@ -92,6 +139,9 @@
     "oposs/mkp-builder": "v2"
   },
   "gh": {
-    "ruleset-main": {"version": 2, "source": "gh/ruleset-main.json"}
+    "ruleset-main": {
+      "version": 2,
+      "source": "gh/ruleset-main.json"
+    }
   }
 }

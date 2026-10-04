@@ -1,6 +1,11 @@
 {
-  "ecosystems": ["rust"],
   "moving_major_tag": false,
-  "publish": [],
-  "build": []
+  "version_files": [
+    {
+      "path": "Cargo.toml",
+      "pattern": "^version\\s*=\\s*\"[^\"]*\"",
+      "replacement": "version = \"$VERSION\"",
+      "verify": "^version\\s*=\\s*\"$VERSION\""
+    }
+  ]
 }

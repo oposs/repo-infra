@@ -75,10 +75,11 @@ dispatched again. Three layers enforce this:
   branch is not up to date with the base branch`. This applies to every pull
   request into `main`: one that is behind needs **Update branch** and a new CI
   run before it merges.
-- **`release-pr-current`**, a job in `ci.yml` that runs on `push` to `main`
-  only. For each open release pull request that is behind `main`, it creates a
-  failed check run `ci-passed` on its head with `main moved after vX.Y.Z was
-  built; close this pull request and dispatch Create release PR again`. The
+- **`ri-release-pr-current`**, a piece the repository's `ci.yml` calls. Its job
+  runs on every event but does its work on `push` only. For each open release
+  pull request that is behind `main`, it creates a failed check run
+  `ci-passed` on its head with `main moved after vX.Y.Z was built; close this
+  pull request and dispatch Create release PR again`. The
   ruleset already blocks the merge; this check says why. The job never fails
   itself, and an API error is a warning: a failed job is a failed check run on
   the `main` commit, and the guard would refuse the next dispatch from it.
@@ -161,11 +162,12 @@ re-run reads the same version and does exactly what the original attempt would
 have done.
 
 Both **Re-run failed jobs** and a whole-workflow re-run finish a stopped
-publish. Publish add-ons skip what an earlier attempt uploaded:
-`publish-crates-io` asks crates.io and publishes only the workspace crates
-whose version is not there yet, and `publish-gitea-packages` counts a file
-Gitea already holds as uploaded (below). A whole-workflow re-run finishes a
-stopped release only when every `publish_local` job does the same.
+publish. The publish pieces skip what an earlier attempt uploaded:
+`ri-publish-crates-io` asks crates.io and publishes only the workspace crates
+whose version is not there yet, and `ri-publish-gitea` counts a file Gitea
+already holds as uploaded (below). A whole-workflow re-run finishes a stopped
+release only when every publish job the repository wrote itself does the
+same.
 
 The one failure a re-run cannot fix is the tree comparison. A publish that
 failed with `main at <sha> does not match the release built from <head>`
@@ -173,23 +175,36 @@ tagged nothing, and every re-run fails the same way. Abandon the release with
 a pull request that moves its entries back under `[Unreleased]`, then dispatch
 again.
 
+## The `needs:` list of `finalize`
+
+`release-publish.yml` ends with `finalize`, a call of `ri-publish-finalize`.
+It makes the draft release public, so it must `needs:` every other job of the
+file: a publish job it does not wait for can still be running, or can have
+failed, when the release goes public. In the assembled workflow of D28 this
+list was generated and a hand edit was silently undone. It is now the
+repository's own `needs:` list, and `check` reports a job that `finalize` does
+not need. Its input `expected` lists the name patterns the publish jobs attach
+(`'["*.crate"]'`, for example), and `finalize` asserts them against the draft
+before publishing, because ordering cannot report its own absence and an
+assertion can. The same holds for `ci-passed` in `ci.yml`: it needs every other
+job, and `check` verifies it.
+
 ## What the build may do
 
-`release-build.yml` is assembled like `ci.yml` and `release-publish.yml`. Its
-frame triggers on `workflow_call` with the inputs `version` and `ref` and has
-`contents: read`. It runs:
+`release-build.yml` is a caller the repository owns. It triggers on
+`workflow_call` with the inputs `version` and `ref`, has `contents: read` and
+calls what the repository builds with:
 
-- the build add-ons named in `release_build`, by id. `release-source-tarball`
-  runs `./bootstrap`, `./configure` and `make dist` at `ref` and uploads the
-  tarball as the artifact `release-asset-source`.
-- with `"release_build_local": true`, the project's own
-  `.github/workflows/release-build-local.yml`, called with `version` and
-  `ref`.
+- build pieces from the catalogue. `ri-release-source-tarball` runs
+  `./bootstrap`, `./configure` and `make dist` at `ref` and uploads the tarball
+  as the artifact `release-asset-source`.
+- the project's own `.github/workflows/release-build-local.yml`, called with
+  `version` and `ref`.
 
-A repository with nothing to build gets a valid file and a release without
+A repository with nothing to build has a valid file and a release without
 assets. The build uploads the files the release ships as `release-asset-*`
 artifacts, and the repository files it rewrote as the artifact
-`release-files`; `references/conventions.md` has the contract.
+`release-files`; `references/onboarding.md` has the contract.
 
 `finish` checks every asset against `release_assets` and commits the files
 listed in `release_files` onto the release branch. It refuses an entry under
@@ -202,9 +217,9 @@ without `release-build.json`.
 Publish tags the head recorded in `release-build.json`, not the merge commit.
 If that commit does not exist in the repository, publish fails with
 `release-build.json names <sha>, which does not exist in this repository`.
-Repository-owned `publish_local` jobs check out
-`ref: ${{ needs.publish.outputs.head }}`, the tagged commit, like the add-ons
-do.
+A publish job the repository wrote itself checks out
+`ref: ${{ needs.publish.outputs.head }}`, the tagged commit, like the publish
+pieces do.
 
 Publish also fails on every run while the tag for the newest released version
 in `CHANGES.md` exists but has no GitHub release, as after a tag pushed by
@@ -213,7 +228,7 @@ looked at.
 
 Between the merge and `finalize` the Homebrew formula on `main` points at
 release URLs that answer 404, because the release is still a draft. Usually
-that lasts the few minutes publish takes. A failed add-on keeps the release a
+that lasts the few minutes publish takes. A failed publish job keeps the release a
 draft and `brew install` fails until it is public. Recovery is **Re-run failed
 jobs** on the publish run.
 
@@ -239,14 +254,16 @@ dispatch deletes stale drafts (drafts with a `release-build.json` whose tag
 does not exist and whose version is not the latest release in `CHANGES.md` on
 `main`) and the parked runs of closed release branches.
 
-## Gitea packages (publish-gitea-packages)
+## Gitea packages (`ri-publish-gitea`)
 
-The add-on uploads every `.deb` and `.rpm` release asset to a Gitea package
-registry, which signs them with its own key. No repository holds a signing
-key. The release stays a draft until the upload succeeded. `check` reports a
-conflict when `gitea_packages` lacks `url` or `owner`.
+`release-publish.yml` calls the piece in a job that `needs: [publish]` and
+passes `release_id` and `head` from the `publish` job (the catalogue has the
+snippet). The job uploads every `.deb` and `.rpm` release asset to a Gitea
+package registry, which signs them with its own key. No repository holds a
+signing key. The release stays a draft until the upload succeeded, because
+`finalize` needs the job. `check` reports a `problem` when a repository calls
+the piece and `gitea_packages` lacks `url` or `owner`.
 
-    "publish": ["publish-gitea-packages"],
     "gitea_packages": {
       "url": "https://gitea.oetiker.ch",
       "owner": "oposs",

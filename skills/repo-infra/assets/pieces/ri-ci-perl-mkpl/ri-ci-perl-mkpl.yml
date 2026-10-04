@@ -1,0 +1,65 @@
+# repo-infra: ri-ci-perl-mkpl v1
+#
+# Purpose: Build the vendored dependencies and test a Makefile.PL project on three Perl versions.
+# Choose: Makefile.PL and no configure.ac.
+# Supplies: Makefile.PL and the targets thirdparty and test.
+# Call:
+#   perl:
+#     uses: ./.github/workflows/ri-ci-perl-mkpl.yml
+#     with:
+#       ref: ${{ inputs.ref }}
+
+name: Perl (Makefile.PL)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to check out; empty takes the commit that triggered the run (D28).
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  perl-mkpl:
+    name: Perl ${{ matrix.perl }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        perl: ['5.40', '5.36', '5.32']
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: ${{ matrix.perl }}
+
+      - uses: actions/cache@v6
+        with:
+          path: thirdparty
+          key: cpan-${{ matrix.perl }}-${{ hashFiles('Makefile.PL') }}
+
+      - run: perl Makefile.PL
+
+      # A failed dependency build says nothing useful on stdout; the log is the
+      # only place the actual error appears.
+      - name: Build the vendored dependencies
+        run: |
+          if make thirdparty; then
+            :
+          else
+            cat thirdparty/work/*/build.log
+            exit 1
+          fi
+
+      - run: make test
+
+      - name: Prepare the cache
+        run: rm -f thirdparty/Makefile* && rm -rf thirdparty/work

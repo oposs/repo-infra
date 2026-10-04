@@ -1,0 +1,51 @@
+# repo-infra: ri-ci-node-pnpm v1
+#
+# Purpose: Install with pnpm, then check, test and build.
+# Choose: package.json and pnpm-lock.yaml, and no other lockfile.
+# Supplies: The package.json scripts check, test and build.
+# Call:
+#   node:
+#     uses: ./.github/workflows/ri-ci-node-pnpm.yml
+#     with:
+#       ref: ${{ inputs.ref }}
+
+name: Node (pnpm)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to check out; empty takes the commit that triggered the run (D28).
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  node-pnpm-check:
+    name: Node checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      # corepack provisions pnpm from the `packageManager` field in
+      # package.json, and must run before setup-node so `cache: pnpm` finds it.
+      - run: corepack enable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm check
+
+      - run: pnpm test
+
+      - run: pnpm build

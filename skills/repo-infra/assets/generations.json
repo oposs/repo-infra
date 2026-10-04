@@ -1,158 +1,210 @@
 {
-  "build/container.mk": {
-    "2": "beadc3b07b1d85262b00b823ad277b26f93723a72991f28b947bff3ebedfc0cd"
-  },
-  "build/man-deflist.lua": {
-    "1": "f9f597b3e6a13209fdd4254b73764bb39ed52de7f878d8aa3bc3bbd6adb3beef"
-  },
-  "build/man.mk": {
-    "3": "15d4ebe336f97e0a97d81cc5a7f4523e260bfc5f88ca878eb8a5b0f398c64a7f"
-  },
-  "ci/ci-aggregator.yml": {
-    "2": "4aa5b79c2a8e43d627eb67806579d9fc2a9d6b87d2f80b95af5defeff4614731"
-  },
-  "ci/ci-checkmk-plugin.yml": {
-    "2": "4fad7384a82ac1b55d91432eb26a3507f13765a35fbda0d9f11de86050840d75"
-  },
-  "ci/ci-claude-plugin.yml": {
-    "2": "51835e9b67f3bff46199ae0aca251aaa002f8d4c99a21a5cbd9d60ac6bd72a9b"
-  },
-  "ci/ci-frame.yml": {
-    "2": "d175e6f552ac39eaea9f19556654451de6560043ef12043ef8a52cb1781555e6"
-  },
-  "ci/ci-github-action.yml": {
-    "2": "94a9cc06af0a25c19c52780fec6ca00845597e4b949ac0167ed00862a12d79c7"
-  },
-  "ci/ci-go.yml": {
-    "2": "9df2c8e2bd16fa3cea26a20f8a8983df25c3e8b8a4a7539e3f422b46010b54d4"
-  },
-  "ci/ci-lib.yml": {
-    "2": "44e6cedcee513de51a8a48feb496519da90a5d526b76ca44bd8474f67bd80a4d"
-  },
-  "ci/ci-local.yml": {
-    "2": "8f7518efb1e7b8319b72d53652eff068640398b6575fd095df2826ff8e080f52"
-  },
-  "ci/ci-man.yml": {
-    "3": "985604e33bf92a08c1dba12dc9291f9b6d1ca0e8c5bc9fca8d7f7a3b948e5a8a"
-  },
-  "ci/ci-node-bun.yml": {
-    "2": "34267534e7f8e22ace64de2d90171e4a68c9ea2da57a8f80d996ea38fa483324"
-  },
-  "ci/ci-node-pnpm.yml": {
-    "2": "36661756357e4d855a25af0d5b83d560ca5fb134d1ecb021e505de11528a3ae0"
-  },
-  "ci/ci-perl-autotools.yml": {
-    "3": "4c20fd8246c96867262d911195425114c70326b492a8134ce8e3e314f63a518c"
-  },
-  "ci/ci-perl-mkpl.yml": {
-    "2": "7adf0c8c80775ce2c710b60891968a9bdc9618fc518c7b8a5e9d2380d4407e24"
-  },
-  "ci/ci-python.yml": {
-    "3": "0c1b2991f9858beab9fe1e0ddf254b049e99b8046b026731149ea38ecef24865"
-  },
-  "ci/ci-repo-infra-selftest.yml": {
-    "4": "c80d51444fea1ad57e7450d20e6508b0f5a5e5ff50fb40947e6ef4f8c5176919"
-  },
-  "ci/ci-rust-musl.yml": {
-    "2": "2bd32d10e7d5ceabb4aee852dc6e202ebdd7fa6b83a2470ac23f80efd42d4e42"
-  },
-  "ci/ci-rust.yml": {
-    "3": "61e9566fa759714affd0cd1d4b5e6cc6691a6a631733bf6da0fccda5e45d3a11"
-  },
   "gh/ruleset-main.json": {
     "2": "017c281538f9bf5315fbc44af7c4a3c49ea8b2b6d3b420728b31e5ae45c0f4d2"
   },
-  "m4/repo-infra-container.m4": {
-    "1": "f4985b605a851750bb87e56fe77261aee4d25d19369ac6ba0d0d712ea3f5c8e2"
+  "pieces/changelog/changelog.yml": {
+    "1": "5ea90ca9f346315acd9d02e8064d033c4291c3ad704cb669e8823ac923741a5f",
+    "2": "e73e8364bc3501e7aa075594f6a3af5026a9ddad9cf7d2fd537a28267665e318",
+    "4": "0b3c07fd59dd4255052b2b3a3b45e1ccdf5ad790eb26e6db85a7c79465ade79c",
+    "5": "a2c72c89531d5030a4ce53351cdb8d40c0730bf084bf1fcc128c0558b7c8d6a6"
   },
-  "publish/publish-crates-io.yml": {
-    "3": "9caa9c9835cc214a2560683e258da69c53bb4487a45ffe7a98a9b39fc2ddb9aa"
+  "pieces/container-m4/repo-infra-container.m4": {
+    "1": "f4985b605a851750bb87e56fe77261aee4d25d19369ac6ba0d0d712ea3f5c8e2",
+    "2": "10b1c3535dbf92a29b275f329c7b2df796f47eb8ea8214d3044bc8f3eacf8044"
   },
-  "publish/publish-finalize.yml": {
-    "5": "1cecda2b122c3df26999a0049f11f1b1a869b6c85961dc8c04302ccafc519af5"
+  "pieces/container/container.mk": {
+    "1": "2c7c4ec9c3a576476b0e7c5e55e86b84dbac51d68379f1489918b6d04b7cdea1",
+    "2": "beadc3b07b1d85262b00b823ad277b26f93723a72991f28b947bff3ebedfc0cd",
+    "3": "219fd33920fe34fbf0f9c535a49f433057349246b0039c266a49f8df2736b265"
   },
-  "publish/publish-frame.yml": {
-    "5": "8e3c649d4aabe882a2486e45a8fd0113986b29c9d40b2dcc3c429ffec02cad82"
+  "pieces/dependabot/dependabot.yml": {
+    "1": "1961c1f95daa6c148005abc4d19b3393f3365cf71c90b291de93cb28793f1ec0",
+    "2": "e56ad7bbc9f20bcd58db18f159e1f5ec1fe9ec943956c84a0cd01abfefb50ce9"
   },
-  "publish/publish-gitea-packages.yml": {
-    "1": "b7817edb5b9a1aaddfb847e34858d694833720fc9596bc65725b99f564945f77"
+  "pieces/man-lua/man-deflist.lua": {
+    "1": "f9f597b3e6a13209fdd4254b73764bb39ed52de7f878d8aa3bc3bbd6adb3beef",
+    "2": "43bfe92dfd6f6994eb42841a5804dedfaf51c78e94242a54812ad8d8ace9073b"
   },
-  "release-build/release-build-frame.yml": {
-    "1": "cef67a75f5c2052ed806bae31dabc9f66253811685e6410e6ee622bb349ece6d"
+  "pieces/man/man.mk": {
+    "3": "15d4ebe336f97e0a97d81cc5a7f4523e260bfc5f88ca878eb8a5b0f398c64a7f",
+    "4": "c1c5d6af594a2a4758b4ba95699017c588b6b9eedaf90a5aac315d75493472f4"
   },
-  "release-build/release-build-local-job.yml": {
-    "1": "48df67b4f7ce25c9c7426b987b009e0704ee381d2dc7fd40413f79e694eee5ce"
+  "pieces/release-pr/release-pr.yml": {
+    "1": "79d676a877350d757b5e004ddefe0312672d6e317111f2a5dca411a9e181967a",
+    "3": "35dff452943a13bbb1bc43cbdbcb3d21b5999fccd1e62536c61d424ecc6be259",
+    "5": "02b11b7c843a7d452f7131234378e34c63314e772420fdb4707259f5b19bc1e2",
+    "6": "5f367cbe5a65a43a1bfc2768cf5dc478ee59120343e7910b14d5ee651a834852"
   },
-  "release-build/release-source-tarball.yml": {
-    "1": "6df0671d76ee90b56eb20bafa71d70e1f0c173275e19e04507dc07e754f06932"
+  "pieces/ri-ci-checkmk-plugin/ri-ci-checkmk-plugin.yml": {
+    "1": "fb5b99b87ca00fbaf457dc7eb0a74150de47a44c619ae65a1ccea36de67152aa"
   },
-  "workflows/changelog.yml": {
-    "4": "0b3c07fd59dd4255052b2b3a3b45e1ccdf5ad790eb26e6db85a7c79465ade79c"
+  "pieces/ri-ci-claude-plugin/ri-ci-claude-plugin.yml": {
+    "1": "64ff6b446bd3c30290b294ed5a32286ed302a8ca9defebca2ba85e6faecf9bc7"
   },
-  "workflows/dependabot.yml": {
-    "1": "1961c1f95daa6c148005abc4d19b3393f3365cf71c90b291de93cb28793f1ec0"
+  "pieces/ri-ci-github-action/ri-ci-github-action.yml": {
+    "1": "f7ef87b8af59e3c5cf7d52d509a16882cf25cd3069972b108b2da5888ddff23c"
   },
-  "workflows/lib/assets.js": {
-    "6": "dad330962988bf07890d792172cf8db456c2a0fdd931473fa17880012c5408f0"
+  "pieces/ri-ci-go/ri-ci-go.yml": {
+    "1": "376b1bdf7192ed7d2adeecad788ee221ad8367df25b65504c3fa58c1d2bb07e6"
   },
-  "workflows/lib/assets.test.js": {
-    "6": "1bf4d6558ad727950a28b43f3178e7a2200bbbbd21dfdebc8f54f60f90b0df91"
+  "pieces/ri-ci-lib/ri-ci-lib.yml": {
+    "1": "853c34d55ff0b9e8311fba6847f8a48a23f03e0592593f60091966073cc7e375"
   },
-  "workflows/lib/bump.js": {
-    "6": "838f710dbd6f501e6355720d40f4060a673ad94fdca8e2d196616509c2fb3576"
+  "pieces/ri-ci-man/ri-ci-man.yml": {
+    "1": "0213825a02a9356abbd80c492d43a4c384c7830be767c9b0cf2e0df346d62905"
   },
-  "workflows/lib/bump.test.js": {
-    "6": "f7f094d3c0528ddfb205e2d35f7f329715b025b155cd5a3ad3172de9d51e095e"
+  "pieces/ri-ci-node-bun/ri-ci-node-bun.yml": {
+    "1": "5e1415601a8f7f9046d1927b07edd2ddc910a25c6938d75a75321ebeb39f0855"
   },
-  "workflows/lib/changes.js": {
-    "6": "8d38eff2204a342a48c872497d2ef3ebaafa2773fd3905a3c67d2934fb602cf2"
+  "pieces/ri-ci-node-pnpm/ri-ci-node-pnpm.yml": {
+    "1": "6fdc85daba4c40c10d4884b4d0d55b89b60b351e8ef8ae92b9ddbdeb97a67875"
   },
-  "workflows/lib/changes.test.js": {
-    "6": "487361c9ca97a26fef5f81607b6bdee3a2c23e9dc1aabc6ee32b57d0b5994f5c"
+  "pieces/ri-ci-perl-autotools/ri-ci-perl-autotools.yml": {
+    "1": "c1f1495d01ca58ae84aca2a17acdabb13ba6da3b666dd432a96dbe8ada095d8d"
   },
-  "workflows/lib/checks.js": {
-    "6": "d643651b1516b0722b5df7a78cb449e4e7fa987d530fa21934f7a42493b0dd91"
+  "pieces/ri-ci-perl-mkpl/ri-ci-perl-mkpl.yml": {
+    "1": "a8e3119bf1c3762c66782a51db8736a7fd403870339ccd118e61f5949fb12233"
   },
-  "workflows/lib/checks.test.js": {
-    "6": "fea382d398446db7f7ed339f9715a12f34092fde701c5282e38e1ddcc5d4d1e1"
+  "pieces/ri-ci-python/ri-ci-python.yml": {
+    "1": "8b478e85140d56a61842faee83dbfe48a66df176c87a64857b697cc0c9b49ea5"
   },
-  "workflows/lib/commit.js": {
-    "6": "235a583dd0fe8703e7db249131789f64ed7297d56170df64d672c7d7549b6eca"
+  "pieces/ri-ci-repo-infra-selftest/ri-ci-repo-infra-selftest.yml": {
+    "1": "0980d68d404bf1aeff0de01ad1aa23a089886f02f960ec5494e0b18ff00b1ead"
   },
-  "workflows/lib/commit.test.js": {
-    "6": "57f152bef685414749573d3db10947de84243bdf3004e75c3bc7204644bb0854"
+  "pieces/ri-ci-rust-musl/ri-ci-rust-musl.yml": {
+    "1": "e5e03089ce24416d597d4fd0002d55c97d5daf2b5f9deeb5bca5415bc1856de1"
   },
-  "workflows/lib/gitea.js": {
-    "6": "bbc5e0426a646ee355ee5b541551d9120568d2a7bfc250c5d6922105858a1975"
+  "pieces/ri-ci-rust/ri-ci-rust.yml": {
+    "1": "bc048855fa2f0f9f15ec07d3c66f60a440535448cf8347032deaf07259b27ebb"
   },
-  "workflows/lib/gitea.test.js": {
-    "6": "c6518b21909d9db8e2e61a4d4b20fb3a6091f4b0396de41320e7cc245b10e467"
+  "pieces/ri-publish-crates-io/ri-publish-crates-io.yml": {
+    "1": "7063d9b1213ff431fb37bb1d4b6069c7aea8f406c2f15577621db41ee515a355"
   },
-  "workflows/lib/publish.js": {
-    "6": "4171fd3b6a93256be2cd20321bb7fffc4dec8a8422730125ac689c105cd62523"
+  "pieces/ri-publish-finalize/ri-publish-finalize.yml": {
+    "1": "2d5f190d6f3dcc1c609452358280aee0f9257ac087067ab28fd5136c3398f745"
   },
-  "workflows/lib/publish.test.js": {
-    "6": "732368444863274d9c98a7c75309ddbe103428d0c919095b022a97520ee13cd5"
+  "pieces/ri-publish-gitea/ri-publish-gitea.yml": {
+    "1": "d90827f669e61332e51db2c82e65c8518823e8710ffc9f5c899ef30efc11e755"
   },
-  "workflows/lib/release.js": {
-    "6": "9a11807e13bd3e677c562b7851832d8f0df23768ccfbebb655ecac14efc011d1"
+  "pieces/ri-publish-tag/ri-publish-tag.yml": {
+    "1": "e53112b4c3db77c02e81588934e1c6719d2663154839ec09d645484a571a9340"
   },
-  "workflows/lib/release.test.js": {
-    "6": "2f94c6d8b07cf410016b49d2e53b684a200763153ebd90def1df6907696ed517"
+  "pieces/ri-release-pr-current/ri-release-pr-current.yml": {
+    "1": "5ae40fc450e7f0534657805e2335401759c740be69a8554fffcd51d658d81397"
   },
-  "workflows/lib/rust-plan.js": {
-    "6": "2259ec23cd9127ddf4f60e28f63018ba3ab57accfdb16f81cb79ecf9edb818f6"
+  "pieces/ri-release-source-tarball/ri-release-source-tarball.yml": {
+    "1": "83530e226671f4abe714edf7d9fbdaa453506a0624e7c851ee058d11daf8e14a"
   },
-  "workflows/lib/rust-plan.test.js": {
-    "6": "f771fa60cc43f81f5cb5eed1602c0178b0781f20808df07a16765512d1d1af0f"
+  "pieces/workflow-lib/lib/assets.js": {
+    "4": "d48fb2a0fed392729b50322c4335e9bd67fa32e770666fee96f6607f9e7fa784",
+    "6": "dad330962988bf07890d792172cf8db456c2a0fdd931473fa17880012c5408f0",
+    "7": "713c6053ffe1adec0f083596cfa84f32405ecf1397d1fc031748a62d328b09fe",
+    "8": "8d45d7aedacddb4128098a06abac7262cc6713c596ee22d0939a306bbb11e865"
   },
-  "workflows/lib/version.js": {
-    "6": "738f66d6551dfd2af52de08ff1cd4bd789261dea76e8ce8d03efc6fc0340d8a6"
+  "pieces/workflow-lib/lib/assets.test.js": {
+    "4": "9a3920049ca714c7fb5ca8df73221243bff6931a73666217e3934a512fe4fc38",
+    "6": "1bf4d6558ad727950a28b43f3178e7a2200bbbbd21dfdebc8f54f60f90b0df91",
+    "7": "63c0015184d570bc7c11d65a6cccd456dace424c463321f4cbb3633f186e6193",
+    "8": "4b244e5b5e0c00f1e06dc27fa390abe88c3f031e2e7074212d79685620dceb10"
   },
-  "workflows/lib/version.test.js": {
-    "6": "3c461015edf4af07d8a412a46b7b877a2701e1d915b16463a3fd806c1a594f5f"
+  "pieces/workflow-lib/lib/bump.js": {
+    "4": "9efd32bcef360368c2af974a42115fe28e4e542a30ceac94a12f74da3e650875",
+    "6": "838f710dbd6f501e6355720d40f4060a673ad94fdca8e2d196616509c2fb3576",
+    "7": "36768811ff17c11e8af079fe4c7a68de37c55784be3b9a437e6f895f9538020f",
+    "8": "e4d208f1b14b9bb4e4d1471149cd6dddb60eab4bd70a76dfda5330b958a2f012"
   },
-  "workflows/release-pr.yml": {
-    "5": "02b11b7c843a7d452f7131234378e34c63314e772420fdb4707259f5b19bc1e2"
+  "pieces/workflow-lib/lib/bump.test.js": {
+    "4": "686f6fde3d7721f76c6b6d8ab43c9bf13cf29db62e59ff7920bc5d33b6dbbb3d",
+    "6": "f7f094d3c0528ddfb205e2d35f7f329715b025b155cd5a3ad3172de9d51e095e",
+    "7": "5c3d9a3b103f37fd97e57a0cd11bc97d7e4aa82091343ffb0c5fdf923f93afaf",
+    "8": "03c60e976c84962922f8f2f2d627cf349f42d759a7cb72b68fd054ee5895e546"
+  },
+  "pieces/workflow-lib/lib/changes.js": {
+    "4": "865e64d651f9dadece216aa076c40d0ed6fa9f555a7b4df70aa4a788e809b5b6",
+    "6": "8d38eff2204a342a48c872497d2ef3ebaafa2773fd3905a3c67d2934fb602cf2",
+    "7": "2f796a4efc175106d229ca9b0181eefbb1387aa8d145354126fe47cbb80f7789",
+    "8": "5733959f28b50c2827c0ba07bb33c5bc676fc8ff0aeff83eca66544db32de945"
+  },
+  "pieces/workflow-lib/lib/changes.test.js": {
+    "4": "2bef2c2bf9668104ecacaf71c3361b945834487f49aca01080b1bcd9a3ecd5a8",
+    "6": "487361c9ca97a26fef5f81607b6bdee3a2c23e9dc1aabc6ee32b57d0b5994f5c",
+    "7": "75d0d0ac847313a336b47ca097a75256763b4f7ef9ac32500ffa54c91910f1f9",
+    "8": "6fd54788c1b11d3ee14971cbdf034049cdea197aca7bf2128a48a57b1e5fd442"
+  },
+  "pieces/workflow-lib/lib/checks.js": {
+    "4": "4c06904c8d8d5598a1b8031335c4ed0bd10565072b683bcb1a28b0678f545812",
+    "6": "d643651b1516b0722b5df7a78cb449e4e7fa987d530fa21934f7a42493b0dd91",
+    "7": "45ec7f37f22df51c49849426e07ff2c4a4d9bb40ce06a587f94debea464f994e",
+    "8": "e2248ee656beb2b57769a7acd00293d80f050629d5732a6c0bd375dfac176d26"
+  },
+  "pieces/workflow-lib/lib/checks.test.js": {
+    "4": "eec1b54772fda543e4732f4dab318396e3a5027a4aa18a832b4b2dea461f09a6",
+    "6": "fea382d398446db7f7ed339f9715a12f34092fde701c5282e38e1ddcc5d4d1e1",
+    "7": "ea725648a476e9fc64011cbeb3299f62dd53487e478232406314e8f9619a8cba",
+    "8": "cabd6adc19f404ec43fa0d30aa991b4e52237b25145e40465f6944ff362c02d1"
+  },
+  "pieces/workflow-lib/lib/commit.js": {
+    "4": "e42df05bbc79b0b23a54c9fefafbd76df409b6728bb32e67178d26daba382431",
+    "6": "235a583dd0fe8703e7db249131789f64ed7297d56170df64d672c7d7549b6eca",
+    "7": "b65ae50347d1ac28ed1b29aadcd94dbc9f2bc3cd8253d738507f03495cf61fa1",
+    "8": "8a421788f80b53d1a1354de143c71986d7c7f5d033fd7983cb3534d600f99ad1"
+  },
+  "pieces/workflow-lib/lib/commit.test.js": {
+    "4": "a12586e62a8649d5a0293f2b791021382dbe677d9b3d789b3650b039c29b1230",
+    "6": "57f152bef685414749573d3db10947de84243bdf3004e75c3bc7204644bb0854",
+    "7": "ac786a5296096a1e81fec72708543dca543438da870a57d96173b42660bc87a3",
+    "8": "ac619c9708871072610a2a7c59ccdab65e691a1a2a515059af7c160ee4cd9ac2"
+  },
+  "pieces/workflow-lib/lib/gitea.js": {
+    "6": "bbc5e0426a646ee355ee5b541551d9120568d2a7bfc250c5d6922105858a1975",
+    "7": "0a7a24e2dd1af20bfd3636985dfb68556bad47753f0ad06176b8341322aad324",
+    "8": "23921d9678a41ff540a8b8bad9b2236efee2e8f4e3b995a6525ebfb290bc107c"
+  },
+  "pieces/workflow-lib/lib/gitea.test.js": {
+    "6": "c6518b21909d9db8e2e61a4d4b20fb3a6091f4b0396de41320e7cc245b10e467",
+    "7": "445d4ad7dc72d1e3f8028dc77a27a39119c4493d60a608b01dc7b6be8ef23d56",
+    "8": "5a2f68820e32c3c9037e2776ba907fb50544e69622682d4f21a90ae451af9633"
+  },
+  "pieces/workflow-lib/lib/publish.js": {
+    "6": "4171fd3b6a93256be2cd20321bb7fffc4dec8a8422730125ac689c105cd62523",
+    "7": "4dc77b86fefdb24890aef3b3ffce2e1649285d31361ed04a7b32810ab75603fb",
+    "8": "54f8c4daff6a2b6133f172d9160955015f96673131125dc2a17215dfa2a043ae"
+  },
+  "pieces/workflow-lib/lib/publish.test.js": {
+    "6": "732368444863274d9c98a7c75309ddbe103428d0c919095b022a97520ee13cd5",
+    "7": "755273e21152e3eefb0f9156675f6e9f3869872aa27bb2dee1980bdd3bcc5684",
+    "8": "97c41752e42701baa72e6e0f227e86a2565cd5374c69d0a1c512170d6c697226"
+  },
+  "pieces/workflow-lib/lib/release.js": {
+    "6": "9a11807e13bd3e677c562b7851832d8f0df23768ccfbebb655ecac14efc011d1",
+    "7": "8c3f43c40a92a7de9a2bfd1f22537574ec7c37bc21f2cef58e1288af498d569b",
+    "8": "847bddccb922e27e458fe0845c768cca6dcc7113bb49ce548ab0a5a9e8024dfd"
+  },
+  "pieces/workflow-lib/lib/release.test.js": {
+    "6": "2f94c6d8b07cf410016b49d2e53b684a200763153ebd90def1df6907696ed517",
+    "7": "48a2a3111c497cb21de828faa861ea2ed47613d30e3de40eb5375bcdf5e8261a",
+    "8": "422f9d864905466d1ec7507d465b201707b4910daa34c132535144f113316689"
+  },
+  "pieces/workflow-lib/lib/rust-plan.js": {
+    "6": "2259ec23cd9127ddf4f60e28f63018ba3ab57accfdb16f81cb79ecf9edb818f6",
+    "7": "91fa922cd7a8a7508ca51a68bcc17b4659959949ae0fa6ccfb7a0a25a4c2f8ff",
+    "8": "ae7f357461528b4ae902b54817a7dd23c813f17a1acc9460c1ef88901f09f33f"
+  },
+  "pieces/workflow-lib/lib/rust-plan.test.js": {
+    "6": "f771fa60cc43f81f5cb5eed1602c0178b0781f20808df07a16765512d1d1af0f",
+    "7": "484d097d702ff5cb29fd737adcb7182c4bb10f38756a9bc93e39edba0d7967c3",
+    "8": "0e5583eab25a24a3f3a5e107818ef96c756e3fff6d7bd1d85ebb9b03a89f4caa"
+  },
+  "pieces/workflow-lib/lib/version.js": {
+    "4": "1fd60027c7fa5a2feba41b855c8915eea0865087eedb1cda39c93523a59f32e4",
+    "6": "738f66d6551dfd2af52de08ff1cd4bd789261dea76e8ce8d03efc6fc0340d8a6",
+    "7": "124a4b316e12651549e0186743d265784337e719f7ba4aeb9e420ec00eefcaba",
+    "8": "12922579dd41b5df2aa984a1b450865f8beeb1a6342c19bdb531827098c298f6"
+  },
+  "pieces/workflow-lib/lib/version.test.js": {
+    "4": "2d5eb975e2460c2bd4370febf50ba1a0de215fe72b47e0eecea89a29dae53f53",
+    "6": "3c461015edf4af07d8a412a46b7b877a2701e1d915b16463a3fd806c1a594f5f",
+    "7": "c5db4a69ef8a2a61a6d2de8de2a9465a5805343557ba31389db8bb9f09f33166",
+    "8": "fa046aba3e38cccad56d62b7cea47ccc0c83d64b191563832fbd439c32f74bf5"
   }
 }

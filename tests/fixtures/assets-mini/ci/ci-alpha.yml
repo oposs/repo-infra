@@ -1,4 +1,0 @@
-  a-one:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo alpha

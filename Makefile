@@ -1,4 +1,4 @@
-.PHONY: test test-js lint check test-container generations
+.PHONY: test test-js lint check test-container generations catalogue
 
 # `-m` here overrides pytest.ini's addopts, so the pandoc-marked tests run
 # locally. The plain `python3 -m pytest` that ci-python runs deselects them,
@@ -26,5 +26,13 @@ test-container:
 
 # D29: records each marked asset's text under its marker version. Run after
 # bumping a marker; it refuses when the text changed and the marker did not.
+# It also records the piece files of every release tag under the piece's
+# current path, so a repository still on a released version reads outdated.
 generations:
 	python3 tests/generations.py
+
+# D30: the catalogue in the skill is generated from the pieces. Run after
+# adding or changing a piece; tests/test_catalogue.py fails when it is stale.
+catalogue:
+	PYTHONPATH=skills/repo-infra/scripts python3 -m repo_infra.catalogue \
+	  skills/repo-infra/references/catalogue.md

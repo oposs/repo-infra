@@ -1,0 +1,100 @@
+# repo-infra: ri-ci-repo-infra-selftest v1
+#
+# Purpose: Run the container and pandoc tests of the pytest suite.
+# Choose: Only in repo-infra itself.
+# Supplies: The pytest suite with the container and pandoc markers.
+# Call:
+#   selftest:
+#     uses: ./.github/workflows/ri-ci-repo-infra-selftest.yml
+#     with:
+#       ref: ${{ inputs.ref }}
+
+name: repo-infra self-test
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to check out; empty takes the commit that triggered the run (D28).
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  repo-infra-selftest:
+    name: Container self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest
+
+      # `-m container` filters *selection*, not *collection*: pytest imports
+      # every module under tests/ before it decides which to run, so a test
+      # file this job never runs can still stop it dead at import. That is how
+      # this step came to exist -- the ordinary pytest job had the dependency
+      # and this one did not, and the suite went from green to `1 error during
+      # collection` on a file marked out of scope.
+      - name: Install the test dependencies the project declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+
+      # The same fixed host toolchain `ci-perl-autotools` installs, and
+      # deliberately the same string (D19). Podman on an Ubuntu runner is the
+      # one link nothing else exercises, and this is the line that carries it.
+      # A test pins the three blocks equal so they cannot drift apart silently.
+      - name: Install the autotools host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext podman
+
+      # Only the container-marked tests. The ordinary `pytest` job already ran
+      # everything else in under a second, and it did not need podman to do it.
+      - run: python3 -m pytest -m container -v tests
+
+  repo-infra-man:
+    name: Man page toolchain tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest
+
+      # pytest imports every module under tests/ before it selects any, so
+      # this job needs the declared test dependencies like the one above.
+      - name: Install the test dependencies the project declares
+        run: |
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+
+      # The packages ci-man installs, deliberately the same list (D23): these
+      # tests prove the build assets that block runs. A test pins the two equal.
+      - name: Install pandoc and the man toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc groff man-db
+
+      # Only the pandoc-marked tests. The ordinary pytest job deselects them,
+      # since ci-python installs no pandoc. CI is set on the runner, so a
+      # missing tool fails these tests instead of skipping them.
+      - run: python3 -m pytest -m pandoc -v tests

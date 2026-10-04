@@ -1,28 +1,24 @@
 # Teaching the standard
 
 repo-infra carries the standard. You do the conversion. When a repository has a
-shape the standard has no answer for, the answer is never to patch the
-repository around it and never to grow a variant asset for it. The answer is to teach
-the standard, then convert.
+need no piece fits, the answer is never to patch the repository around it and
+never to grow a variant of a piece for it. The answer is to teach the standard,
+then convert.
 
 ## When this applies
 
-Two ways a gap shows up.
+The trigger is "no piece fits". While mapping the repository's needs to the
+catalogue (`references/onboarding.md`), one need has no piece, or the only piece
+that comes close would have to be edited. That is a gap. A question about this
+repository, such as which of two lockfiles is authoritative, is not: it is
+answered with the user and recorded in the callers, never by a pull request
+against repo-infra.
 
-**`check` sees it.** No ecosystem matched at all. The report says so and sends
-you here. An *ambiguous* detection signal is not this: it is a question about
-this repository, not a gap in the standard, and it is answered by recording the
-answer in the repository's own `.github/repo-infra.json` (see
-`references/conventions.md`), never by a pull request against repo-infra.
+A gap is one of two things:
 
-**You see it.** Before applying anything, read the repository's real build, test
-and release setup and compare it to what you are about to install. A gap is one
-of two things:
-
-- the standard is **silent**: it has no rule for something this repository
-  needs;
-- the standard **conflicts**: adopting it would break something that currently
-  works.
+- the standard is **silent**: no piece does something this repository needs;
+- the standard **conflicts**: adopting a piece would break something that
+  currently works.
 
 A repository that merely differs from a settled decision is not a gap. D1
 (`main`), D5 and D6 (`CHANGES.md` and its format) and every other numbered
@@ -46,8 +42,25 @@ sized to the change:
 
 | Change | What must exist |
 |---|---|
-| A block fix (a wrong cache directory, a mistyped target) | Changed asset + a test |
-| A new seam, a new ecosystem, a new rule | Numbered decision in the design doc + asset + test |
+| A fix to a piece (a wrong cache directory, a mistyped target) | The changed piece at a new version, its `## vN` section in the piece's `CHANGES.md`, `make generations`, `make catalogue` and a test |
+| A new piece, a new rule | Numbered decision in the design doc, plus everything a new piece needs (below) |
+
+A new piece needs:
+
+- a folder under `skills/repo-infra/assets/pieces/<name>/` holding the file;
+- the marker `# repo-infra: <name> v1` on the first comment line;
+- the header block after the marker: `Purpose`, `Choose` and `Supplies`;
+  `Pieces` naming the pieces it needs (the only way `apply` knows to install
+  them with it); `Produces` for the assets it makes; and `Call`, the caller job,
+  for every workflow a caller calls;
+- a `CHANGES.md` in that folder with a `## v1` section: the upgrade notes `apply`
+  prints, saying what a caller or the config must change;
+- an entry in `assets/manifest.json` giving the install path, the group and
+  whether every repository carries it;
+- `make generations`, which records the hash of the new version, and `make
+  catalogue`, which regenerates `references/catalogue.md`;
+- tests that run the steps of the piece, because nothing is standardised that
+  has not been shown to run.
 
 The repository's own conversion pull request merges **after** that has shipped
 and the plugin has been updated. So no repository carries a shape the standard
@@ -62,13 +75,12 @@ it does not decide the outcome. Containerizing is the expected answer, but the
 project dropping the dependency is a real alternative, and so is something
 nobody has thought of.
 
-If containerizing is the answer, what repo-infra ships for it is a pair of build
-assets: `container-m4` (`m4/repo-infra-container.m4`, the `--disable-container`
+If containerizing is the answer, what repo-infra ships for it is a pair of
+pieces: `container-m4` (`m4/repo-infra-container.m4`, the `--disable-container`
 switch) and `container` (`build/container.mk`, the driver targets). Install them
-by naming both in the repository's own `build` list in `.github/repo-infra.json`
-(`references/conventions.md`), and write the `Containerfile` the contract there
-describes. Nothing installs them automatically; it is a decision, not a
-detection.
+with `apply --item container-m4` and `apply --item container`, and write the
+`Containerfile` the contract in `references/conventions.md` describes. Nothing
+installs them automatically; it is a decision.
 
 What is never available is carrying on natively while installing packages from
 CI. If you find yourself wanting a place to list apt packages, you have hit the
