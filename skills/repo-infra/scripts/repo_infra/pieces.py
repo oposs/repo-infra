@@ -53,17 +53,26 @@ def comment_of(path):
     return COMMENT[pathlib.PurePosixPath(path).suffix]
 
 
+def _commented(stripped, comment):
+    """True when the stripped line is a comment. A token that is a word
+    (`dnl`) must stand alone: `dnlPurpose:` is another m4 word."""
+    if not stripped.startswith(comment):
+        return False
+    after = stripped[len(comment):len(comment) + 1]
+    return not (comment[-1].isalnum() and (after.isalnum() or after == "_"))
+
+
 def parse_header(text, comment):
     """The header fields after the marker (D30), as {field: text}."""
     lines = text.split("\n")
-    first = next((i for i, line in enumerate(lines) if line.strip().startswith(comment)),
+    first = next((i for i, line in enumerate(lines) if _commented(line.strip(), comment)),
                  None)
     if first is None or not parse_markers(lines[first]):
         raise PieceError("the marker must be the first comment line")
     fields, current, started = {}, None, False
     for line in lines[first + 1:]:
         stripped = line.strip()
-        if not stripped.startswith(comment):
+        if not _commented(stripped, comment):
             break
         body = stripped[len(comment):]
         if body.strip() == "":
@@ -101,12 +110,20 @@ def load_pieces(assets=ASSETS):
     assets = pathlib.Path(assets)
     found = {}
     for name, spec in _manifest(assets).get("pieces", {}).items():
-        source = assets / _source(name, spec)
         kind = spec.get("kind", "file")
+        for key in ("target", "header") if kind == "dir" else ("target",):
+            if key not in spec:
+                raise PieceError(f"{name}: the manifest entry lacks {key}")
+        source = assets / _source(name, spec)
+        if not (source.is_dir() if kind == "dir" else source.is_file()):
+            raise PieceError(f"{name}: {_source(name, spec)} is missing from the asset store")
         if kind == "dir":
             files = {f"{spec['target']}/{child.name}": child.read_text(encoding="utf-8")
                      for child in sorted(source.iterdir()) if child.is_file()}
             lead = f"{spec['target']}/{spec['header']}"
+            if lead not in files:
+                raise PieceError(f"{name}: the header file {spec['header']} is not in "
+                                 f"{_source(name, spec)}")
         else:
             files = {spec["target"]: source.read_text(encoding="utf-8")}
             lead = spec["target"]
