@@ -193,3 +193,17 @@ def test_the_shipped_store_survives_a_dropped_file_twice():
     once = generations.updated(record, scanned, shipped)
     assert "pieces/workflow-lib/lib/bump.test.js" in once
     assert generations.updated(once, scanned, shipped) == once
+
+
+def test_v0_1_0_counts_with_the_piece_files_it_carried_as_its_own():
+    """v0.1.0 had no asset store: it shipped repo-infra's own .github files,
+    and repositories copied them by hand. Those carrying a piece's marker
+    are that piece's v1 and read outdated, not edited. Its workflow library
+    carries no marker, so it is no version of workflow-lib."""
+    if "v0.1.0" not in _tags():
+        pytest.skip("this checkout lacks the v0.1.0 tag")
+    found = generations.released("v0.1.0")
+    assert {path: version for path, (version, _) in found.items()} == {
+        "pieces/changelog/changelog.yml": 1,
+        "pieces/dependabot/dependabot.yml": 1,
+        "pieces/release-pr/release-pr.yml": 1}

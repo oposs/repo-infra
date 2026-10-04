@@ -30,7 +30,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `check` reports a call that would fail at the start of a run: an input or secret the called workflow does not declare or requires, a missing workflow file, or a job that grants fewer token permissions than the workflow it calls needs.
 - `check` reports a caller that would misbehave once it runs: a `ci-passed` job that differs from the shipped pattern, a `finalize` that does not need every other job, a `finalize` without `if: needs.publish.outputs.release_id != ''` (the Publish run turns red after every merge that releases nothing) or wired to the wrong outputs, a call to a workflow in another repository, and a call that does not hand `ref: ${{ inputs.ref }}` to a workflow taking it.
 - `check` reports a `ci.yml` that does not run on `push` and `pull_request` to `main` or does not call `ri-release-pr-current`, and a `release-publish.yml` that does not run on `push` to `main` with `paths: [CHANGES.md]` alone, lacks the `release-publish` concurrency group, cancels a running publish or has a `workflow_dispatch` trigger.
-- `apply` replaces the files a repository got from repo-infra v0.2.0 (`changelog` v2, `release-pr` v3, `workflow-lib` v4, `container` v1) instead of stopping for a hand merge of each one; `check` reads them `outdated`.
+- `apply` replaces the files a repository got from repo-infra v0.2.0 (`changelog` v2, `release-pr` v3, `workflow-lib` v4, `container` v1) instead of stopping for a hand merge of each one; `check` reads them `outdated`. Copies of `changelog.yml` and `release-pr.yml` taken from v0.1.0 read `outdated` as well.
 
 ## 0.3.1 - 2026-10-02
 ### Fixed

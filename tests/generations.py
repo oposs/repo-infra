@@ -12,6 +12,8 @@ entry's version.
 Every release tag's piece files are recorded too, under the path the piece
 has now. v0.2.0 shipped changelog v2 under workflows/, and without its bytes
 a repository still on it read edited instead of outdated (Decision L).
+v0.1.0 had no asset store; its own files at a piece's target count, when
+they carry the piece's marker.
 """
 
 import hashlib
@@ -155,12 +157,20 @@ def released_files(tag, assets_root=ASSETS):
     """{record path: (version, bytes)} for the piece files shipped at `tag`,
     under the path each piece has now, the D29 stamp removed. A file without
     the piece's marker is skipped."""
-    names = _git("ls-tree", "-r", "--name-only", tag, "--", TAG_ASSETS).split("\n")
-    if f"{TAG_ASSETS}/manifest.json" not in names:
-        return {}
-    old = _old_sources(json.loads(_git("show", f"{tag}:{TAG_ASSETS}/manifest.json")))
     now = json.loads((pathlib.Path(assets_root) / "manifest.json").read_text(
         encoding="utf-8")).get("pieces", {})
+    names = _git("ls-tree", "-r", "--name-only", tag, "--", TAG_ASSETS).split("\n")
+    if f"{TAG_ASSETS}/manifest.json" in names:
+        base = f"{TAG_ASSETS}/"
+        old = _old_sources(json.loads(_git("show", f"{tag}:{TAG_ASSETS}/manifest.json")))
+    else:
+        # v0.1.0 had no asset store. It shipped repo-infra's own files, at
+        # the paths a piece is installed to today.
+        base = ""
+        targets = [spec["target"] for spec in now.values()]
+        names = _git("ls-tree", "-r", "--name-only", tag, "--", *targets).split("\n")
+        old = {name: (spec["target"], spec.get("kind") == "dir")
+               for name, spec in now.items()}
     found = {}
     for name, spec in now.items():
         if name not in old:
@@ -168,10 +178,10 @@ def released_files(tag, assets_root=ASSETS):
         source, is_dir = old[name]
         new = _source(name, spec)
         if is_dir:
-            prefix = f"{TAG_ASSETS}/{source}/"
+            prefix = f"{base}{source}/"
             pairs = [(f"{new}/{f[len(prefix):]}", f) for f in names if f.startswith(prefix)]
         else:
-            pairs = [(new, f"{TAG_ASSETS}/{source}")] if f"{TAG_ASSETS}/{source}" in names else []
+            pairs = [(new, f"{base}{source}")] if f"{base}{source}" in names else []
         for record_path, path in pairs:
             data = unstamped(_git("show", f"{tag}:{path}", text=False))
             markers = parse_markers(data.decode("utf-8", errors="replace"))
