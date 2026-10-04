@@ -551,6 +551,11 @@ def _callable(pieces, file):
                and "Call" in p.header for p in pieces.values())
 
 
+def _core(pieces, file):
+    return any(p.core and pathlib.PurePosixPath(p.target).name == file
+               for p in pieces.values())
+
+
 def validate(docs, pieces, assets=ASSETS):
     piece_files = {pathlib.PurePosixPath(p.target).name
                    for p in pieces.values() if p.workflow}
@@ -573,11 +578,16 @@ def validate(docs, pieces, assets=ASSETS):
     called_by_text = {target for doc in docs.values()
                       if isinstance(doc, workflow.ReadError)
                       for target in getattr(doc, "calls", ())}
+    # frame_problems names a ci.yml without ri-release-pr-current already.
+    framed = {f"{RELEASE_PR_CURRENT}.yml"} if isinstance(docs.get("ci.yml"), dict) else set()
     items += [Item("callers", file, "problem",
                    f"{file} is installed and no workflow calls it, so it never runs. Add "
-                   "its Call: from the catalogue to a caller, or remove the file")
+                   "its Call: from the catalogue to a caller"
+                   # A removed core piece reads missing and bare apply reinstalls it.
+                   + ("; it is a core piece, so do not remove it" if _core(pieces, file)
+                      else ", or remove the file"))
               for file in sorted(piece_files)
-              if file in docs and _callable(pieces, file)
+              if file in docs and file not in framed and _callable(pieces, file)
               and not calls(docs, file) and file not in called_by_text]
     found = (closing_problems(docs, assets) + finalize_problems(docs, pieces)
              + frame_problems(docs, pieces)

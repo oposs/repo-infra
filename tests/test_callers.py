@@ -836,3 +836,37 @@ def test_a_call_omitting_a_required_ref_is_reported_once(tmp_path, store):
     found = [detail for name, _, detail in problems(tmp_path, store_, ci=ci)
              if name == "ci.yml" and "ref" in detail]
     assert found == ["job a calls ri-a.yml without its required input ref"]
+
+
+# --- review of the follow-up wave -------------------------------------------
+
+def own_validated(tmp_path, ci):
+    folder = tmp_path / ".github/workflows"
+    folder.mkdir(parents=True)
+    for path in (REPO / ".github/workflows").glob("*.yml"):
+        (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    (folder / "ci.yml").write_text(ci, encoding="utf-8")
+    return [(i.name, i.detail) for i in
+            callers.validate(callers.read_workflows(tmp_path), load_pieces())]
+
+
+def test_an_uncalled_core_piece_is_not_offered_for_removal(tmp_path):
+    """A removed core piece reads missing, and a bare apply installs it again."""
+    job = "  lib:\n    uses: ./.github/workflows/ri-ci-lib.yml\n    with:\n" \
+          "      ref: ${{ inputs.ref }}\n\n"
+    assert job in own("ci.yml")
+    text = own("ci.yml").replace(job, "").replace("needs: [lib, ", "needs: [")
+    assert own_validated(tmp_path, text) == [(
+        "ri-ci-lib.yml", "ri-ci-lib.yml is installed and no workflow calls it, so it never "
+        "runs. Add its Call: from the catalogue to a caller; it is a core piece, so do not "
+        "remove it")]
+
+
+def test_ci_without_release_pr_current_is_one_item(tmp_path):
+    job = ("  release-pr-current:\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
+           "    permissions:\n      contents: read\n      pull-requests: read\n"
+           "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
+    text = own("ci.yml").replace(job, "").replace(", release-pr-current]", "]")
+    assert own_validated(tmp_path, text) == [(
+        "ci.yml", "ci.yml calls no ri-release-pr-current.yml; an open release pull request "
+        "is not marked stale when main moves (D28). Add its Call: from the catalogue")]
