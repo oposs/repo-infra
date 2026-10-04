@@ -19,8 +19,8 @@ from .apply import (
     plan_piece,
     release_in_progress,
 )
-from .pieces import ASSETS, load_pieces, load_published, upgrade_notes
-from .remote import Facts, Gh
+from .pieces import ASSETS, PieceError, load_pieces, load_published, upgrade_notes
+from .remote import Facts, Gh, GhError
 
 # Administration items write repository settings through `remote.Gh`, and
 # each is outward-facing, so apply runs one only when it is named (D30).
@@ -70,19 +70,22 @@ def _states(root, pieces, published):
 
 
 def apply_command(args):
+    # The arguments are refused before GitHub is asked anything: a typo
+    # should not wait for, or fail on, the network.
+    if args.item in ADMIN and args.from_file:
+        raise ApplyError("--from takes the merged file of a piece, not of "
+                         f"the administration item {args.item}")
+    if args.from_file and not args.item:
+        raise ApplyError("--from needs --item: name the piece the merged file is for")
+    if args.item not in ADMIN:
+        pieces, published = load_pieces(ASSETS), load_published(ASSETS)
+        if args.item is not None and args.item not in pieces:
+            raise ApplyError(f"{args.item}: not a piece and not an administration item")
     repo = args.repo or Gh().current_repo()
     facts = read_facts(repo)
     if args.item in ADMIN:
-        if args.from_file:
-            raise ApplyError("--from takes the merged file of a piece, not of "
-                             f"the administration item {args.item}")
         print(apply_admin_item(Gh(), repo, args.item, facts, ASSETS, args.root))
         return 0
-    if args.from_file and not args.item:
-        raise ApplyError("--from needs --item: name the piece the merged file is for")
-    pieces, published = load_pieces(ASSETS), load_published(ASSETS)
-    if args.item is not None and args.item not in pieces:
-        raise ApplyError(f"{args.item}: not a piece and not an administration item")
     states = _states(args.root, pieces, published)
     names = [args.item] if args.item else _pending(args.root, pieces, states, published)
     if names:
@@ -164,9 +167,10 @@ def run(argv=None):
 
 
 def main(argv=None):
-    """`run`, with apply's two ways of stopping printed as a message and an
-    exit status instead of a Python traceback. The upgrade notes of the
-    pieces installed before a merge stop are already printed."""
+    """`run`, with apply's two ways of stopping, a failed `gh` call and a
+    broken asset store printed as a message and an exit status instead of a
+    Python traceback. The upgrade notes of the pieces installed before a
+    merge stop are already printed."""
     try:
         return run(argv)
     except NeedsMerge as stop:
@@ -174,4 +178,11 @@ def main(argv=None):
         return EXIT_NEEDS_MERGE
     except ApplyError as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
+        return 1
+    except GhError as error:
+        print(f"gh: {error}", file=sys.stderr)
+        return 1
+    except PieceError as error:
+        print(f"the plugin's asset store is broken (reinstall the plugin): {error}",
+              file=sys.stderr)
         return 1

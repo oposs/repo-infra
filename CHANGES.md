@@ -22,6 +22,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A piece with a local edit that still carries the current version used to read `ok`; `check` now reads it `edited` and exits 1. It says how to get back to the published file: move the change into a caller, delete the file and run `apply --item <piece>`.
 - `apply` no longer prints "already vN" for a piece whose file carries a local edit and claims the current or a newer version. It prints what `check` says about it: the way back to the published file, or "update the plugin" when the file is newer than the plugin.
 - When `apply` stops for a hand merge or refuses, it prints the message (`NeedsMerge: ...`, exit status 3, or `refused: ...`, exit status 1) instead of a Python traceback.
+- When a `gh` call fails or the plugin's files are damaged, `check` and `apply` print the message (`gh: ...` or `the plugin's asset store is broken ...`) and exit 1 instead of a Python traceback. `apply` refuses a misspelt piece name or a misplaced `--from` before it contacts GitHub.
 - `apply` no longer appends ` sha256=` to the marker line of the files it writes. Files that carry it from v0.3.1 still read as the version they claim.
 - Commits made by `apply` end with `Co-Authored-By: Claude <noreply@anthropic.com>` instead of naming a model version.
 - `.github/repo-infra.json` no longer reads `ecosystems`, `ci`, `ci_local`, `publish`, `build`, `publish_local`, `release_build`, `release_build_local`, `skip` or `answers`; `check` asks for them to be removed.
