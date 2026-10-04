@@ -69,15 +69,36 @@ def scan(assets_root):
     return dict(sorted(found.items()))
 
 
-def vanished(record, scanned):
-    """The recorded paths `scan` no longer finds, with what to do about each."""
+def piece_sources(assets_root):
+    """The source path of every piece the manifest ships: a file, or a
+    directory whose files lie below it."""
+    manifest_path = pathlib.Path(assets_root) / "manifest.json"
+    if not manifest_path.is_file():
+        return []
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return sorted(_source(name, spec) for name, spec in manifest.get("pieces", {}).items())
+
+
+def _of_a_piece(path, shipped):
+    return any(path == source or path.startswith(source + "/") for source in shipped)
+
+
+def vanished(record, scanned, shipped=()):
+    """The recorded paths `scan` no longer finds, with what to do about each.
+
+    A path below a piece the manifest still ships stays: it is a file an
+    older version shipped and the current one dropped, and apply removes a
+    copy only when its bytes are a published version. Advising its removal
+    made `make generations` loop, since the next run re-added it from the
+    release tags."""
     return [f"{path} is recorded but no longer scanned; if it was removed on "
             "purpose, delete it from generations.json"
-            for path in sorted(record) if path not in scanned]
+            for path in sorted(record)
+            if path not in scanned and not _of_a_piece(path, shipped)]
 
 
-def updated(record, scanned):
-    gone = vanished(record, scanned)
+def updated(record, scanned, shipped=()):
+    gone = vanished(record, scanned, shipped)
     if gone:
         raise ValueError("\n".join(gone))
     record = {path: dict(versions) for path, versions in record.items()}
@@ -175,7 +196,7 @@ def with_released(record, found):
 if __name__ == "__main__":
     current = json.loads(RECORD.read_text(encoding="utf-8")) if RECORD.is_file() else {}
     try:
-        new = updated(current, scan(ASSETS))
+        new = updated(current, scan(ASSETS), piece_sources(ASSETS))
         try:
             tags = release_tags()
         except NoHistory as error:

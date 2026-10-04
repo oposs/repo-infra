@@ -23,7 +23,7 @@ def test_every_asset_text_is_recorded_under_its_version():
                             f"v{version}; bump the marker (or, for a block, its "
                             "version in manifest.json), then run make generations")
     scanned = generations.scan(ASSETS)
-    problems += generations.vanished(recorded, scanned)
+    problems += generations.vanished(recorded, scanned, generations.piece_sources(ASSETS))
     assert not problems, "\n".join(problems)
 
 
@@ -134,3 +134,51 @@ def test_an_unedited_repository_of_every_release_reads_outdated_or_current(tmp_p
                   if check.piece_state(root, piece, published.get(name, {})).state
                   == "edited"]
     assert not wrong, "\n".join(wrong)
+
+
+def _dir_piece_store(tmp_path, files):
+    (tmp_path / "manifest.json").write_text(json.dumps({"pieces": {
+        "lib-x": {"target": ".github/workflows/lib", "kind": "dir", "header": "a.js"}}}),
+        encoding="utf-8")
+    folder = tmp_path / "pieces/lib-x/lib"
+    folder.mkdir(parents=True)
+    for name, text in files.items():
+        (folder / name).write_text(text, encoding="utf-8")
+    return tmp_path
+
+
+def test_a_file_a_piece_dropped_stays_recorded_and_the_record_is_stable(tmp_path):
+    """A piece version that stops shipping a file keeps the file's published
+    bytes in the record: apply removes a copy at those bytes, and only them.
+    `make generations` used to refuse the dropped path and advise deleting it,
+    and the next run re-added it from the release tags, round after round."""
+    store = _dir_piece_store(tmp_path, {"a.js": "// repo-infra: lib-x v2\na2\n"})
+    record = {"pieces/lib-x/lib/a.js": {"1": "1" * 64},
+              "pieces/lib-x/lib/gone.js": {"1": "2" * 64}}
+    scanned = generations.scan(store)
+    shipped = generations.piece_sources(store)
+    assert generations.vanished(record, scanned, shipped) == []
+    once = generations.updated(record, scanned, shipped)
+    assert once["pieces/lib-x/lib/gone.js"] == {"1": "2" * 64}
+    assert generations.updated(once, scanned, shipped) == once
+
+
+def test_a_file_of_a_piece_the_manifest_no_longer_names_is_still_reported(tmp_path):
+    store = _dir_piece_store(tmp_path, {"a.js": "// repo-infra: lib-x v2\na2\n"})
+    record = {"pieces/old-piece/old.yml": {"1": "2" * 64}}
+    assert generations.vanished(record, generations.scan(store),
+                                generations.piece_sources(store)) == [
+        "pieces/old-piece/old.yml is recorded but no longer scanned; if it was "
+        "removed on purpose, delete it from generations.json"]
+
+
+def test_the_shipped_store_survives_a_dropped_file_twice():
+    """The repro of the follow-up review on the real store: drop one file of
+    workflow-lib from the scan and run the update twice."""
+    record = json.loads(RECORD.read_text(encoding="utf-8"))
+    scanned = generations.scan(ASSETS)
+    scanned.pop("pieces/workflow-lib/lib/bump.test.js")
+    shipped = generations.piece_sources(ASSETS)
+    once = generations.updated(record, scanned, shipped)
+    assert "pieces/workflow-lib/lib/bump.test.js" in once
+    assert generations.updated(once, scanned, shipped) == once
