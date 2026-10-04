@@ -1,4 +1,5 @@
 import json
+import os
 import pathlib
 
 import generations
@@ -66,11 +67,25 @@ def test_record_refuses_to_drop_a_path_that_is_no_longer_scanned(tmp_path):
         generations.updated(record, generations.scan(tmp_path))
 
 
+ON_CI = os.environ.get("GITHUB_ACTIONS") == "true"
+
+
 def _tags():
+    """The release tags, fetched first on GitHub Actions: actions/checkout
+    clones one commit and no tags, and the tests that need them skipped
+    there on every run. On CI a missing tag fails, so the guard cannot go
+    quiet again; elsewhere it skips."""
     try:
-        return generations.release_tags()
+        tags = generations.release_tags()
+        if not tags and ON_CI:
+            generations.fetch_release_tags()
+            tags = generations.release_tags()
     except generations.NoHistory as error:
-        pytest.skip(str(error))
+        (pytest.fail if ON_CI else pytest.skip)(str(error))
+    if not tags:
+        (pytest.fail if ON_CI else pytest.skip)(
+            "this checkout has no release tags (a shallow clone)")
+    return tags
 
 
 def test_every_released_piece_file_is_recorded_under_its_version():
@@ -79,8 +94,6 @@ def test_every_released_piece_file_is_recorded_under_its_version():
     and container v1, and none was recorded, so an unedited v0.2.0 repository
     read edited and apply asked for a hand merge of every file."""
     tags = _tags()
-    if not tags:
-        pytest.skip("this checkout has no release tags (a shallow clone)")
     recorded = json.loads(RECORD.read_text(encoding="utf-8"))
     problems = []
     for tag in tags:
@@ -116,8 +129,6 @@ def test_an_unedited_repository_of_every_release_reads_outdated_or_current(tmp_p
     """The repository side of the record: every piece copied as a release
     shipped it reads outdated or current, never edited."""
     tags = _tags()
-    if not tags:
-        pytest.skip("this checkout has no release tags (a shallow clone)")
     pieces, published = load_pieces(ASSETS), load_published(ASSETS)
     wrong = []
     for tag in tags:

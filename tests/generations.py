@@ -127,6 +127,12 @@ def release_tags():
     return sorted(t for t in _git("tag", "--list", "v*").split() if t)
 
 
+def fetch_release_tags():
+    """Fetch the vX.Y.Z tags from origin, one commit deep each, into a clone
+    made without them."""
+    _git("fetch", "--quiet", "--depth=1", "origin", "+refs/tags/v*:refs/tags/v*")
+
+
 def _old_sources(manifest):
     """{piece name: (source path below the assets, is a directory)} from a
     manifest of any release. Up to v0.3.1 the entries named their `source`;
