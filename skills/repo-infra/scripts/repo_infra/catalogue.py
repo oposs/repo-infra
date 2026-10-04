@@ -35,7 +35,7 @@ def _cell(text):
 def _default(value):
     if value is None:
         return ""
-    return f"`{value}`" if value != "" else "`''`"
+    return f"`{_cell(value)}`" if value != "" else "`''`"
 
 
 def entry(piece):
@@ -50,7 +50,7 @@ def entry(piece):
     if face.inputs:
         lines += ["| Input | Type | Required | Default | Description |",
                   "|---|---|---|---|---|"]
-        lines += [f"| `{name}` | {spec['type']} | {'yes' if spec['required'] else 'no'} | "
+        lines += [f"| `{name}` | {_cell(spec['type'])} | {'yes' if spec['required'] else 'no'} | "
                   f"{_default(spec['default'])} | {_cell(spec['description'])} |"
                   for name, spec in face.inputs.items()]
         lines.append("")
@@ -86,6 +86,10 @@ def render(pieces):
 
 
 def main(argv):
+    if len(argv) != 1:
+        print("usage: python3 -m repo_infra.catalogue <catalogue.md to write>",
+              file=sys.stderr)
+        return 2
     target = pathlib.Path(argv[0])
     target.write_text(render(load_pieces()), encoding="utf-8")
     return 0
