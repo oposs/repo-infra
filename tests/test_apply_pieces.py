@@ -474,7 +474,11 @@ def test_an_edited_file_claiming_a_newer_version_alone_is_left_alone(
         monkeypatch, capsys, pair, repo):
     lib_y(repo, a=P3, b=P3)
     run_apply(monkeypatch, pair, repo, "--item", "lib-y")
-    assert "lib-y: already v2" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    # It used to say "already v2", while check said to update the plugin.
+    assert "already v2" not in out
+    assert ("lib-y: .github/workflows/lib-y/a.js, .github/workflows/lib-y/b.js says v3, "
+            "newer than this plugin's v2; update the plugin") in out
     assert (repo / ".github/workflows/lib-y/a.js").read_text(encoding="utf-8") == P3
 
 

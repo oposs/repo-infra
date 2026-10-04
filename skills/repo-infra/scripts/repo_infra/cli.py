@@ -100,8 +100,10 @@ def apply_command(args):
                      "ships it; remove it by hand if nothing uses it"
                      for path in kept_edits(piece, state)]
             if not written:
-                # A merged piece: say how it gets back to published bytes.
-                if state.state == "edited" and state.installed == piece.version:
+                # An edited shipped file that claims the current version (a
+                # finished merge) or a newer one: say what check says, how it
+                # gets back to published bytes or that the plugin is old.
+                if state.state == "edited" and set(state.edited) & set(piece.files):
                     print(f"{name}: {checking.edited_detail(piece, state)}")
                 else:
                     print(f"{name}: already v{piece.version}")
