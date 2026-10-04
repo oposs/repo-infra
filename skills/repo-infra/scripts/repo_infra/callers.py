@@ -372,6 +372,9 @@ def ref_problems(doc, reserved, skip=()):
 
 
 def ref_contract_problems(docs, piece_files):
+    """D28 on the checkouts: the inline jobs of ci.yml and release-build.yml,
+    and every project-owned workflow called with `ref`. A call that omits
+    `ref` is ref_passing_problems' to report."""
     found = []
     for name, reserved, skip in (("ci.yml", True, ("ci-passed",)),
                                  ("release-build.yml", False, ())):
@@ -404,6 +407,8 @@ def ref_passing_problems(docs):
             if face is None or "ref" not in face.inputs:
                 continue
             given = job.get("with") if isinstance(job.get("with"), dict) else {}
+            if "ref" not in given and face.inputs["ref"]["required"]:
+                continue  # call_problems names the missing required input
             if not _INPUT_REF.fullmatch(str(given.get("ref", "")).strip()):
                 found.append((name, f"job {job_id} calls {called}, which takes `ref`, "
                                     "without `with: ref: ${{ inputs.ref }}`; the release "

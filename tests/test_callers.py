@@ -825,3 +825,14 @@ def test_a_piece_called_only_from_an_unreadable_workflow_is_not_called_unused(tm
 def test_an_installed_piece_in_the_store_fixture_nothing_calls_is_a_problem(tmp_path, store):
     found = problems(tmp_path, store, deploy="# ri-b.yml is installed\non: push\njobs: {}\n")
     assert ("ri-b.yml", "problem", UNCALLED.format("ri-b.yml")) in found
+
+
+def test_a_call_omitting_a_required_ref_is_reported_once(tmp_path, store):
+    """call_problems and the D28 rule both named it."""
+    store_ = make_assets(tmp_path / "required", {
+        "ri-a": workflow_piece("ri-a", 1).replace(
+            "        required: false\n        default: ''\n", "        required: true\n", 1)})
+    ci = CI.replace("    with:\n      ref: ${{ inputs.ref }}\n", "", 1)
+    found = [detail for name, _, detail in problems(tmp_path, store_, ci=ci)
+             if name == "ci.yml" and "ref" in detail]
+    assert found == ["job a calls ri-a.yml without its required input ref"]
