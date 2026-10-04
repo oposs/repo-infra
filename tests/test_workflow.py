@@ -48,6 +48,13 @@ SNIPPETS = {
     "expression": "ref: ${{ inputs.ref }}\n",
     "url value": "u: https://example.com/x\n",
     "document start": "---\na: b\n",
+    "document end": "a: b\n...\n",
+    "literal keep at the end": "run: |+\n  one\n",
+    "literal keep at the end with a blank": "run: |+\n  one\n\n",
+    "flow sequence with a quoted hash": "a: [x, 'b #c', \"d #e\"] # note\n",
+    "crlf": "run: |\r\n  one\r\n  two\r\nb: c\r\n",
+    "literal with a wide blank line": "run: |\n  one\n      \n  two\n",
+    "folded with a wide blank line": "run: >\n  one\n      \n  two\n",
 }
 
 
@@ -67,6 +74,9 @@ REFUSED = {
     "flow sequence over two lines": ("a: [b,\n  c]\n", "line 1"),
     "tag": ("a: !!str b\n", "line 1"),
     "not a key": ("a: b\njust text\n", "line 2"),
+    "plain value continued as a key": ("a: b\n  c: d\n", "line 2"),
+    "second document": ("a: b\n---\nc: d\n", "line 2"),
+    "content after the document end": ("a: b\n...\nc: d\n", "line 3"),
 }
 
 

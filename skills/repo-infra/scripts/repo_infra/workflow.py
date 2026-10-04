@@ -82,8 +82,23 @@ def _value(rest, line):
         if tail and not tail.startswith("#"):
             raise ReadError(f"line {line}: text after a quoted value")
         return text[:end]
-    cut = text.find(" #")
+    cut = _comment(text) if text[0] == "[" else text.find(" #")
     return (text[:cut] if cut >= 0 else text).rstrip()
+
+
+def _comment(text):
+    """Where the comment of a flow sequence starts, outside its quoted items,
+    or -1. In `[a, 'b #c']` the ` #` is part of an item."""
+    quote = None
+    for i, char in enumerate(text):
+        if quote:
+            if char == quote:
+                quote = None
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and i and text[i - 1] in " \t":
+            return i - 1
+    return -1
 
 
 def _refuse(text, line):
@@ -145,18 +160,32 @@ def _fold(lines):
 
 class _Reader:
     def __init__(self, text):
-        self.lines = text.split("\n")
+        # YAML reads a CRLF line break as one break; without this a block
+        # scalar kept the \r of every line.
+        self.lines = text.replace("\r\n", "\n").split("\n")
+        # The newline that ends the last line starts no line of its own; it
+        # counted as a trailing blank line for a `|+` block at the end.
+        if len(self.lines) > 1 and self.lines[-1] == "":
+            self.lines.pop()
         self.i = 0
+        self.started = self.ended = False
 
     def peek(self):
         """(indent, text) of the next line with content, or None at the end."""
         while self.i < len(self.lines):
             raw = self.lines[self.i]
             text = raw.strip()
-            if text and not text.startswith("#") and text not in ("---", "..."):
+            if text == "---" and self.started:
+                raise ReadError(f"line {self.i + 1}: a second document; a workflow is one")
+            if text == "...":
+                self.ended = True
+            elif text and not text.startswith("#") and text != "---":
+                if self.ended:
+                    raise ReadError(f"line {self.i + 1}: text after the end of the document")
                 lead = raw[:len(raw) - len(raw.lstrip())]
                 if "\t" in lead:
                     raise ReadError(f"line {self.i + 1}: a tab in the indentation")
+                self.started = True
                 return len(lead), text
             self.i += 1
         return None
@@ -230,6 +259,11 @@ class _Reader:
             peeked = self.peek()
             if peeked is None or peeked[0] <= indent:
                 return " ".join(parts)
+            if _KEY.match(peeked[1]):
+                # GitHub refuses `a: b` followed by a deeper `c: d`; joined,
+                # it read as the value "b c: d".
+                raise ReadError(f"line {self.i + 1}: a value continues on a line that reads "
+                                "as `key: value`")
             parts.append(_value(peeked[1], self.i + 1))
             self.i += 1
 
@@ -237,8 +271,9 @@ class _Reader:
         lines, width = [], None
         while self.i < len(self.lines):
             raw = self.lines[self.i]
-            if raw.strip() == "":
-                lines.append("")
+            if raw.strip(" ") == "":
+                # Spaces beyond the block's indentation are content.
+                lines.append(raw[width:] if width is not None and len(raw) > width else "")
                 self.i += 1
                 continue
             lead = len(raw) - len(raw.lstrip(" "))
