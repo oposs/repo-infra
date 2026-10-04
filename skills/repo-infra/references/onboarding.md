@@ -73,11 +73,16 @@ still attaching files. The file has no `workflow_dispatch` trigger on purpose:
 publishing is a consequence of merging a release pull request, never something
 started from a dropdown, and a re-run of a failed run reads the same version
 from `CHANGES.md` and finishes the job. The comment in repo-infra's own
-`.github/workflows/release-publish.yml` says the same. `check` does not test
-the concurrency block or the missing trigger, so copy them from the example.
+`.github/workflows/release-publish.yml` says the same.
 
 What `check` enforces on the callers:
 
+- `ci.yml` runs on `push` and `pull_request` to `main` and calls
+  `ri-release-pr-current`. Without the `pull_request` trigger `ci-passed` never
+  reports and every pull request waits for it.
+- `release-publish.yml` runs on `push` to `main` with `paths: [CHANGES.md]` and
+  no other path, carries `concurrency:` with `group: release-publish` and
+  without `cancel-in-progress: true`, and has no `workflow_dispatch` trigger.
 - Every `needs:` list is complete. `ci-passed` needs every other job of
   `ci.yml` and `finalize` needs every other job of `release-publish.yml`. A
   missing entry lets a release go public while a job it should have waited for

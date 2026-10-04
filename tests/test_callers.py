@@ -33,6 +33,8 @@ CI = """name: CI
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_call:
     inputs:
       ref:
@@ -75,6 +77,10 @@ PUBLISH = """name: Publish
 on:
   push:
     branches: [main]
+    paths: [CHANGES.md]
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -554,3 +560,135 @@ def test_finalize_wired_to_another_output_is_a_problem(tmp_path):
     assert finalize_problems(tmp_path, text) == [
         "finalize passes tag: ${{ needs.publish.outputs.head }}; ri-publish-finalize.yml "
         "takes tag: ${{ needs.publish.outputs.tag }} (its Call: header)"]
+
+
+# --- the frame of ci.yml and release-publish.yml (M2) -----------------------
+
+def own(name):
+    return (REPO / ".github/workflows" / name).read_text(encoding="utf-8")
+
+
+def problems_of(tmp_path, name, text):
+    """This repository's own workflows, with `name` replaced, validated
+    against the shipped pieces: the problems reported for `name`."""
+    folder = tmp_path / ".github/workflows"
+    folder.mkdir(parents=True)
+    for path in (REPO / ".github/workflows").glob("*.yml"):
+        (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    (folder / name).write_text(text, encoding="utf-8")
+    docs = callers.read_workflows(tmp_path)
+    return [i.detail for i in callers.validate(docs, load_pieces()) if i.name == name]
+
+
+CI_PUSH = "  push:\n    branches: [main]\n"
+CI_PR = "  pull_request:\n    branches: [main]\n"
+NO_PUSH = ("ci.yml does not run on push to main; main is not tested after a merge, and "
+           "an open release pull request is not marked stale when main moves (D28)")
+NO_PR = ("ci.yml does not run on pull_request to main; ci-passed never reports on a pull "
+         "request, and the ruleset that requires it keeps every pull request waiting")
+
+
+@pytest.mark.parametrize("name", ["ci.yml", "release-publish.yml"])
+def test_this_repositorys_frames_have_no_problem(tmp_path, name):
+    assert problems_of(tmp_path, name, own(name)) == []
+
+
+@pytest.mark.parametrize("name", ["ci.yml", "release-publish.yml"])
+def test_the_example_frames_have_no_problem(tmp_path, name):
+    example = REPO / "skills/repo-infra/references/examples/repo-infra" / name
+    assert problems_of(tmp_path, name, example.read_text(encoding="utf-8")) == []
+
+
+def test_ci_without_a_push_trigger_is_a_problem(tmp_path):
+    assert CI_PUSH in own("ci.yml")
+    assert problems_of(tmp_path, "ci.yml", own("ci.yml").replace(CI_PUSH, "")) == [NO_PUSH]
+
+
+def test_ci_pushing_only_another_branch_is_a_problem(tmp_path):
+    text = own("ci.yml").replace(CI_PUSH, "  push:\n    branches: [develop]\n")
+    assert problems_of(tmp_path, "ci.yml", text) == [NO_PUSH]
+
+
+def test_ci_ignoring_main_on_push_is_a_problem(tmp_path):
+    text = own("ci.yml").replace(CI_PUSH, "  push:\n    branches-ignore: [main]\n")
+    assert problems_of(tmp_path, "ci.yml", text) == [NO_PUSH]
+
+
+@pytest.mark.parametrize("push", ["  push:\n", "  push:\n    branches: ['**']\n",
+                                  "  push:\n    branches: [main, 'release/*']\n"])
+def test_ci_pushing_main_in_another_form_counts(tmp_path, push):
+    text = own("ci.yml").replace(CI_PUSH, push)
+    assert problems_of(tmp_path, "ci.yml", text) == []
+
+
+def test_ci_without_a_pull_request_trigger_is_a_problem(tmp_path):
+    assert CI_PR in own("ci.yml")
+    assert problems_of(tmp_path, "ci.yml", own("ci.yml").replace(CI_PR, "")) == [NO_PR]
+
+
+def test_ci_without_release_pr_current_is_a_problem(tmp_path):
+    job = ("  release-pr-current:\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
+           "    permissions:\n      contents: read\n      pull-requests: read\n"
+           "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
+    assert job in own("ci.yml")
+    text = own("ci.yml").replace(job, "").replace(", release-pr-current]", "]")
+    assert problems_of(tmp_path, "ci.yml", text) == [
+        "ci.yml calls no ri-release-pr-current.yml; an open release pull request is not "
+        "marked stale when main moves (D28). Add its Call: from the catalogue"]
+
+
+PUBLISH_ON = "  push:\n    branches: [main]\n    paths:\n      - CHANGES.md\n"
+CONCURRENCY = "concurrency:\n  group: release-publish\n  cancel-in-progress: false\n"
+
+
+@pytest.mark.parametrize("old, new", [
+    (CONCURRENCY, ""), ("group: release-publish", "group: publish-${{ github.ref }}")])
+def test_release_publish_without_its_concurrency_group_is_a_problem(tmp_path, old, new):
+    assert CONCURRENCY in own("release-publish.yml")
+    text = own("release-publish.yml").replace(old, new)
+    assert problems_of(tmp_path, "release-publish.yml", text) == [
+        "release-publish.yml lacks `concurrency: group: release-publish`; a second "
+        "merge would start a publish run while the first is still attaching files"]
+
+
+def test_release_publish_cancelling_a_running_publish_is_a_problem(tmp_path):
+    text = own("release-publish.yml").replace("cancel-in-progress: false",
+                                              "cancel-in-progress: true")
+    assert problems_of(tmp_path, "release-publish.yml", text) == [
+        "release-publish.yml sets `cancel-in-progress: true`; the next push would cancel a "
+        "publish run half way, with the release partly published"]
+
+
+def test_release_publish_with_a_plain_concurrency_group_counts(tmp_path):
+    text = own("release-publish.yml").replace(CONCURRENCY, "concurrency: release-publish\n")
+    assert problems_of(tmp_path, "release-publish.yml", text) == []
+
+
+def test_release_publish_with_workflow_dispatch_is_a_problem(tmp_path):
+    text = own("release-publish.yml").replace(PUBLISH_ON, PUBLISH_ON + "  workflow_dispatch:\n")
+    assert PUBLISH_ON in own("release-publish.yml")
+    assert problems_of(tmp_path, "release-publish.yml", text) == [
+        "release-publish.yml has a workflow_dispatch trigger; a release is published by "
+        "merging its pull request, and a dispatch would publish whatever CHANGES.md says "
+        "on the branch it runs on. Remove it"]
+
+
+@pytest.mark.parametrize("on", [
+    "  push:\n    branches: [main]\n",
+    "  push:\n    branches: [main]\n    paths:\n      - CHANGES.md\n      - src/**\n"])
+def test_release_publish_on_other_pushes_is_a_problem(tmp_path, on):
+    text = own("release-publish.yml").replace(PUBLISH_ON, on)
+    assert problems_of(tmp_path, "release-publish.yml", text) == [
+        "release-publish.yml runs on pushes to main beyond CHANGES.md; filter on "
+        "`paths: [CHANGES.md]` alone, since a release reaches main as a change to that file"]
+
+
+@pytest.mark.parametrize("on", [
+    "  push:\n    branches: [develop]\n    paths:\n      - CHANGES.md\n",
+    "  push:\n    branches: [main]\n    paths:\n      - docs/**\n",
+    "  workflow_run:\n    workflows: [CI]\n"])
+def test_release_publish_that_never_runs_on_a_release_is_a_problem(tmp_path, on):
+    text = own("release-publish.yml").replace(PUBLISH_ON, on)
+    assert problems_of(tmp_path, "release-publish.yml", text) == [
+        "release-publish.yml does not run on a push of CHANGES.md to main; a merged "
+        "release pull request would never be published"]

@@ -9,6 +9,7 @@ red run on main. Everything here is read from the files as they are
 installed: the interface of the called file, never a list kept beside it.
 """
 
+import fnmatch
 import pathlib
 import re
 
@@ -181,6 +182,89 @@ def finalize_problems(docs, pieces):
             found.append(("release-publish.yml",
                           f"finalize passes {key}: {given[key]}; {FINALIZE}.yml takes "
                           f"{key}: {value} (its Call: header)"))
+    return found
+
+
+def _names(value):
+    if isinstance(value, str):
+        return [value]
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+
+def _event(doc, event):
+    """(True, its filter dict or {}) when `doc` triggers on `event`."""
+    on = doc.get("on")
+    if isinstance(on, (str, list)):
+        return event in _names(on), {}
+    if isinstance(on, dict) and event in on:
+        return True, on[event] if isinstance(on[event], dict) else {}
+    return False, {}
+
+
+def _on_main(doc, event):
+    """True when `event` starts the workflow for the branch main."""
+    present, spec = _event(doc, event)
+    if not present:
+        return False
+    if "branches" in spec and not any(fnmatch.fnmatchcase("main", pattern)
+                                      for pattern in _names(spec["branches"])):
+        return False
+    return not any(fnmatch.fnmatchcase("main", pattern)
+                   for pattern in _names(spec.get("branches-ignore")))
+
+
+RELEASE_PR_CURRENT = "ri-release-pr-current"
+
+
+def frame_problems(docs, pieces):
+    """What the frames of ci.yml and release-publish.yml guaranteed before
+    the callers were written by hand: their triggers, the call to
+    ri-release-pr-current and the publish concurrency group."""
+    found = []
+    ci = docs.get("ci.yml")
+    if isinstance(ci, dict):
+        if not _on_main(ci, "push"):
+            found.append(("ci.yml", "ci.yml does not run on push to main; main is not tested "
+                                    "after a merge, and an open release pull request is not "
+                                    "marked stale when main moves (D28)"))
+        if not _on_main(ci, "pull_request"):
+            found.append(("ci.yml", "ci.yml does not run on pull_request to main; ci-passed "
+                                    "never reports on a pull request, and the ruleset that "
+                                    "requires it keeps every pull request waiting"))
+        if (RELEASE_PR_CURRENT in pieces
+                and not calls({"ci.yml": ci}, f"{RELEASE_PR_CURRENT}.yml")):
+            found.append(("ci.yml", f"ci.yml calls no {RELEASE_PR_CURRENT}.yml; an open "
+                                    "release pull request is not marked stale when main "
+                                    "moves (D28). Add its Call: from the catalogue"))
+    publish = docs.get("release-publish.yml")
+    if not isinstance(publish, dict):
+        return found
+    name = "release-publish.yml"
+    _, spec = _event(publish, "push")
+    paths = _names(spec.get("paths"))
+    if not _on_main(publish, "push") or ("paths" in spec and "CHANGES.md" not in paths):
+        found.append((name, f"{name} does not run on a push of CHANGES.md to main; a merged "
+                            "release pull request would never be published"))
+    elif paths != ["CHANGES.md"]:
+        found.append((name, f"{name} runs on pushes to main beyond CHANGES.md; filter on "
+                            "`paths: [CHANGES.md]` alone, since a release reaches main as a "
+                            "change to that file"))
+    if _event(publish, "workflow_dispatch")[0]:
+        found.append((name, f"{name} has a workflow_dispatch trigger; a release is published "
+                            "by merging its pull request, and a dispatch would publish "
+                            "whatever CHANGES.md says on the branch it runs on. Remove it"))
+    concurrency = publish.get("concurrency")
+    group = concurrency.get("group") if isinstance(concurrency, dict) else concurrency
+    if group != "release-publish":
+        found.append((name, f"{name} lacks `concurrency: group: release-publish`; a second "
+                            "merge would start a publish run while the first is still "
+                            "attaching files"))
+    elif isinstance(concurrency, dict) and str(
+            concurrency.get("cancel-in-progress", "false")).lower() != "false":
+        found.append((name, f"{name} sets `cancel-in-progress: "
+                            f"{concurrency['cancel-in-progress']}`; the next push would "
+                            "cancel a publish run half way, with the release partly "
+                            "published"))
     return found
 
 
@@ -364,6 +448,7 @@ def validate(docs, pieces, assets=ASSETS):
                 items += [Item("callers", name, "problem", p)
                           for p in call_problems(job_id, job, docs)]
     found = (closing_problems(docs, assets) + finalize_problems(docs, pieces)
+             + frame_problems(docs, pieces)
              + ref_contract_problems(docs, piece_files)
              + ref_passing_problems(docs)
              + permission_problems(docs))

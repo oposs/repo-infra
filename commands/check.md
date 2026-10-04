@@ -15,7 +15,8 @@ The report has four sections.
 - `callers`: `ci.yml`, `release-build.yml`, `release-publish.yml` and the
   workflows they call, checked against the pieces they call (inputs, secrets,
   `needs:` lists, the `if:` and `with:` of `finalize`, token permissions,
-  `ref`). A workflow its reader cannot follow (flow mappings, anchors) is
+  `ref`), and the triggers and concurrency group of `ci.yml` and
+  `release-publish.yml`. A workflow its reader cannot follow (flow mappings, anchors) is
   reported only when it is one of those three, is called by a workflow, or
   carries a piece marker. Any other such workflow is skipped.
 - `config`: `.github/repo-infra.json`.
