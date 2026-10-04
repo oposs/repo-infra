@@ -21,9 +21,12 @@ def store(tmp_path):
 
 
 def repo(tmp_path, store, files):
+    """The callers in `files` and the pieces they name; a piece nothing
+    names would be reported as installed and never called."""
     root = tmp_path / "repo"
     for piece in load_pieces(store).values():
-        install(root, piece.target, piece.files[piece.target])
+        if any(pathlib.PurePosixPath(piece.target).name in text for text in files.values()):
+            install(root, piece.target, piece.files[piece.target])
     for name, text in files.items():
         install(root, f".github/workflows/{name}", text)
     return root
@@ -789,3 +792,36 @@ def test_a_piece_marker_in_a_file_that_is_not_utf8_is_still_found(tmp_path, stor
     found = with_bytes(tmp_path, store, "ri-old.yml", b"# repo-infra: ri-a v1\n" + LATIN1)
     assert ("ri-old.yml", "problem",
             "cannot be read: it is not UTF-8 text (byte 0xe9 at offset 29)") in found
+
+
+# --- an installed piece nothing calls ---------------------------------------
+
+UNCALLED = ("{} is installed and no workflow calls it, so it never runs. Add its Call: "
+            "from the catalogue to a caller, or remove the file")
+
+
+def test_an_installed_piece_no_workflow_calls_is_a_problem(tmp_path):
+    job = "  python:\n    uses: ./.github/workflows/ri-ci-python.yml\n    with:\n" \
+          "      ref: ${{ inputs.ref }}\n\n"
+    assert job in own("ci.yml")
+    text = own("ci.yml").replace(job, "").replace("plugin, python,", "plugin,")
+    folder = tmp_path / ".github/workflows"
+    folder.mkdir(parents=True)
+    for path in (REPO / ".github/workflows").glob("*.yml"):
+        (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    (folder / "ci.yml").write_text(text, encoding="utf-8")
+    found = [(i.name, i.detail) for i in
+             callers.validate(callers.read_workflows(tmp_path), load_pieces())]
+    assert found == [("ri-ci-python.yml", UNCALLED.format("ri-ci-python.yml"))]
+
+
+def test_a_piece_called_only_from_an_unreadable_workflow_is_not_called_unused(tmp_path,
+                                                                            store):
+    found = problems(tmp_path, store, release_build=calling("ri-a.yml"))
+    assert ("ri-a.yml", "problem", UNCALLED.format("ri-a.yml")) not in found
+    assert unreadable_names(found) == ["release-build.yml"]
+
+
+def test_an_installed_piece_in_the_store_fixture_nothing_calls_is_a_problem(tmp_path, store):
+    found = problems(tmp_path, store, deploy="# ri-b.yml is installed\non: push\njobs: {}\n")
+    assert ("ri-b.yml", "problem", UNCALLED.format("ri-b.yml")) in found

@@ -106,6 +106,8 @@ What `check` enforces on the callers:
 - Only the release build uploads artifacts named `release-asset-*` or
   `release-files`.
 - No call names a workflow in another repository. Everything stays local.
+- Every installed workflow piece that has a `Call:` snippet is called by some
+  workflow. One that nothing calls never runs.
 - `ci.yml` and `changelog.yml` carry no `paths` or `paths-ignore` filter.
 
 ## Project-owned workflows

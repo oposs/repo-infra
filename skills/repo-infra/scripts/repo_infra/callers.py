@@ -538,6 +538,14 @@ def unreadable_concerns(docs, pieces):
     return found
 
 
+def _callable(pieces, file):
+    """True when the workflow piece installed as `file` runs only when called:
+    its header carries a Call: snippet. changelog and release-pr start runs
+    of their own."""
+    return any(p.workflow and pathlib.PurePosixPath(p.target).name == file
+               and "Call" in p.header for p in pieces.values())
+
+
 def validate(docs, pieces, assets=ASSETS):
     piece_files = {pathlib.PurePosixPath(p.target).name
                    for p in pieces.values() if p.workflow}
@@ -557,6 +565,15 @@ def validate(docs, pieces, assets=ASSETS):
             elif local_target(uses):
                 items += [Item("callers", name, "problem", p)
                           for p in call_problems(job_id, job, docs)]
+    called_by_text = {target for doc in docs.values()
+                      if isinstance(doc, workflow.ReadError)
+                      for target in getattr(doc, "calls", ())}
+    items += [Item("callers", file, "problem",
+                   f"{file} is installed and no workflow calls it, so it never runs. Add "
+                   "its Call: from the catalogue to a caller, or remove the file")
+              for file in sorted(piece_files)
+              if file in docs and _callable(pieces, file)
+              and not calls(docs, file) and file not in called_by_text]
     found = (closing_problems(docs, assets) + finalize_problems(docs, pieces)
              + frame_problems(docs, pieces)
              + ref_contract_problems(docs, piece_files)
