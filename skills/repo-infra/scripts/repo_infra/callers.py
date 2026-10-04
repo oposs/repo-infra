@@ -154,6 +154,62 @@ def _expression(value):
     return " ".join((match[1] if match else text).split())
 
 
+def _top_level(text):
+    """Yield (index, char) of `text` outside quotes and parentheses."""
+    depth, quoted = 0, False
+    for i, char in enumerate(text):
+        if char == "'":
+            quoted = not quoted
+        elif quoted:
+            continue
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif depth == 0:
+            yield i, char
+
+
+def _unwrapped(text):
+    """`text` without parentheses around the whole of it, and without the
+    spaces outside its strings."""
+    text = text.strip()
+    while text.startswith("(") and text.endswith(")"):
+        inner = text[1:-1]
+        depth = 0
+        for char in inner:
+            depth += {"(": 1, ")": -1}.get(char, 0)
+            if depth < 0:
+                break
+        if depth != 0:
+            break
+        text = inner.strip()
+    kept, quoted = [], False
+    for char in text:
+        quoted = quoted != (char == "'")
+        if quoted or not char.isspace():
+            kept.append(char)
+    return "".join(kept)
+
+
+def conjuncts(expression):
+    """The terms an expression requires all of: its top-level `&&` operands,
+    recursively. A top-level `||` makes the whole expression one term."""
+    text = _unwrapped(_expression(expression))
+    marks = [i for i, char in _top_level(text) if char in "&|"]
+    if any(text[i] == "|" for i in marks):
+        return [text]
+    cuts = [i for i in marks if text[i:i + 2] == "&&"]
+    if not cuts:
+        return [text]
+    parts, start = [], 0
+    for cut in cuts:
+        parts.append(text[start:cut])
+        start = cut + 2
+    parts.append(text[start:])
+    return [term for part in parts for term in conjuncts(part)]
+
+
 def finalize_problems(docs, pieces):
     """finalize's `if:` and `with:` as the piece's Call: header has them.
 
@@ -170,7 +226,11 @@ def finalize_problems(docs, pieces):
     if not isinstance(pattern, dict):
         return []
     found = []
-    if "if" in pattern and _expression(job.get("if", "")) != _expression(pattern["if"]):
+    # A stricter guard is fine (`&& !cancelled()`); `always()` would also run
+    # finalize after a failed publish, and an `||` lets an empty id through.
+    terms = conjuncts(job.get("if", ""))
+    if "if" in pattern and (_unwrapped(_expression(pattern["if"])) not in terms
+                            or any(term.lower() == "always()" for term in terms)):
         found.append(("release-publish.yml",
                       f"finalize lacks `if: {pattern['if']}`; it would run after every push "
                       "of CHANGES.md that publishes nothing, with an empty release_id, "

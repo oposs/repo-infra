@@ -89,7 +89,8 @@ What `check` enforces on the callers:
   is still running.
 - `ci-passed` has `if: always()`. Without it the job is skipped when a need
   fails, and a skipped required check counts as passed.
-- `finalize` has `if: needs.publish.outputs.release_id != ''` and passes
+- `finalize` has `if: needs.publish.outputs.release_id != ''`, alone or joined
+  with `&&` to a further condition other than `always()`, and passes
   `release_id`, `tag` and `head` from the `publish` job's outputs, as the
   `Call:` header of `ri-publish-finalize` shows. Without the `if:` it runs after
   every push of `CHANGES.md`, also one that publishes nothing, and fails.

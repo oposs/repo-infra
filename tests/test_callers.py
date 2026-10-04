@@ -692,3 +692,32 @@ def test_release_publish_that_never_runs_on_a_release_is_a_problem(tmp_path, on)
     assert problems_of(tmp_path, "release-publish.yml", text) == [
         "release-publish.yml does not run on a push of CHANGES.md to main; a merged "
         "release pull request would never be published"]
+
+
+LACKS_GUARD = ("finalize lacks `if: needs.publish.outputs.release_id != ''`; it would run "
+               "after every push of CHANGES.md that publishes nothing, with an empty "
+               "release_id, and fail")
+
+
+@pytest.mark.parametrize("guard", [
+    "${{ needs.publish.outputs.release_id != '' && !cancelled() }}",
+    "!cancelled() && needs.publish.outputs.release_id != ''",
+    "(needs.publish.outputs.release_id != '') && success()",
+    "${{ success() && (needs.publish.outputs.release_id != '') }}",
+    "needs.publish.outputs.release_id != '' && (github.ref == 'refs/heads/main' || false)"])
+def test_a_stricter_finalize_guard_counts(tmp_path, guard):
+    text = own_publish().replace(GUARD, f"    if: \"{guard}\"\n")
+    assert finalize_problems(tmp_path, text) == []
+
+
+@pytest.mark.parametrize("guard", [
+    "always()",
+    "always() && needs.publish.outputs.release_id != ''",
+    "needs.publish.outputs.release_id != '' || always()",
+    "needs.publish.outputs.release_id != '' || github.event_name == 'push'",
+    "(needs.publish.outputs.release_id != '' || true) && success()",
+    "needs.publish.outputs.release_id != 'x'",
+    "needs.publish.outputs.release_id"])
+def test_a_finalize_guard_that_lets_an_empty_release_id_through_is_a_problem(tmp_path, guard):
+    text = own_publish().replace(GUARD, f"    if: \"{guard}\"\n")
+    assert finalize_problems(tmp_path, text) == [LACKS_GUARD]
