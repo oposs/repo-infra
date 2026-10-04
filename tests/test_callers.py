@@ -721,3 +721,71 @@ def test_a_stricter_finalize_guard_counts(tmp_path, guard):
 def test_a_finalize_guard_that_lets_an_empty_release_id_through_is_a_problem(tmp_path, guard):
     text = own_publish().replace(GUARD, f"    if: \"{guard}\"\n")
     assert finalize_problems(tmp_path, text) == [LACKS_GUARD]
+
+
+# --- unreadable files behind unreadable callers, non-UTF-8 files ------------
+
+def calling(target, flow=True):
+    """An unreadable workflow (a flow mapping) whose job calls `target`."""
+    return ("on:\n  workflow_call:\njobs:\n  x:\n"
+            f"    uses: ./.github/workflows/{target}\n"
+            + ("    with: {ref: y}\n" if flow else ""))
+
+
+def unreadable_names(found):
+    return sorted(name for name, _, detail in found if detail.startswith("cannot be read"))
+
+
+def test_an_unreadable_file_an_unreadable_core_caller_calls_is_a_problem(tmp_path, store):
+    """calls() reads only the files that parse, so a file called by an
+    unreadable release-build.yml was skipped."""
+    found = problems(tmp_path, store, release_build=calling("build-local.yml"),
+                     build_local=FLOW)
+    assert unreadable_names(found) == ["build-local.yml", "release-build.yml"]
+
+
+def test_an_unreadable_chain_below_a_core_caller_is_followed(tmp_path, store):
+    found = problems(tmp_path, store, release_build=calling("one.yml"),
+                     one=calling("two.yml"), two=FLOW)
+    assert unreadable_names(found) == ["one.yml", "release-build.yml", "two.yml"]
+
+
+def test_an_unreadable_file_only_an_unrelated_unreadable_file_calls_is_skipped(tmp_path,
+                                                                             store):
+    assert problems(tmp_path, store, deploy=calling("deploy-lib.yml"),
+                    deploy_lib=FLOW) == []
+
+
+def test_a_call_in_a_comment_of_an_unreadable_file_does_not_count(tmp_path, store):
+    release_build = calling("x.yml").replace("    uses:", "    # uses:")
+    found = problems(tmp_path, store, release_build=release_build, x=FLOW)
+    assert unreadable_names(found) == ["release-build.yml"]
+
+
+def with_bytes(tmp_path, store, name, data):
+    root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
+                                  "release-publish.yml": PUBLISH})
+    (root / ".github/workflows" / name).write_bytes(data)
+    docs = callers.read_workflows(root)
+    return [(i.name, i.state, i.detail) for i in
+            callers.validate(docs, load_pieces(store), store)]
+
+
+LATIN1 = "name: D\xe9ploiement\non:\n  push:\n".encode("latin-1")
+
+
+def test_an_unrelated_workflow_that_is_not_utf8_is_skipped(tmp_path, store):
+    """read_workflows let the UnicodeDecodeError escape and check crashed."""
+    assert with_bytes(tmp_path, store, "deploy.yml", LATIN1) == []
+
+
+def test_a_core_caller_that_is_not_utf8_is_a_problem(tmp_path, store):
+    found = with_bytes(tmp_path, store, "release-build.yml", LATIN1)
+    assert ("release-build.yml", "problem",
+            "cannot be read: it is not UTF-8 text (byte 0xe9 at offset 7)") in found
+
+
+def test_a_piece_marker_in_a_file_that_is_not_utf8_is_still_found(tmp_path, store):
+    found = with_bytes(tmp_path, store, "ri-old.yml", b"# repo-infra: ri-a v1\n" + LATIN1)
+    assert ("ri-old.yml", "problem",
+            "cannot be read: it is not UTF-8 text (byte 0xe9 at offset 29)") in found

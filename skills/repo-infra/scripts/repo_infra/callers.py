@@ -36,22 +36,39 @@ _INPUT_REF = re.compile(r"\$\{\{\s*inputs\.ref\s*\}\}", re.IGNORECASE)
 _RESERVED = re.compile(r"^(release-asset-.*|release-files)$", re.IGNORECASE)
 
 
+# A local call written on a line of its own, found by text in a file the
+# reader cannot follow. A commented-out line starts with `#` and does not match.
+_LOCAL_CALL = re.compile(r"^[ \t]*(?:-[ \t]+)?uses:[ \t]*['\"]?\./\.github/workflows/"
+                         r"([^\s'\"#]+)", re.MULTILINE)
+
+
 def read_workflows(repo_root):
     """{file name: parsed workflow, or its ReadError} for each file GitHub runs.
-    A ReadError carries `marker`, the piece its first marker names, or None."""
+    A ReadError carries `marker`, the piece its first marker names, or None,
+    and `calls`, the local workflows its text calls. A file that is not UTF-8
+    is a ReadError too; it used to crash check."""
     folder = pathlib.Path(repo_root) / WORKFLOWS
     docs = {}
     if not folder.is_dir():
         return docs
     for path in sorted(folder.iterdir()):
         if path.is_file() and path.suffix in (".yml", ".yaml"):
-            text = path.read_text(encoding="utf-8")
+            data = path.read_bytes()
             try:
+                text = data.decode("utf-8")
                 docs[path.name] = workflow.load(text)
+            except UnicodeDecodeError as decoding:
+                text = data.decode("utf-8", errors="replace")
+                docs[path.name] = workflow.ReadError(
+                    f"it is not UTF-8 text (byte 0x{data[decoding.start]:02x} at offset "
+                    f"{decoding.start})")
             except workflow.ReadError as error:
+                docs[path.name] = error
+            error = docs[path.name]
+            if isinstance(error, workflow.ReadError):
                 markers = parse_markers(text)
                 error.marker = markers[0].asset if markers else None
-                docs[path.name] = error
+                error.calls = set(_LOCAL_CALL.findall(text))
     return docs
 
 
@@ -477,23 +494,33 @@ def permission_problems(docs):
     return found
 
 
-def unreadable_concerns(name, doc, docs, pieces):
-    """True when `doc` failed to read and check has a stake in it: a core
-    caller, a file a readable workflow calls, or a file whose marker names a
-    piece. The reader follows a subset of YAML; a repository's own deploy
-    workflow written with a flow mapping or an anchor, which GitHub accepts,
-    would otherwise keep check at exit 1 for a file repo-infra never reads."""
-    if not isinstance(doc, workflow.ReadError):
-        return False
-    return (name in CORE_CALLERS or getattr(doc, "marker", None) in pieces
-            or calls(docs, name))
+def unreadable_concerns(docs, pieces):
+    """The files that failed to read and that check has a stake in: a core
+    caller, a file a readable workflow calls, a file whose marker names a
+    piece, and a file one of these calls by the text of its `uses:` lines.
+    The reader follows a subset of YAML; a repository's own deploy workflow
+    written with a flow mapping or an anchor, which GitHub accepts, would
+    otherwise keep check at exit 1 for a file repo-infra never reads."""
+    unreadable = {name: doc for name, doc in docs.items()
+                  if isinstance(doc, workflow.ReadError)}
+    found = {name for name, doc in unreadable.items()
+             if name in CORE_CALLERS or getattr(doc, "marker", None) in pieces
+             or calls(docs, name)}
+    todo = list(found)
+    while todo:
+        for called in getattr(unreadable[todo.pop()], "calls", ()):
+            if called in unreadable and called not in found:
+                found.add(called)
+                todo.append(called)
+    return found
 
 
 def validate(docs, pieces, assets=ASSETS):
     piece_files = {pathlib.PurePosixPath(p.target).name
                    for p in pieces.values() if p.workflow}
+    concerns = unreadable_concerns(docs, pieces)
     items = [Item("callers", name, "problem", f"cannot be read: {doc}")
-             for name, doc in docs.items() if unreadable_concerns(name, doc, docs, pieces)]
+             for name, doc in docs.items() if name in concerns]
     items += [Item("callers", name, "missing", f"not there; {why}")
               for name, why in CORE_CALLERS.items() if name not in docs]
     for name, doc in docs.items():
