@@ -150,14 +150,13 @@ def _expand_inputs(script):
 
 
 def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT, expected=None):
-    """Run the generated finalize script under node against a fake release.
+    """Run the script of the ri-publish-finalize piece under node against a
+    fake release.
 
     Substring assertions cannot answer the question that matters -- does this
-    job publish a release that is missing its .deb? -- so this runs the real
-    generated code, the same way test_the_reconcile_step_actually_leaves_the
-    _tree_clean runs the real generated shell. `assets.js` is required from
-    this repository's own installed copy, which test_self_render.py pins to
-    the asset.
+    job publish a release that is missing its .deb? -- so this runs the
+    piece's real code. `assets.js` is required from this repository's own
+    installed copy of workflow-lib, which test_self_check.py keeps current.
     """
     node = shutil.which("node")
     if node is None:
@@ -206,13 +205,13 @@ const context = { repo: { owner: 'o', repo: 'r' } };
     return json.loads(proc.stdout)
 
 
-def test_the_generated_finalize_publishes_a_complete_release(tmp_path):
+def test_the_finalize_piece_publishes_a_complete_release(tmp_path):
     out = _run_finalize(tmp_path, ["smtp-proxy_1.2.3-1_amd64.deb", "smtp-proxy-1.2.3-musl"])
     assert out["failures"] == []
     assert out["published"] == 1
 
 
-def test_the_generated_finalize_refuses_a_release_with_no_assets(tmp_path):
+def test_the_finalize_piece_refuses_a_release_with_no_assets(tmp_path):
     # A1 exactly: finalize's `needs:` was reverted, so it ran before the add-on
     # attached anything. Before this guard the release went public regardless.
     out = _run_finalize(tmp_path, [])
@@ -221,13 +220,13 @@ def test_the_generated_finalize_refuses_a_release_with_no_assets(tmp_path):
     assert "*.deb" in out["failures"][0]
 
 
-def test_the_generated_finalize_refuses_a_release_that_is_missing_one_asset(tmp_path):
+def test_the_finalize_piece_refuses_a_release_that_is_missing_one_asset(tmp_path):
     out = _run_finalize(tmp_path, ["smtp-proxy-1.2.3-musl"])
     assert out["published"] == 0
     assert "*.deb" in out["failures"][0]
 
 
-def test_the_generated_finalize_publishes_when_nothing_is_expected(tmp_path):
+def test_the_finalize_piece_publishes_when_nothing_is_expected(tmp_path):
     # Most repositories install no asset-attaching block at all. The guard must
     # be a no-op for them, not a release that can never be published.
     out = _run_finalize(tmp_path, [], local=())
@@ -244,6 +243,14 @@ def test_an_expected_input_that_is_not_a_list_fails_the_job(tmp_path):
 def test_an_expected_input_that_is_not_json_fails_the_job(tmp_path):
     out = _run_finalize(tmp_path, ["x.deb"], expected="*.deb")
     assert out["published"] == 0 and "is not JSON" in out["failures"][0]
+
+
+@pytest.mark.parametrize("expected", ['["a b"]', '[1]', '["../x.deb"]', '["x.deb", null]'])
+def test_an_expected_input_that_is_no_list_of_name_patterns_fails_the_job(tmp_path, expected):
+    """The second guard on `expected`: valid JSON, but not file name patterns."""
+    out = _run_finalize(tmp_path, ["x.deb"], expected=expected)
+    assert out["published"] == 0
+    assert out["failures"] == ["The input expected must be a JSON list of file name patterns."]
 
 
 def _build_workspace(tmp_path, release_assets):
@@ -352,7 +359,7 @@ def test_the_crates_io_addon_fails_when_crates_io_does_not_answer(tmp_path):
     assert "HTTP 503" in out["stderr"]
 
 
-def test_the_generated_finalize_refuses_an_asset_whose_upload_did_not_finish(tmp_path):
+def test_the_finalize_piece_refuses_an_asset_whose_upload_did_not_finish(tmp_path):
     # GitHub lists a half-uploaded asset by name, so the name check passes it.
     out = _run_finalize(tmp_path, ["a.tar.gz", {"name": "x_1_amd64.deb", "state": "starter"}],
                         local=())
