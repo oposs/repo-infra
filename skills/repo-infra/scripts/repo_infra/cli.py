@@ -2,11 +2,13 @@
 
 import argparse
 import pathlib
+import sys
 
 from . import callers, report
 from . import check as checking
 from .apply import (
     ApplyError,
+    NeedsMerge,
     apply_admin_item,
     changed,
     commit_piece,
@@ -24,6 +26,10 @@ from .remote import Facts, Gh
 # each is outward-facing, so apply runs one only when it is named (D30).
 ADMIN = {"default-branch", "branch-protection", "required-checks",
          "no-changelog-label", "actions-open-pr"}
+
+# apply's exit status when it stops for a hand merge. A refusal (ApplyError)
+# exits 1; argparse exits 2 on a usage error.
+EXIT_NEEDS_MERGE = 3
 
 # Used by the tests to run without a network. Never used at runtime.
 CONFORMING_FACTS = Facts(default_branch="main", protected=True,
@@ -134,7 +140,7 @@ def apply_command(args):
     return 0
 
 
-def main(argv=None):
+def run(argv=None):
     parser = argparse.ArgumentParser(prog="repo-infra")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -155,3 +161,17 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     return args.run(args)
+
+
+def main(argv=None):
+    """`run`, with apply's two ways of stopping printed as a message and an
+    exit status instead of a Python traceback. The upgrade notes of the
+    pieces installed before a merge stop are already printed."""
+    try:
+        return run(argv)
+    except NeedsMerge as stop:
+        print(f"NeedsMerge: {stop}", file=sys.stderr)
+        return EXIT_NEEDS_MERGE
+    except ApplyError as refusal:
+        print(f"refused: {refusal}", file=sys.stderr)
+        return 1

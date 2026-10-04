@@ -131,9 +131,10 @@ enough.
 
 ## If it exits with `NeedsMerge`
 
-The piece named has a file whose bytes match no published version, and whose
-marker claims an older version or none. `apply` wrote four files under
-`repo-infra/merge/` in the git dir (the error prints their full paths):
+`apply` exits with status 3 and prints `NeedsMerge: <piece>: ...` on standard
+error. The piece named has a file whose bytes match no published version, and
+whose marker claims an older version or none. `apply` wrote four files under
+`repo-infra/merge/` in the git dir (the message prints their full paths):
 `{name}.new` (the new version), `{name}.current` (the file now), `{name}.path`
 (which file) and `{name}.log` (the file's `git log`, newest first).
 
@@ -179,7 +180,8 @@ published ones again. Move the local edit into a caller, delete the file and run
 
 ## If it refuses an administration item
 
-Read the refusal; each one names the concrete next action. `default-branch`
+A refusal exits with status 1 and prints `refused: ...` on standard error. Read
+the refusal; each one names the concrete next action. `default-branch`
 never applies automatically: renaming breaks links, forks and clones that pin the
 old name, so it tells the user to rename by hand in Settings, General, then
 re-run `check`.

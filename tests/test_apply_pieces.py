@@ -47,7 +47,7 @@ def repo(tmp_path):
 def run_apply(monkeypatch, store, repo, *extra):
     monkeypatch.setattr(cli, "ASSETS", store)
     monkeypatch.setattr(cli, "read_facts", lambda repo_name: cli.CONFORMING_FACTS)
-    return cli.main(["apply", "--root", str(repo), "--repo", "o/r", *extra])
+    return cli.run(["apply", "--root", str(repo), "--repo", "o/r", *extra])
 
 
 def test_apply_replaces_outdated_pieces_one_commit_each(monkeypatch, capsys, store, repo):
@@ -422,7 +422,7 @@ def test_the_log_is_read_in_a_linked_worktree_and_from_a_relative_root(
     monkeypatch.setattr(cli, "ASSETS", store)
     monkeypatch.setattr(cli, "read_facts", lambda repo_name: cli.CONFORMING_FACTS)
     with pytest.raises(apply.NeedsMerge) as stopped:
-        cli.main(["apply", "--root", "linked", "--repo", "o/r", "--item", "ri-x"])
+        cli.run(["apply", "--root", "linked", "--repo", "o/r", "--item", "ri-x"])
     log = stopped.value.log.read_text(encoding="utf-8")
     assert "edit in the worktree" in log
 
@@ -528,3 +528,32 @@ def test_the_notes_of_a_merge_start_at_the_targets_claimed_version(
     capsys.readouterr()
     hand_back(monkeypatch, pair, repo, "b", P2["b.js"] + "// mine\n")
     assert "lib-y v2\nNotes for lib-y v2." in capsys.readouterr().out
+
+
+# --- what the user sees when apply stops (M5) -------------------------------
+
+def run_main(monkeypatch, store, repo, *extra):
+    monkeypatch.setattr(cli, "ASSETS", store)
+    monkeypatch.setattr(cli, "read_facts", lambda repo_name: cli.CONFORMING_FACTS)
+    return cli.main(["apply", "--root", str(repo), "--repo", "o/r", *extra])
+
+
+def test_a_merge_stop_exits_3_with_its_message_and_the_notes(monkeypatch, capsys, store,
+                                                             repo):
+    """A merge stop used to end in a Python traceback."""
+    install(repo, ".github/workflows/lib-x/a.js", LIB1["a.js"] + "// mine\n")
+    git(repo, "commit", "-qam", "edit lib-x")
+    assert run_main(monkeypatch, store, repo) == cli.EXIT_NEEDS_MERGE == 3
+    out, err = capsys.readouterr()
+    assert "ri-x v2\nNotes for ri-x v2." in out
+    assert err.startswith("NeedsMerge: lib-x: ")
+    assert "matches no published version of the piece" in err
+    assert "--item lib-x --from <merged file>" in err
+    assert "Traceback" not in out + err
+
+
+def test_a_refusal_exits_1_with_its_message(monkeypatch, capsys, store, repo):
+    assert run_main(monkeypatch, store, repo, "--from", "merged.js") == 1
+    out, err = capsys.readouterr()
+    assert err == "refused: --from needs --item: name the piece the merged file is for\n"
+    assert "Traceback" not in out + err

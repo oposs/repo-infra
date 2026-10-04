@@ -102,7 +102,7 @@ full text.
 
 5. **An `edited` piece is merged by hand.** `apply` writes `{name}.new`,
    `{name}.current`, `{name}.path` and `{name}.log` under `repo-infra/merge/` in
-   the git dir and raises `NeedsMerge`. `commands/apply.md` has the procedure.
+   the git dir and stops with `NeedsMerge` (exit status 3). `commands/apply.md` has the procedure.
    Hand the result back with `apply --item <piece> --from <file>`.
 
 ## Reading further
