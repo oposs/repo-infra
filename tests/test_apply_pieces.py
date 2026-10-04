@@ -557,3 +557,28 @@ def test_a_refusal_exits_1_with_its_message(monkeypatch, capsys, store, repo):
     out, err = capsys.readouterr()
     assert err == "refused: --from needs --item: name the piece the merged file is for\n"
     assert "Traceback" not in out + err
+
+
+# --- deferred Task 12 minors ------------------------------------------------
+
+def test_a_piece_pending_only_for_a_dropped_file_prints_the_notes_of_the_drop(
+        monkeypatch, capsys, store, repo):
+    """The notes started after the lowest version of the shipped files, so a
+    piece whose only change was the dropped file printed none."""
+    install(repo, ".github/workflows/lib-x/a.js", LIB2["a.js"])
+    install(repo, ".github/workflows/ri-x.yml", NEW)
+    git(repo, "commit", "-qam", "lib-x a.js and ri-x at v2 already")
+    run_apply(monkeypatch, store, repo)
+    out = capsys.readouterr().out
+    assert not (repo / ".github/workflows/lib-x/gone.js").exists()
+    assert "lib-x v2\nNotes for lib-x v2." in out
+
+
+def test_apply_on_a_current_repository_commits_nothing(monkeypatch, capsys, store, repo):
+    run_apply(monkeypatch, store, repo)
+    before = log_subjects(repo)
+    capsys.readouterr()
+    assert run_apply(monkeypatch, store, repo) == 0
+    assert log_subjects(repo) == before
+    assert "installed" not in capsys.readouterr().out
+    assert git(repo, "status", "--porcelain") == ""

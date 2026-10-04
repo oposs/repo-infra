@@ -161,7 +161,8 @@ def plan_piece(repo_root, piece, state, history):
     nothing to merge into it, and writing it would be a downgrade.
     dropped: files the new version no longer ships whose bytes are a
     published version; they are removed. Edited ones stay (`kept_edits`).
-    since: the version the upgrade notes start after, or None."""
+    since: the version the upgrade notes start after, or None when a merge
+    target carries no marker (its version is unknown, so no notes print)."""
     root = pathlib.Path(repo_root)
     write, candidates, versions = [], [], []
     for path in sorted(piece.files):
@@ -180,6 +181,11 @@ def plan_piece(repo_root, piece, state, history):
         digest = hashlib.sha256(data).hexdigest()
         versions += [v for v, d in history.get(path, {}).items() if d == digest]
     dropped = _dropped(repo_root, piece, history)
+    # A dropped file counts too: a piece pending only for one has crossed
+    # the version that dropped it, and its notes say what that changes.
+    for path in dropped:
+        digest = hashlib.sha256(unstamped((root / path).read_bytes())).hexdigest()
+        versions += [v for v, d in history.get(path, {}).items() if d == digest]
     if candidates:
         since = claimed_version(repo_root, piece, candidates[0])
     else:
