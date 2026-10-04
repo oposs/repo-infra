@@ -66,8 +66,9 @@ One rule applies per file, for a bare `apply` and for `apply --item`:
 - An edited file that claims the current or a newer version is never written and
   never merged. There is nothing to merge into it, and writing it would be a
   downgrade. `check` and `apply` name it. A newer claim means the plugin is out
-  of date. For a current claim, delete the file and run `apply --item <piece>`: the file
-  then counts as absent, and `apply` writes the published one.
+  of date. For a current claim, delete the file and run
+  `apply --item <piece>`: the file then counts as absent, and `apply` writes
+  the published one.
 
 Files an older version shipped and the new one does not (dropped files) are
 removed when their bytes are a published version. A dropped file with local edits
