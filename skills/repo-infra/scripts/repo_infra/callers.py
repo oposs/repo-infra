@@ -262,6 +262,28 @@ def finalize_problems(docs, pieces):
     return found
 
 
+def release_skip_problems(docs, assets=ASSETS):
+    """D31: every job of ci.yml but ci-passed skips the pull_request run of
+    the release pull request Create release PR opened. That run parks as
+    action_required; approving it built and tested everything a second time
+    (oetiker/mdmost run 37503956034), on a commit Create release PR had
+    tested and whose results ci-passed ignores in release mode."""
+    doc = docs.get("ci.yml")
+    if not isinstance(doc, dict):
+        return []
+    pattern = workflow.load(
+        (pathlib.Path(assets) / "callers/release-pr-skip.yml").read_text(encoding="utf-8"))["if"]
+    wanted = _unwrapped(_expression(pattern))
+    # A stricter guard joined with `&&` is fine; an `||` at the top level
+    # makes the whole `if:` one term and lets the release run through.
+    return [("ci.yml", f"job {job_id} lacks the `if:` of assets/callers/release-pr-skip.yml "
+                       "in the repo-infra skill; approving the parked "
+                       "run on a release pull request would build and test everything a "
+                       "second time (D31). Add it, or join it to the job's own `if:` with &&")
+            for job_id, job in jobs(doc).items()
+            if job_id != "ci-passed" and wanted not in conjuncts(job.get("if", ""))]
+
+
 def _names(value):
     if isinstance(value, str):
         return [value]
@@ -589,7 +611,8 @@ def validate(docs, pieces, assets=ASSETS):
               for file in sorted(piece_files)
               if file in docs and file not in framed and _callable(pieces, file)
               and not calls(docs, file) and file not in called_by_text]
-    found = (closing_problems(docs, assets) + finalize_problems(docs, pieces)
+    found = (closing_problems(docs, assets) + release_skip_problems(docs, assets)
+             + finalize_problems(docs, pieces)
              + frame_problems(docs, pieces)
              + ref_contract_problems(docs, piece_files)
              + ref_passing_problems(docs)

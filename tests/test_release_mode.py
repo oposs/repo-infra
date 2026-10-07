@@ -69,6 +69,35 @@ def test_the_release_mode_steps_run_on_pull_requests_from_release_branches():
         assert step["if"] == "env.RELEASE_BRANCH_PR == 'true'"
 
 
+SKIP_PATH = ASSETS / "callers/release-pr-skip.yml"
+SKIP_IF = ("${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, "
+           "'release/') && github.event.pull_request.head.repo.full_name == "
+           "github.repository && github.event.pull_request.user.login == "
+           "'github-actions[bot]') }}")
+
+
+def test_the_release_pr_skip_is_exactly_the_release_pull_request():
+    # D31. The harness never evaluates expressions either: a dropped term
+    # would skip the tests of a person's or a fork's release/x, which
+    # ci-passed judges by the ordinary rules, and it would go green untested.
+    assert yaml.safe_load(SKIP_PATH.read_text(encoding="utf-8")) == {"if": SKIP_IF}
+
+
+def test_each_term_of_the_skip_is_a_test_of_is_release_pr():
+    """The skip and lib/release.js:isReleasePr name the same pull request:
+    head ref, head repository and author, field by field."""
+    source = (ASSETS / "pieces/workflow-lib/lib/release.js").read_text(encoding="utf-8")
+    assert f"const BOT = '{BOT}';" in source
+    body = source.split("function isReleasePr(pr, fullName) {", 1)[1].split("\n}\n", 1)[0]
+    assert " ".join(body.split()) == (
+        "return pr.head.ref.startsWith('release/') && Boolean(pr.head.repo) && "
+        "pr.head.repo.full_name === fullName && pr.user.login === BOT;")
+    for term in ("startsWith(github.head_ref, 'release/')",
+                 "github.event.pull_request.head.repo.full_name == github.repository",
+                 f"github.event.pull_request.user.login == '{BOT}'"):
+        assert term in SKIP_IF
+
+
 def test_an_api_error_in_release_mode_fails_the_step(tmp_path):
     # The exception fails the step and with it the job; the failure step
     # after it is skipped (no always()), so ci-passed cannot turn green.
