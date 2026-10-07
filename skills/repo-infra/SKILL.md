@@ -50,8 +50,7 @@ user, prove the answer here, upstream it as a new piece
 
 ## Settled decisions
 
-Each line points at the file that explains it. `docs/superpowers/specs/` has the
-full text.
+Each line points at its file. `docs/superpowers/specs/` has the full text.
 
 - D1, D3, D4: `main` is protected, Actions may open pull requests, protection is
   per repository. `references/release-flow.md`
@@ -74,8 +73,8 @@ full text.
   Gitea package registries (`references/release-flow.md`).
 - D22, D23: musl and man pages are pieces a caller chooses. `references/catalogue.md`
 - D24: a Rust workspace names its lint and test crates. `references/conventions.md`
-- D26: folded into D28. D28: every release is built and tested before the
-  merge. `references/release-flow.md`
+- D26: folded into D28. D28, D31: every release is built and tested before the
+  merge, and its pull request skips `ci.yml`. `references/release-flow.md`
 - D30: pieces and callers instead of detection and assembly. This file.
 
 ## Traps that stay
@@ -83,8 +82,9 @@ full text.
 1. **`ci-passed` is an inline job, word for word.** Copy
    `assets/callers/ci-passed.yml` and fill in `needs:`. A job that calls a
    workflow reports as `ci-passed / <job>`, which the ruleset does not match.
-   Its `needs:` lists every other job of `ci.yml`, and `finalize` needs every
-   other job of `release-publish.yml`; `check` verifies both.
+   Its `needs:` lists every other job of `ci.yml`, each of which carries the
+   `if:` of `assets/callers/release-pr-skip.yml` (D31). `finalize` needs every
+   other job of `release-publish.yml`. `check` verifies all three.
 
 2. **The ruleset waits for `main`.** `apply --item required-checks` asks GitHub
    whether `ci.yml` and `changelog.yml` are on the default branch and refuses

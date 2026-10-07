@@ -51,6 +51,7 @@ def test_onboarding_holds_what_detection_used_to_know():
     text = (REFS / "onboarding.md").read_text(encoding="utf-8")
     for needle in ("Cargo.lock", "pnpm-lock.yaml", "package-lock.json", "VERSION",
                    ".claude-plugin/plugin.json", "assets/callers/ci-passed.yml",
+                   "assets/callers/release-pr-skip.yml",
                    "apply --item"):
         assert needle in text
 

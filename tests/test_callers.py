@@ -4,7 +4,7 @@ import pathlib
 import re
 
 import pytest
-from piecekit import CI_PASSED, install, make_assets, workflow_piece
+from piecekit import CI_PASSED, SKIP_IF, install, make_assets, workflow_piece
 
 from repo_infra import callers, workflow
 from repo_infra.pieces import load_pieces
@@ -49,6 +49,7 @@ permissions:
   contents: read
 jobs:
   a:
+    """ + SKIP_IF + """
     uses: ./.github/workflows/ri-a.yml
     with:
       ref: ${{ inputs.ref }}
@@ -630,7 +631,7 @@ def test_ci_without_a_pull_request_trigger_is_a_problem(tmp_path):
 
 
 def test_ci_without_release_pr_current_is_a_problem(tmp_path):
-    job = ("  release-pr-current:\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
+    job = ("  release-pr-current:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
            "    permissions:\n      contents: read\n      pull-requests: read\n"
            "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
     assert job in own("ci.yml")
@@ -801,7 +802,7 @@ UNCALLED = ("{} is installed and no workflow calls it, so it never runs. Add its
 
 
 def test_an_installed_piece_no_workflow_calls_is_a_problem(tmp_path):
-    job = "  python:\n    uses: ./.github/workflows/ri-ci-python.yml\n    with:\n" \
+    job = "  python:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-ci-python.yml\n    with:\n" \
           "      ref: ${{ inputs.ref }}\n\n"
     assert job in own("ci.yml")
     text = own("ci.yml").replace(job, "").replace("plugin, python,", "plugin,")
@@ -852,7 +853,7 @@ def own_validated(tmp_path, ci):
 
 def test_an_uncalled_core_piece_is_not_offered_for_removal(tmp_path):
     """A removed core piece reads missing, and a bare apply installs it again."""
-    job = "  lib:\n    uses: ./.github/workflows/ri-ci-lib.yml\n    with:\n" \
+    job = "  lib:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-ci-lib.yml\n    with:\n" \
           "      ref: ${{ inputs.ref }}\n\n"
     assert job in own("ci.yml")
     text = own("ci.yml").replace(job, "").replace("needs: [lib, ", "needs: [")
@@ -863,10 +864,76 @@ def test_an_uncalled_core_piece_is_not_offered_for_removal(tmp_path):
 
 
 def test_ci_without_release_pr_current_is_one_item(tmp_path):
-    job = ("  release-pr-current:\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
+    job = ("  release-pr-current:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
            "    permissions:\n      contents: read\n      pull-requests: read\n"
            "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
     text = own("ci.yml").replace(job, "").replace(", release-pr-current]", "]")
     assert own_validated(tmp_path, text) == [(
         "ci.yml", "ci.yml calls no ri-release-pr-current.yml; an open release pull request "
         "is not marked stale when main moves (D28). Add its Call: from the catalogue")]
+
+
+# --- the release pull request skips ci.yml's jobs (D31) ---------------------
+
+SKIP = callers._expression(SKIP_IF.removeprefix("if: "))
+NO_SKIP = ("job {} lacks the `if:` of assets/callers/release-pr-skip.yml in the repo-infra "
+           "skill; approving the parked run on a release pull request would build and test "
+           "everything a second time (D31). Add it, or join it to the job's own `if:` with &&")
+
+
+def skip_problems(guard, name="ci.yml", job="build"):
+    """release_skip_problems for a file `name` with a job `job` guarded by
+    `guard` (no `if:` when None) and a ci-passed without the skip."""
+    line = f"    if: {guard}\n" if guard is not None else ""
+    text = (f"jobs:\n  {job}:\n{line}    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: 'true'\n  ci-passed:\n    if: always()\n    needs: [build]\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n")
+    return callers.release_skip_problems({name: workflow.load(text)})
+
+
+def test_a_ci_job_without_the_skip_is_a_problem():
+    assert skip_problems(None) == [("ci.yml", NO_SKIP.format("build"))]
+
+
+def test_the_canonical_skip_passes():
+    assert skip_problems(SKIP_IF.removeprefix("if: ")) == []
+
+
+def test_the_skip_in_other_spacing_and_parentheses_passes():
+    assert skip_problems("${{(" + SKIP.replace(" ", "") + ")}}") == []
+
+
+def test_a_stricter_guard_joined_with_and_passes():
+    assert skip_problems("${{ github.event_name == 'push' && " + SKIP + " }}") == []
+
+
+def test_the_skip_joined_with_or_is_a_problem():
+    assert skip_problems("${{ github.event_name == 'push' || " + SKIP + " }}") == [
+        ("ci.yml", NO_SKIP.format("build"))]
+
+
+@pytest.mark.parametrize("dropped", [
+    " && github.event.pull_request.user.login == 'github-actions[bot]'",
+    " && github.event.pull_request.head.repo.full_name == github.repository"])
+def test_a_looser_skip_is_a_problem(dropped):
+    """A term short of isReleasePr skips a person's or a fork's release/x,
+    which ci-passed judges by the ordinary rules: green untested."""
+    assert dropped in SKIP
+    assert skip_problems("${{ " + SKIP.replace(dropped, "") + " }}") == [("ci.yml", NO_SKIP.format("build"))]
+
+
+def test_ci_passed_needs_no_skip():
+    ci = workflow.load(CI_PASSED.replace("needs: []", "needs: [a]"))
+    assert callers.release_skip_problems({"ci.yml": ci}) == []
+
+
+def test_jobs_of_other_files_are_not_checked():
+    assert skip_problems(None, name="release-build.yml") == []
+    assert skip_problems(None, name="ci-local.yml") == []
+
+
+def test_this_repositorys_ci_yml_skips_on_every_job_but_ci_passed():
+    doc = workflow.load(own("ci.yml"))
+    guarded = {job_id for job_id, job in callers.jobs(doc).items()
+               if callers._unwrapped(SKIP) in callers.conjuncts(job.get("if", ""))}
+    assert guarded == set(callers.jobs(doc)) - {"ci-passed"}
