@@ -14,9 +14,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
-- `check` reports each job of `ci.yml` other than `ci-passed` that lacks the `if:` of `assets/callers/release-pr-skip.yml` in the skill. With that `if:` in place, approving the parked runs on a release pull request runs only `ci-passed` instead of building and testing everything a second time.
 
 ### Fixed
+
+## 1.0.1 - 2026-10-07
+### Changed
+- `check` reports each job of `ci.yml` other than `ci-passed` that lacks the `if:` of `assets/callers/release-pr-skip.yml` in the skill. With that `if:` in place, approving the parked runs on a release pull request runs only `ci-passed` instead of building and testing everything a second time.
 
 ## 1.0.0 - 2026-10-04
 ### Changed
