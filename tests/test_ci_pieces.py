@@ -158,7 +158,7 @@ def test_the_plain_pytest_run_deselects_the_pandoc_tests():
     ini = (ROOT / "pytest.ini").read_text(encoding="utf-8")
     assert 'addopts = -m "not container and not pandoc"' in ini
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    assert 'python3 -m pytest -q -m "not container" tests' in makefile
+    assert 'python3 -m pytest -q $(BASETEMP) -m "not container" tests' in makefile
 
 
 def test_every_non_yaml_asset_is_covered_by_a_test():

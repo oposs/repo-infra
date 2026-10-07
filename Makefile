@@ -1,10 +1,14 @@
 .PHONY: test test-js lint check test-container generations catalogue
 
+# The tests' temporary files go to .pytest-tmp in the checkout rather than the
+# system temp directory. pytest empties it at the start of each run.
+BASETEMP = --basetemp=.pytest-tmp
+
 # `-m` here overrides pytest.ini's addopts, so the pandoc-marked tests run
 # locally. The plain `python3 -m pytest` that ci-python runs deselects them,
 # since that job installs no pandoc; repo-infra-man runs them on GitHub.
 test:
-	python3 -m pytest -q -m "not container" tests
+	python3 -m pytest -q $(BASETEMP) -m "not container" tests
 
 # The workflow library's own tests, as ci.yml's lib job runs them.
 test-js:
@@ -22,7 +26,7 @@ check: lint test test-js
 # it stays out of `test`/`check` and off the sub-second local gate. Run this
 # after changing either asset, instead of finding out on the required CI job.
 test-container:
-	python3 -m pytest -m container -v tests
+	python3 -m pytest $(BASETEMP) -m container -v tests
 
 # D29: records each marked asset's text under its marker version. Run after
 # bumping a marker; it refuses when the text changed and the marker did not.
