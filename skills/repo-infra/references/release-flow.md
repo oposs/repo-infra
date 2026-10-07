@@ -65,6 +65,9 @@ someone approves them anyway, or presses **Update branch** (a user event, so
 the runs start without approval), the release mode of `ci-passed` and
 `changelog-updated` gives the same verdict as `release-pr-current` below: red
 unless the head carries `release-built` and is not behind `main`.
+Of `ci.yml`, such a run starts only `ci-passed`; every other job carries the
+`if:` of `assets/callers/release-pr-skip.yml` and skips on the release pull
+request (D31), so nothing is built or tested a second time.
 
 `main` must not move under a release. A release built from `main` at X is not
 merged after another pull request moved `main` to Y; it is abandoned and

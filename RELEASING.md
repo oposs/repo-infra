@@ -36,7 +36,8 @@ requires the branch to be up to date with `main`. `Create release PR` writes
 both checks on the release branch itself, after it built and tested that
 exact commit. The pull request's own runs still park in an approval-required
 state, because `GITHUB_TOKEN` opened it; nobody needs to approve them, and
-publishing deletes them.
+publishing deletes them. Approving one anyway runs only `ci-passed`: every
+other job of `ci.yml` skips on the release pull request (D31).
 
 If `main` moves before the merge, GitHub refuses the merge (`the head branch
 is not up to date with the base branch`) and `ci-passed` turns red with

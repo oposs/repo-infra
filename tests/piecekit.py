@@ -7,6 +7,12 @@ import pathlib
 
 from repo_infra.markers import parse_markers
 
+ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
+# The shipped skip condition (D31), copied into every test store; a fixture's
+# ci.yml writes SKIP_IF on each job but ci-passed.
+RELEASE_PR_SKIP = (ASSETS / "callers/release-pr-skip.yml").read_text(encoding="utf-8")
+SKIP_IF = next(line for line in RELEASE_PR_SKIP.splitlines() if line.startswith("if: "))
+
 CI_PASSED = """jobs:
   ci-passed:
     if: always()
@@ -118,6 +124,7 @@ def make_assets(root, current, history=(), core=()):
     (root / "generations.json").write_text(json.dumps(record), encoding="utf-8")
     (root / "callers").mkdir()
     (root / "callers/ci-passed.yml").write_text(CI_PASSED, encoding="utf-8")
+    (root / "callers/release-pr-skip.yml").write_text(RELEASE_PR_SKIP, encoding="utf-8")
     return root
 
 

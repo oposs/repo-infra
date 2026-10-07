@@ -59,6 +59,20 @@ job that calls a reusable workflow reports as `ci-passed / <job>`, and the
 ruleset requires the context `ci-passed`. `check` compares the job with that
 file and reports a difference.
 
+Every job of `ci.yml` other than `ci-passed` carries the `if:` of
+`assets/callers/release-pr-skip.yml` in the skill, alone or joined with `&&` to
+a further condition (D31). It is false only on the `pull_request` run of the
+release pull request Create release PR opened. That run parks for approval,
+Create release PR has already tested the commit, and `ci-passed` ignores the
+test results there; approved without the `if:`, it builds and tests everything
+a second time. The condition tests the same three fields as `isReleasePr` in
+`lib/release.js`: the head branch starts with `release/`, the head is in this
+repository, and `github-actions[bot]` opened the pull request. A looser one
+would skip the tests of a person's or a fork's `release/x` pull request, which
+`ci-passed` judges by the ordinary rules, and a skipped job counts as passed
+there. When Create release PR calls `ci.yml` the event is `workflow_dispatch`,
+so the jobs run.
+
 `release-build.yml` triggers on `workflow_call` with the inputs `version` and
 `ref`. It calls the build pieces (`ri-release-source-tarball`, for example) and the
 project's own `release-build-local.yml`.
@@ -89,6 +103,10 @@ What `check` enforces on the callers:
   is still running.
 - `ci-passed` has `if: always()`. Without it the job is skipped when a need
   fails, and a skipped required check counts as passed.
+- Every other job of `ci.yml` has the `if:` of
+  `assets/callers/release-pr-skip.yml`, alone or joined with `&&`, never with
+  `||`. Without it, approving the parked run on a release pull request builds
+  and tests everything a second time.
 - `finalize` has `if: needs.publish.outputs.release_id != ''`, alone or joined
   with `&&` to a further condition other than `always()`, and passes
   `release_id`, `tag` and `head` from the `publish` job's outputs, as the
@@ -137,7 +155,8 @@ What each must do:
 4. **Ask for no more than `contents: read`.**
 5. **Keep conditions inside steps, never on a job.** A reusable workflow whose
    every job is skipped reports as skipped, and `ci-passed` counts a skipped
-   need as green.
+   need as green. The `if:` of D31 on the job in `ci.yml` that calls the file is
+   the one exception: it skips only where `ci-passed` ignores the results.
 
 `release-build-local.yml` also takes the string inputs `version` and `ref`,
 uploads each file the release ships as an artifact whose name starts with

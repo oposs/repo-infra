@@ -20,26 +20,31 @@ permissions:
 
 jobs:
   lib:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
     uses: ./.github/workflows/ri-ci-lib.yml
     with:
       ref: ${{ inputs.ref }}
 
   plugin:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
     uses: ./.github/workflows/ri-ci-claude-plugin.yml
     with:
       ref: ${{ inputs.ref }}
 
   python:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
     uses: ./.github/workflows/ri-ci-python.yml
     with:
       ref: ${{ inputs.ref }}
 
   selftest:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
     uses: ./.github/workflows/ri-ci-repo-infra-selftest.yml
     with:
       ref: ${{ inputs.ref }}
 
   release-pr-current:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
     uses: ./.github/workflows/ri-release-pr-current.yml
     permissions:
       contents: read

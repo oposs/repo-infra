@@ -1,0 +1,20 @@
+# The `if:` of every job of ci.yml except ci-passed (D31). Copy it onto each
+# such job word for word; a stricter guard joined with `&&` is fine. check
+# compares each job's `if:` with this text.
+#
+# It is false on exactly one run: the pull_request run of the release pull
+# request that Create release PR opened. Create release PR has already run
+# ci.yml and the release build on that commit, and ci-passed in release mode
+# ignores every test result there. Without it, approving the parked run on a
+# release pull request builds and tests everything a second time.
+#
+# The four terms are the fields lib/release.js:isReleasePr tests: the head
+# branch starts with release/, the head is in this repository, and the bot
+# opened the pull request. A looser condition would also skip the tests of a
+# person's or a fork's release/x pull request, which ci-passed judges by the
+# ordinary rules; a skipped job counts as passed there, so that pull request
+# would go green untested.
+#
+# When Create release PR calls ci.yml, the event is workflow_dispatch, so the
+# jobs run.
+if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
