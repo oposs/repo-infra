@@ -524,7 +524,7 @@ publish:
 
 ## Release flow: installed, never called by hand
 
-### changelog v5
+### changelog v6
 
 Installed at `.github/workflows/changelog.yml`.
 

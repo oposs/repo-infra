@@ -22,7 +22,8 @@ def job():
     return yaml.safe_load(ASSET.read_text(encoding="utf-8"))["jobs"]["changelog-updated"]
 
 
-def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), statuses=(),
+def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), current_labels=None,
+         statuses=(),
          behind=0, head_changes=SAME, base_changes=SAME, sabotage_merge_lib=False,
          sabotage_merge_changes=False, base_lib=True, base_lib_dir=None):
     node = shutil.which("node")
@@ -46,13 +47,20 @@ def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), statuses=
           "head": {"ref": head_ref, "sha": "h",
                    "repo": {"full_name": head_repo} if head_repo else None},
           "base": {"ref": "main", "sha": "b"}}
+    # The labels the API returns when the script runs; the event's by default.
+    current = [{"name": n} for n in (labels if current_labels is None else current_labels)]
     harness = """
 const contents = %s;
+const current = %s;
 const statuses = %s;
 const failures = [];
 const github = {
   paginate: async (fn) => (fn === 'statuses' ? statuses : []),
-  rest: { repos: {
+  rest: { pulls: {
+    get: async ({ pull_number }) => {
+      if (pull_number !== 1) throw new Error(`pull_number ${pull_number}`);
+      return { data: { labels: current } }; },
+  }, repos: {
     listCommitStatusesForRef: 'statuses',
     compareCommitsWithBasehead: async ({ basehead }) => {
       if (basehead !== 'main...h') throw new Error(`basehead ${basehead}`);
@@ -69,7 +77,7 @@ const context = { repo: { owner: 'o', repo: 'r' }, payload: { pull_request: %s }
 (async () => {
 %s
 })().then(() => console.log(JSON.stringify({ failures })));
-""" % (json.dumps(contents), json.dumps(list(statuses)), behind, json.dumps(pr), script)
+""" % (json.dumps(contents), json.dumps(current), json.dumps(list(statuses)), behind, json.dumps(pr), script)
     path = tmp_path / "gate.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ws,
@@ -211,3 +219,14 @@ def test_both_required_checks_agree_on_a_release_pull_request(tmp_path, statuses
     ours = gate(tmp_path / "gate", head_ref="release/v1.2.0", statuses=statuses, behind=behind)
     theirs = ci_passed(tmp_path / "ci", statuses=statuses, behind=behind)["failures"]
     assert ours == theirs == expected
+
+
+def test_a_label_added_after_the_event_counts(tmp_path):
+    # `gh pr create --label` opens the pull request and labels it in a second
+    # call: the opened run's payload has no label, the pull request has one.
+    assert gate(tmp_path, head_ref="fix", labels=(), current_labels=["no-changelog"]) == []
+
+
+def test_a_label_removed_after_the_event_no_longer_counts(tmp_path):
+    found = gate(tmp_path, head_ref="fix", labels=["no-changelog"], current_labels=[])
+    assert len(found) == 1 and "adds nothing under '## [Unreleased]'" in found[0]

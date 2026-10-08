@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- A pull request opened with `gh pr create --label no-changelog` could show `changelog-updated` failed with "This pull request adds nothing under '## [Unreleased]' in CHANGES.md", although it carried the label. The check now reads the labels when it runs, not when the pull request opened. `apply` installs the fix as `changelog` v6.
 
 ## 1.0.1 - 2026-10-07
 ### Changed
