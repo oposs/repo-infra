@@ -1,7 +1,7 @@
 # Project shape: what a repository contains, and the pieces that build it
 
 Date: 2026-10-10
-Status: draft for review, revised after the pushback review of the same day
+Status: draft for review, revised after two pushback reviews of the same day
 Decision: D32 (adds a project shape on top of D30 and amends D30's rule for `.github/repo-infra.json`; changes nothing in the release flow of D28 and D31)
 
 ## Why
@@ -50,14 +50,27 @@ The result is visible across the terminal tools onboarded so far:
 - **The shape review belongs to the command `/repo-infra:check`, not to the
   script.** The person running the command gets the script report and the
   shape review. The loops that run the script until it exits 0 (onboarding,
-  `apply`) stay mechanical and repeat no review. `/repo-infra:apply` runs the
-  shape review only when it onboards a repository.
+  `apply`) stay mechanical and repeat no review. `/repo-infra:apply` starts by
+  running the script, not the command, and runs the shape review only when it
+  onboards a repository.
 - **The archive is the contract between the release pieces.** Only the binaries
   piece knows the language. Packaging and Homebrew read the archives it built.
+- **A rule is met by its result, whatever builds it.** Packages, bottles and
+  archives that exist on the release meet their rule, also when the
+  repository's own workflow builds them, as edaptor and mdmost do today. The
+  piece is named as the standard way, and the script's pieces section shows
+  whether it is used.
 - **The pieces are proven in a consumer before they are upstreamed**
-  (`teaching-the-standard.md`, stage 2). What runs green today is cargo-deb and
-  a formula rewrite with the owner written into it; nfpm on unpacked archives
-  and the parametrised rewrite have not run anywhere yet.
+  (`teaching-the-standard.md`, stage 2). What has published green is cargo-deb
+  and a formula rewrite with the owner written into it, in edaptor v1.8.0 and
+  mdmost v0.7.0. nfpm on unpacked archives and the parametrised rewrite have
+  not run anywhere yet. mtuspy has never published a package, a bottle or a
+  formula: v0.1.3 carries only its seven archives, its release build has never
+  run, and `Formula/mtuspy.rb` holds all-zero checksums.
+- **A piece's v1 holds only what its proving consumer runs.** Every further
+  input arrives in a later version, together with the consumer that proves it.
+  The binaries piece gets `extra_paths` with edaptor, the nfpm piece gets the
+  `prepare` mode with Smalti.
 
 ## The shape
 
@@ -153,14 +166,11 @@ It does not know the rule ids. The shape review reports an exception whose id
 matches no rule, and a gap that has no exception.
 
 A piece input that drops a requirement is allowed only together with the
-exceptions for every rule it weakens. The shape review checks the pairing:
-
-| Input | Needs exceptions for |
-|---|---|
-| `skip_targets` of `ri-release-rust-binaries`, any target | `native-targets` |
-| `skip_targets` naming `aarch64-apple-darwin` or `x86_64-apple-darwin` | also `homebrew` |
-| `skip_targets` naming `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` | also `homebrew` and `linux-packages` |
-| `man: false` of `ri-release-rust-binaries` | `man-page` |
+exceptions for every rule it weakens, and the shape review checks the pairing.
+No v1 piece has such an input. When one arrives, its spec names the pairing. A
+skipped target, for example, weakens `native-targets`; a skipped darwin target
+also weakens `homebrew`, and a skipped musl target also `homebrew` and
+`linux-packages`.
 
 ## The shape review
 
@@ -178,6 +188,8 @@ The script's exit code stays the result of the script. `check.md` says that
 the shape review is a separate part of the report and does not change the
 exit code. `SKILL.md`, `commands/apply.md` and `onboarding.md` say "run the
 script until it exits 0" where they say "run `check` until it exits 0" today.
+The first step of `commands/apply.md`, "Run `/repo-infra:check` first", becomes
+"run the script first"; only onboarding adds the shape review.
 
 `references/onboarding.md` gains a step: run the shape review once, then agree
 with the owner which gaps this run closes and which become exceptions.
@@ -226,15 +238,18 @@ For the oposs registry this gives `gitea-oposs.asc`, the name in
 
 ## Pieces
 
-Three new pieces, each at v1. The archive layout is the contract:
+Three new pieces, each at v1. In all three, `<bin>` is the `bin` input: the
+binary, the archive, the packages and the formula are named after it. The
+owner and repository in every URL come from `github.repository`.
+
+The archive layout is the contract:
 
 ```
-<name>-<version>-<target>.tar.gz
-  <name>/<name>
-  <name>/man/<every page in man/>
-  <name>/README.md
-  <name>/LICENSE
-  <name>/<extra paths>
+<bin>-<version>-<target>.tar.gz
+  <bin>/<bin>
+  <bin>/man/<every page in man/>
+  <bin>/README.md
+  <bin>/LICENSE
 ```
 
 `man/` holds whatever `make man` produced. `man.mk` takes the section from the
@@ -243,84 +258,77 @@ manual's front matter and the page name from `MAN_NAME`, so a daemon ships
 
 ### `ri-release-rust-binaries`
 
-Lifted from the three copies.
+Lifted from the three copies, holding only what mtuspy runs.
 
-- Inputs: `version`, `ref`, `bin`, `extra_paths` (space-separated repository
-  paths copied into the archive, for example `examples` or `integrations`),
-  `skip_targets` (space-separated; see the pairing table), `man` (default
-  true).
+- Inputs: `version`, `ref`, `bin`.
+- A first job builds the man pages once on `ubuntu-latest` with apt's pandoc,
+  as `ri-ci-man` does, and uploads `man/`. Every leg that is not Windows
+  downloads it, so one release ships one set of pages.
 - One matrix leg per target of `native-targets`, `fail-fast: false`.
 - Linux musl and illumos build with `cross`, pinned by version. Only the musl
   legs set `-C target-feature=+crt-static`.
-- `make man` runs on every leg that is not Windows, when `man` is true.
 - `cargo build --release --bin <bin> --target <target>`.
 - Packs the archive by the contract above and uploads it as
   `release-asset-<target>`.
 
+Later versions, each with the consumer that proves it: `extra_paths` (edaptor
+packs `examples/`, mdmost `integrations/`).
+
 ### `ri-release-nfpm`
 
-The D30 design for this piece stays: `config`, `prepare`, `packagers`, nfpm
-pinned by version and SHA256, `${VAR}` expanded across the whole config by the
-piece (nfpm expands only top-level scalars), an unset variable failing the
-job, every package read back with `dpkg-deb` or `rpm`, and file names checked
-against the shapes `ri-publish-gitea` accepts. Output:
-`release-asset-packages`.
+The D30 design for this piece is narrowed to what mtuspy runs, and gains an
+archives mode. Kept from D30: `config`, `packagers`, nfpm pinned by version and
+SHA256, `${VAR}` expanded across the whole config by the piece (nfpm expands
+only top-level scalars), an unset variable failing the job, every package read
+back with `dpkg-deb` or `rpm`, and file names checked against the shapes
+`ri-publish-gitea` accepts. Output: `release-asset-packages`.
 
-This design adds two inputs:
-
+- Inputs: `version`, `ref`, `config`, `packagers`, `archives`.
 - `archives`: space-separated targets. For each, the piece downloads
-  `release-asset-<target>` and unpacks it.
-- `check`: a make target run after all packages are built and read back, for
-  example Smalti's `check-packages`.
-
-`prepare` runs once, before anything is unpacked, when it is set; it may be set
-together with `archives`. Without `archives`, nfpm runs once per packager.
-With `archives`, it runs once per target and packager.
+  `release-asset-<target>`, unpacks it, and runs nfpm once per packager.
 
 Each nfpm run gets these variables:
 
-| Variable | Value | Mode |
-|---|---|---|
-| `VERSION` | the `version` input | both |
-| `SOURCE_DATE_EPOCH` | committer time of `ref`, in seconds | both |
-| `MTIME` | the same instant in RFC 3339, for nfpm's `mtime:` field (nfpm 2.47.0 ignores `SOURCE_DATE_EPOCH`) | both |
-| `PACKAGER` | `deb` or `rpm` | both |
-| every key of `packagers.<packager>` | its value | both |
-| `TARGET` | the target triple | archives |
-| `STAGE` | the unpacked `<name>/` folder of that target | archives |
-| `ARCH` | `amd64` for `x86_64-unknown-linux-musl`, `arm64` for `aarch64-unknown-linux-musl`; nfpm translates it for rpm | archives |
+| Variable | Value |
+|---|---|
+| `VERSION` | the `version` input |
+| `SOURCE_DATE_EPOCH` | committer time of `ref`, in seconds |
+| `MTIME` | the same instant in RFC 3339, for nfpm's `mtime:` field (nfpm 2.47.0 ignores `SOURCE_DATE_EPOCH`) |
+| `PACKAGER` | `deb` or `rpm` |
+| `TARGET` | the target triple |
+| `STAGE` | the unpacked `<bin>/` folder of that target |
+| `ARCH` | `amd64` for `x86_64-unknown-linux-musl`, `arm64` for `aarch64-unknown-linux-musl`; nfpm translates it for rpm |
+| every key of `packagers.<packager>` | its value |
 
 A key in `packagers` that names one of the piece's own variables fails the job,
 so a config cannot shadow `VERSION` or `ARCH`.
 
-The file names stay `<name>_<version>-1_<arch>.deb` and
-`<name>-<version>-1.<arch>.rpm`, so `release_assets` does not change.
+The file names stay `<bin>_<version>-1_<arch>.deb` and
+`<bin>-<version>-1.<arch>.rpm`, so `release_assets` does not change.
 
-What a conversion changes in the consumers:
+mtuspy, edaptor and mdmost move their `Cargo.toml` tables into an
+`nfpm.yaml`. For mtuspy: `extended-description` becomes `description`;
+`section = "net"` becomes `section: net`; `recommends = "libcap2-bin"` becomes
+`overrides.deb.recommends`, with the rpm equivalent `libcap` under
+`overrides.rpm.recommends`; `license-file` becomes a `contents` entry for
+`/usr/share/doc/<bin>/copyright` on deb and `/usr/share/doc/<bin>/LICENSE` on
+rpm; the scripts `pkg/debian/postinst` and `pkg/rpm/post-install.sh` become
+`overrides.deb.scripts.postinstall` and `overrides.rpm.scripts.postinstall`;
+`auto-req = "no"` has no counterpart, because nfpm adds no automatic
+requirements. The `contents` take their sources from `${STAGE}`.
 
-- mtuspy, edaptor and mdmost move their `Cargo.toml` tables into an
-  `nfpm.yaml`. For mtuspy: `extended-description` becomes `description`;
-  `section = "net"` becomes `section: net`; `recommends = "libcap2-bin"`
-  becomes `overrides.deb.recommends`, with the rpm equivalent `libcap` under
-  `overrides.rpm.recommends`; `license-file` becomes a `contents` entry for
-  `/usr/share/doc/<name>/copyright` on deb and `/usr/share/doc/<name>/LICENSE`
-  on rpm; the scripts `pkg/debian/postinst` and `pkg/rpm/post-install.sh`
-  become `overrides.deb.scripts.postinstall` and
-  `overrides.rpm.scripts.postinstall`; `auto-req = "no"` has no counterpart,
-  because nfpm adds no automatic requirements. The `contents` take their
-  sources from `${STAGE}`.
-- Smalti renames `PKG_VERSION` to `VERSION` and `PKG_MTIME` to `MTIME` in
-  `packaging/nfpm.yaml`, moves its `envsubst` step into the piece's own
-  expansion, and keeps `PKG_NAME`, `PKG_ARCH` and `PKG_FONTDIR` in
-  `packagers`. Its count of exactly one `.deb` and one `.rpm` moves into its
-  `check-packages` target.
+Later version, proven by Smalti: the D30 `prepare` mode, where a make target
+stages the files and nfpm runs once per packager without archives. How Smalti
+checks its packages is settled then, against its Makefile: today
+`check-packages` depends on `packages` and rebuilds its own packages under
+`build/`, and the Makefile passes `PKG_VERSION` and `PKG_MTIME` to nfpm, so a
+rename in `nfpm.yaml` alone would break a local `make packages`.
 
 ### `ri-release-homebrew`
 
 Lifted from the three copies.
 
-- Inputs: `version`, `ref`, `name` (the formula, default the repository name).
-  The formula is `Formula/<name>.rb`.
+- Inputs: `version`, `ref`, `bin`. The formula is `Formula/<bin>.rb`.
 - Needs the archives of `aarch64-apple-darwin`, `x86_64-apple-darwin`,
   `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`.
 - Bottles on `macos-14` (required) and `macos-15-intel` (optional,
@@ -328,24 +336,30 @@ Lifted from the three copies.
   `brew trust` guarded for Homebrew 5.
 - For the local tap, rewrites each `url` line that directly precedes a
   `# mac-arm` or `# mac-x86` sha256 line to point at the built archive, and
-  fails when such a `url` line is missing. The owner and the name come from
-  the inputs and `github.repository`, not from the file.
+  fails when such a `url` line is missing.
 - Renames each bottle from the name `brew bottle` writes to the name its json
   records.
 - Rewrites the formula: the `version` line, the four `sha256` lines found by
   their marker comments (`# mac-arm`, `# mac-x86`, `# linux-x86`,
   `# linux-arm`), and the bottle block generated between `# BOTTLE-START` and
-  `# BOTTLE-END`. It fails when no bottle was built, when a bottle is missing
-  under its recorded name, or when a marker is gone.
+  `# BOTTLE-END`, with `root_url` built from `github.repository`. It fails when
+  no bottle was built, when a bottle is missing under its recorded name, or
+  when a marker is gone.
 - Outputs: the bottles as `release-asset-bottle-<os>`, and the formula as the
   artifact `release-files`. A repository that uses this piece has no other job
   that writes `release-files`.
 
 `project-shape.md` carries a formula template with the `url` shape
-(`https://github.com/<owner>/<name>/releases/download/v#{version}/<name>-#{version}-<target>.tar.gz`)
-and all markers in place. The template installs `bin/<name>` and every page
-under `man/`. The formula belongs to the repository, because it decides what
-else is installed (mdmost installs `integrations/`, edaptor `examples/`).
+(`https://github.com/<owner>/<repo>/releases/download/v#{version}/<bin>-#{version}-<target>.tar.gz`)
+and all markers in place. The template installs `bin/<bin>` and every man page
+into the directory of its section:
+
+```ruby
+Dir["man/*.[1-9]"].each { |page| (man/"man#{page[-1]}").install page }
+```
+
+The formula belongs to the repository, because it decides what else is
+installed (mdmost installs `integrations/`, edaptor `examples/`).
 
 ## Proof and conversion
 
@@ -353,14 +367,22 @@ mtuspy is the poster child of the shape. It is proven there, released there,
 and becomes the reference example (`references/examples/mtuspy/`) that
 onboarding points to. The owner has allowed mtuspy releases for this work.
 
-1. On a branch of mtuspy, its release build is rewritten as three local
-   workflows shaped exactly like the pieces, without piece markers, called from
+mtuspy's README advertises `brew install`, `apt install` and `dnf install`
+today, and all three fail: the formula holds all-zero checksums, and the Gitea
+registry has no mtuspy package. The first release below fixes that.
+
+1. On a branch of mtuspy, a temporary `proof.yml` runs on `pull_request` and
+   calls `release-build.yml` with version `0.0.0` and the branch head as `ref`.
+   It creates no tag, no release and no release branch. Its first run uses
+   mtuspy's release build unchanged, and its output (archives, cargo-deb
+   packages, bottles, rewritten formula) is kept as the baseline.
+2. On the same branch, the release build is rewritten as three local workflows
+   shaped exactly like the pieces, without piece markers, called from
    `release-build.yml`. The `Cargo.toml` package tables move into `nfpm.yaml`.
-2. A temporary `proof.yml` on that branch runs on `pull_request` and calls
-   `release-build.yml` with version `0.0.0` and the branch head as `ref`. It
-   creates no tag, no release and no release branch. Its run must be green, and
-   the packages, bottles and rewritten formula it uploads are compared with
-   those of mtuspy v0.1.3. This catches failures before a release is spent.
+   The `proof.yml` run must be green, and its output is compared with the
+   baseline: archive layout and names, package file lists, control fields and
+   postinst, and the formula. edaptor v1.8.0's published packages are a second
+   reference for what a real cargo-deb release contains.
 3. The branch drops `proof.yml` and merges, and mtuspy is released through the
    local workflows. The release must publish to every channel: the GitHub
    release, the Gitea apt and rpm registries, the Homebrew tap and mise. Each
@@ -372,9 +394,13 @@ onboarding points to. The owner has allowed mtuspy releases for this work.
    text, writing style), and is released again. That release is the first
    through the pieces, and its files become `references/examples/mtuspy/`.
 
-Then, one repository per run and each with the owner's OK: edaptor, Smalti
-(its `packages` job becomes `ri-release-nfpm` with `check: check-packages`),
-and mdmost, without a release until the owner says so.
+Then, one repository per run and each with the owner's OK:
+
+- edaptor, which brings `extra_paths` to `ri-release-rust-binaries` as v2,
+  proven in its tree first;
+- Smalti, which brings the `prepare` mode to `ri-release-nfpm`, proven in its
+  tree first;
+- mdmost, without a release until the owner says so.
 
 ## Testing
 
@@ -386,15 +412,13 @@ Pieces are tested by running them (D19).
   bottles, the optional one missing, zero bottles, a sha256 marker missing, a
   `url` line missing, a second run that changes nothing.
 - `ri-release-nfpm`: pytest runs the nfpm step in a podman container with the
-  pinned nfpm, once in archives mode on a fixture archive and once in
-  `prepare` mode. The archives case compares file list, control fields and
-  postinst with the packages of mtuspy v0.1.3. The `prepare` case builds
-  `noarch` packages from a fixture config shaped like Smalti's. A `packagers`
-  key that shadows `VERSION` fails.
+  pinned nfpm on a fixture archive and a config shaped like mtuspy's. It
+  compares file list, control fields and postinst with the baseline packages
+  from step 1 of the proof. A `packagers` key that shadows `VERSION` fails.
 - `ri-release-rust-binaries`: structure tests (the seven targets, `crt-static`
-  only on musl, `skip_targets`, `man`), and the packing step run on a fake
-  `target/` tree, checking the archive layout and names, with a man page in
-  section 8 among them.
+  only on musl, the man job feeding every non-Windows leg), and the packing
+  step run on a fake `target/` tree, checking the archive layout and names,
+  with a man page in section 8 among them.
 - `project-shape.md`: a test that every rule has an id, a trigger, a
   requirement and a verification line, and that no id appears twice.
   `test_no_em_dash.py` and `test_prose_skills.py` cover its prose.
