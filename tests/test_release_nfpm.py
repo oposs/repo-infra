@@ -132,14 +132,14 @@ def image(tmp_path_factory):
         pytest.skip("podman is not installed")
     context = tmp_path_factory.mktemp("nfpm-image")
     (context / "Containerfile").write_text(CONTAINERFILE)
-    subprocess.run(["podman", "build", "-q", "-t", IMAGE, str(context)], check=True,
+    subprocess.run(["podman", "build", "-q", "--memory=2g", "-t", IMAGE, str(context)], check=True,
                    capture_output=True, timeout=900)
     return IMAGE
 
 
 def in_container(tmp_path, image, nfpm, packagers=BOTH):
     return subprocess.run(
-        ["podman", "run", "--rm", "-v", f"{tmp_path}:/w:Z", "-v", f"{nfpm}:/opt/nfpm:ro",
+        ["podman", "run", "--rm", "--memory=2g", "-v", f"{tmp_path}:/w:Z", "-v", f"{nfpm}:/opt/nfpm:ro",
          "-w", "/w/repo", "-e", "PATH=/opt/nfpm:/usr/bin:/bin", "-e", "RUNNER_TEMP=/w/temp",
          "-e", "VERSION=0.0.0", "-e", "CONFIG=nfpm.yaml", "-e", f"PACKAGERS={packagers}",
          "-e", f"ARCHIVES={' '.join(TARGETS)}", image, "node", "/w/runner.js"],

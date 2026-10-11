@@ -90,7 +90,7 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-latest
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             windows: true
@@ -139,10 +139,12 @@ jobs:
 
       # The archive layout is the contract the packaging and Homebrew pieces
       # read (D32): <bin>/<bin>, <bin>/man/<every page>, README.md, LICENSE.
+      # COPYFILE_DISABLE keeps the bsdtar of macOS from adding ._ files.
       - name: Pack the archive
         if: ${{ !matrix.windows }}
         shell: bash
         env:
+          COPYFILE_DISABLE: 1
           BIN: ${{ inputs.bin }}
           VERSION: ${{ inputs.version }}
           TARGET: ${{ matrix.target }}

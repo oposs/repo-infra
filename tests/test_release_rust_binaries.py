@@ -35,6 +35,13 @@ def test_the_matrix_builds_the_seven_native_targets_of_the_shape():
     assert all(f"`{target}`" in shape for target in TARGETS)
 
 
+def test_the_mac_legs_run_on_the_current_image():
+    # A fixed label stops being served when GitHub retires it, and the leg
+    # then waits in `queued` until the run is cancelled.
+    assert {leg["target"]: leg["os"] for leg in legs() if "apple" in leg["target"]} == {
+        "x86_64-apple-darwin": "macos-latest", "aarch64-apple-darwin": "macos-latest"}
+
+
 def test_one_target_failing_does_not_cancel_the_others():
     assert doc()["jobs"]["binaries"]["strategy"]["fail-fast"] is False
 
@@ -117,6 +124,10 @@ def test_the_archive_holds_the_binary_every_man_page_the_readme_and_the_license(
     assert sorted(n for n, m in members.items() if m.isfile()) == [
         "tool/LICENSE", "tool/README.md", "tool/man/tool.1", "tool/man/toold.8", "tool/tool"]
     assert members["tool/tool"].mode & 0o111
+
+
+def test_the_mac_tar_adds_no_appledouble_files():
+    assert step("binaries", "Pack the archive")["env"]["COPYFILE_DISABLE"] == 1
 
 
 def test_an_archive_without_a_man_page_fails(tmp_path):
