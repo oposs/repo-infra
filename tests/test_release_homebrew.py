@@ -4,6 +4,7 @@ and homebrew.test.js their cases. Here: the jobs, the piece's calls into the
 library, and that the formula the library tests use is the template the
 shape reference publishes."""
 
+import json
 import pathlib
 import re
 
@@ -80,3 +81,21 @@ def test_the_library_tests_use_the_template_of_the_shape_reference():
         ruby = ruby.replace(placeholder, value)
     tests = (LIB / "homebrew.test.js").read_text(encoding="utf-8")
     assert re.search(r"const FORMULA = `(.*?)`;\n", tests, re.S).group(1) == ruby
+
+
+JSONS = sorted((ROOT / "tests/fixtures/homebrew").glob("*.bottle.json"))
+
+
+def test_the_recorded_bottle_json_has_the_keys_the_library_reads():
+    """The json mtuspy's baseline run recorded on macos-14, against the keys
+    homebrew.js reads and homebrew.test.js fakes."""
+    assert len(JSONS) == 1
+    tags = set()
+    for path in JSONS:
+        for entry in json.loads(path.read_text(encoding="utf-8")).values():
+            bottle = entry["bottle"]
+            for tag, data in bottle["tags"].items():
+                assert {"filename", "local_filename", "sha256"} <= set(data), tag
+                assert data.get("cellar") or bottle.get("cellar"), tag
+                tags.add(tag)
+    assert tags == {"arm64_sonoma"}

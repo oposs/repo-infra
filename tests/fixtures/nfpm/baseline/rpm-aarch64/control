@@ -1,0 +1,6 @@
+Name: mtuspy
+Arch: aarch64
+License: MIT
+Summary: Path MTU discovery tool using native ICMP with Don't Fragment bit
+Requires: /bin/sh
+Requires: /bin/sh

@@ -12,6 +12,7 @@ import urllib.request
 
 import pytest
 import yaml
+from nfpm_facts import facts_diff
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PIECE = ROOT / "skills/repo-infra/assets/pieces/ri-release-nfpm/ri-release-nfpm.yml"
@@ -170,3 +171,19 @@ def test_a_bad_packagers_input_prints_one_error_line(tmp_path, image, nfpm):
         '::error::packagers must be a JSON object such as {"deb": {}, "rpm": {"NAME": "value"}}: '
         "one key per packager, each mapping variable names to strings"]
     assert "    at " not in done.stdout + done.stderr
+
+
+@pytest.mark.container
+def test_the_packages_match_the_baseline_but_for_the_accepted_differences(
+        tmp_path, image, nfpm):
+    """mtuspy's baseline run built its packages with cargo-deb and
+    cargo-generate-rpm; accepted.diff holds the differences the owner accepted."""
+    checkout(tmp_path)
+    done = in_container(tmp_path, image, nfpm)
+    assert done.returncode == 0, done.stdout + done.stderr
+    subprocess.run(["podman", "run", "--rm", "--memory=2g", "-v", f"{tmp_path}:/w:Z",
+                    "-v", f"{FIXTURE}:/f:ro", image,
+                    "sh", "/f/collect.sh", "/w/repo/packages", "/w/facts"],
+                   check=True, capture_output=True, timeout=600)
+    assert facts_diff(FIXTURE / "baseline", tmp_path / "facts") == (
+        FIXTURE / "accepted.diff").read_text(encoding="utf-8")

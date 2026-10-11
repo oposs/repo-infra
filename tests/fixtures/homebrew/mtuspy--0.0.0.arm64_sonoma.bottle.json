@@ -1,0 +1,86 @@
+{
+  "local/mtuspy/mtuspy": {
+    "formula": {
+      "name": "mtuspy",
+      "pkg_version": "0.0.0",
+      "path": "Library/Taps/local/homebrew-mtuspy/Formula/mtuspy.rb",
+      "tap_git_path": "Formula/mtuspy.rb",
+      "tap_git_revision": null,
+      "tap_git_remote": null,
+      "desc": "Path MTU discovery tool using native ICMP with Don't Fragment bit",
+      "license": "MIT",
+      "homepage": "https://github.com/oetiker/mtuspy"
+    },
+    "bottle": {
+      "root_url": "https://github.com/oetiker/mtuspy/releases/download/v0.0.0",
+      "cellar": "any_skip_relocation",
+      "rebuild": 0,
+      "date": "2026-10-11T16:06:54Z",
+      "tags": {
+        "arm64_sonoma": {
+          "filename": "mtuspy-0.0.0.arm64_sonoma.bottle.tar.gz",
+          "local_filename": "mtuspy--0.0.0.arm64_sonoma.bottle.tar.gz",
+          "sha256": "8fbd1a5b9fbb8d4281336f6de596e92c2cc6fbfc3a39ee8c1a6b5105b5e33324",
+          "tab": {
+            "homebrew_version": "7.0.9",
+            "changed_files": [],
+            "linkage_files": [],
+            "binary_relocation_files": [],
+            "source_modified_time": 1791734331,
+            "compiler": "clang",
+            "runtime_dependencies": [],
+            "arch": "arm64",
+            "built_on": {
+              "os": "Macintosh",
+              "os_version": "macOS 14.8",
+              "cpu_family": "dunno",
+              "xcode": "15.4",
+              "clt": "16.2.0.0.1.1733547573",
+              "preferred_perl": "5.34"
+            }
+          },
+          "binary_relocation_diagnostics": [],
+          "sbom": {
+            "documentDescribes": [
+              "SPDXRef-Compiler"
+            ],
+            "packages": [
+              {
+                "SPDXID": "SPDXRef-Compiler",
+                "name": "clang",
+                "versionInfo": "15.4",
+                "filesAnalyzed": false,
+                "licenseDeclared": "NOASSERTION",
+                "licenseConcluded": "NOASSERTION",
+                "copyrightText": "NOASSERTION",
+                "downloadLocation": "NOASSERTION",
+                "checksums": [],
+                "externalRefs": []
+              }
+            ],
+            "relationships": [
+              {
+                "spdxElementId": "SPDXRef-Compiler",
+                "relationshipType": "BUILD_TOOL_OF",
+                "relatedSpdxElement": "SPDXRef-Archive-mtuspy-src"
+              }
+            ]
+          },
+          "path_exec_files": [
+            "bin/mtuspy"
+          ],
+          "all_files": [
+            ".brew/mtuspy.rb",
+            "INSTALL_RECEIPT.json",
+            "LICENSE",
+            "README.md",
+            "bin/mtuspy",
+            "sbom.spdx.json",
+            "share/man/man1/mtuspy.1"
+          ],
+          "installed_size": 519553
+        }
+      }
+    }
+  }
+}
