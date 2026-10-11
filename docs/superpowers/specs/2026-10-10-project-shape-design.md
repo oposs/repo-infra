@@ -60,8 +60,10 @@ The result is visible across the terminal tools onboarded so far:
   repository's own workflow builds them, as edaptor and mdmost do today. The
   piece is named as the standard way, and the script's pieces section shows
   whether it is used.
-- **The pieces are proven in a consumer before they are upstreamed**
-  (`teaching-the-standard.md`, stage 2). What has published green is cargo-deb
+- **The pieces are proven in a consumer before they are released**
+  (`teaching-the-standard.md`, stage 2). They are written in repo-infra on a
+  branch and installed into mtuspy from that branch with `apply`, so the
+  consumer runs the bytes repo-infra will ship. What has published green is cargo-deb
   and a formula rewrite with the owner written into it, in edaptor v1.8.0 and
   mdmost v0.7.0. nfpm on unpacked archives and the parametrised rewrite have
   not run anywhere yet. mtuspy has never published a package, a bottle or a
@@ -371,28 +373,34 @@ mtuspy's README advertises `brew install`, `apt install` and `dnf install`
 today, and all three fail: the formula holds all-zero checksums, and the Gitea
 registry has no mtuspy package. The first release below fixes that.
 
-1. On a branch of mtuspy, a temporary `proof.yml` runs on `pull_request` and
+1. In repo-infra, the three pieces are written on a branch with their tests,
+   and not released. Their logic is JavaScript in workflow-lib
+   (`lib/nfpm.js`, `lib/homebrew.js`), called through `actions/github-script`
+   and tested with `node --test`, as for every release piece; Python appears
+   in a piece only for a Python project.
+2. On a branch of mtuspy, a temporary `proof.yml` runs on `pull_request` and
    calls `release-build.yml` with version `0.0.0` and the branch head as `ref`.
    It creates no tag, no release and no release branch. Its first run uses
    mtuspy's release build unchanged, and its output (archives, cargo-deb
    packages, bottles, rewritten formula) is kept as the baseline.
-2. On the same branch, the release build is rewritten as three local workflows
-   shaped exactly like the pieces, without piece markers, called from
-   `release-build.yml`. The `Cargo.toml` package tables move into `nfpm.yaml`.
-   The `proof.yml` run must be green, and its output is compared with the
-   baseline: archive layout and names, package file lists, control fields and
-   postinst, and the formula. edaptor v1.8.0's published packages are a second
-   reference for what a real cargo-deb release contains.
-3. The branch drops `proof.yml` and merges, and mtuspy is released through the
-   local workflows. The release must publish to every channel: the GitHub
-   release, the Gitea apt and rpm registries, the Homebrew tap and mise. Each
-   is installed once from its channel and `mtuspy --version` is run.
-4. The three files are copied into repo-infra unchanged except for the marker
-   and the header block, with tests, and repo-infra is released.
-5. mtuspy installs the pieces with `apply --item` in place of its local
-   copies, closes every gap the shape review reports (demo, badges, install
-   text, writing style), and is released again. That release is the first
-   through the pieces, and its files become `references/examples/mtuspy/`.
+3. On the same branch, mtuspy installs the pieces with `apply --item`, run
+   from the repo-infra branch, and `release-build.yml` calls them. The
+   `Cargo.toml` package tables move into `nfpm.yaml`. The `proof.yml` run must
+   be green, and its output is compared with the baseline: archive layout and
+   names, package file lists, control fields and postinst, and the formula.
+   edaptor v1.8.0's published packages are a second reference for what a real
+   cargo-deb release contains. A fix the proof forces is made in the piece on
+   the repo-infra branch, at the same unreleased version, and installed in
+   mtuspy again.
+4. The branch drops `proof.yml` and merges, and mtuspy is released through the
+   pieces. The release must publish to every channel: the GitHub release, the
+   Gitea apt and rpm registries, the Homebrew tap and mise. Each is installed
+   once from its channel and `mtuspy --version` is run.
+5. repo-infra releases the pieces with the bytes mtuspy carries, and the
+   script of the released plugin reports them current in mtuspy.
+6. mtuspy closes every gap the shape review reports (demo, badges, install
+   text, writing style) and is released again. Its files become
+   `references/examples/mtuspy/`.
 
 Then, one repository per run and each with the owner's OK:
 
@@ -406,15 +414,20 @@ Then, one repository per run and each with the owner's OK:
 
 Pieces are tested by running them (D19).
 
-- `ri-release-homebrew`: pytest runs the url rewrite, the formula rewrite and
-  the bottle-block generation as the piece ships them, on the formula template,
-  fake archives and a recorded `brew bottle --json` output. Cases: two
-  bottles, the optional one missing, zero bottles, a sha256 marker missing, a
-  `url` line missing, a second run that changes nothing.
-- `ri-release-nfpm`: pytest runs the nfpm step in a podman container with the
-  pinned nfpm on a fixture archive and a config shaped like mtuspy's. It
-  compares file list, control fields and postinst with the baseline packages
-  from step 1 of the proof. A `packagers` key that shadows `VERSION` fails.
+- `ri-release-homebrew`: `lib/homebrew.test.js` runs the url rewrite, the
+  bottle rename, the formula rewrite and the bottle-block generation with
+  `node --test`, on the formula template, fake archives and the json shape
+  `brew bottle --json` writes. Cases: two bottles, the optional one missing,
+  zero bottles, a sha256 marker missing, a `url` line missing, a second run
+  that changes nothing. pytest holds the template the library tests use to the
+  one in `project-shape.md`, and checks the json recorded in mtuspy's baseline
+  run against the keys the library reads.
+- `ri-release-nfpm`: `lib/nfpm.test.js` runs every input check and refusal
+  with stand-ins for nfpm, dpkg-deb and rpm; a `packagers` key that shadows
+  `VERSION` fails. pytest runs the library with node in a podman container
+  with the pinned nfpm on fixture archives and a config shaped like mtuspy's,
+  and compares file list, control fields and postinst with the baseline
+  packages from step 2 of the proof.
 - `ri-release-rust-binaries`: structure tests (the seven targets, `crt-static`
   only on musl, the man job feeding every non-Windows leg), and the packing
   step run on a fake `target/` tree, checking the archive layout and names,
@@ -432,12 +445,13 @@ Pieces are tested by running them (D19).
    script wording in `SKILL.md` and `apply.md`, the install snippets and the
    pointer in `release-flow.md`, D32 in `SKILL.md`, the amended rule in
    `conventions.md`. This can be released on its own.
-2. The proof in mtuspy and its first release (steps 1 to 3 above).
-3. The three pieces in repo-infra, with tests, catalogue, generations and
-   `CHANGES.md`, and a release.
-4. mtuspy on the pieces with its full shape, released, and recorded as the
-   example (step 5 above).
-5. The other conversions, in the order above.
+2. The three pieces in repo-infra, with tests, catalogue, generations and
+   `CHANGES.md`, on a branch and not released (step 1 above).
+3. The proof in mtuspy and its first release (steps 2 to 4 above).
+4. The repo-infra release (step 5 above).
+5. mtuspy with its full shape, released, and recorded as the example (step 6
+   above).
+6. The other conversions, in the order above.
 
 ## Closes
 
