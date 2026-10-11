@@ -277,6 +277,9 @@ Candidates a repository's files suggest but do not decide:
   ask for it (`man-page` in `references/project-shape.md`).
 - `configure.ac` with `cpanfile` suggests `ri-release-source-tarball`, which
   builds the `make dist` tarball before the release pull request exists.
+- `Cargo.toml` with a binary users install suggests `ri-release-rust-binaries`,
+  `ri-release-nfpm` with an `nfpm.yaml`, and `ri-release-homebrew` with
+  `Formula/<bin>.rb` from the template in `references/project-shape.md`.
 - `book.toml` is a documentation site. No piece covers it.
 
 ## Administration items

@@ -143,7 +143,7 @@ for it; the review says so instead of reporting a gap.
 Verify: `release_assets` lists the seven archives and the latest release
 carries them.
 
-Met by: The seven archives. mise's `github:` backend picks an asset by these
+Met by: `ri-release-rust-binaries`. mise's `github:` backend picks an asset by these
 names, so `mise use -g github:<owner>/<repo>` works without further setup.
 
 ### `source-archive`
@@ -170,7 +170,8 @@ registry.
 
 Met by:
 
-- a Rust program: amd64 and arm64 packages built from the musl archives;
+- a Rust program: amd64 and arm64 packages built from the musl archives by
+  `ri-release-nfpm`;
 - an interpreted program that bundles native modules (SmokePing's
   `thirdparty/` compiles XS modules such as `FCGI` and `Socket6`): packages per
   architecture;
@@ -186,9 +187,9 @@ Requires: `Formula/<bin>.rb` in the repository, which is its own tap.
 Verify: The formula exists, `release_files` lists it, its version is the
 latest release and no `sha256` line is all zeros.
 
-Met by: For a Rust program, bottles and a formula rewritten on each release
-from the template under "Formula template". For an interpreted program, a
-formula that builds from the source archive.
+Met by: For a Rust program, `ri-release-homebrew`, which bottles the formula
+and rewrites it on each release from the template under "Formula template".
+For an interpreted program, a formula that builds from the source archive.
 
 No piece builds the interpreted variants of `linux-packages` and `homebrew`
 beyond what `ri-release-source-tarball` covers. The SmokePing onboarding proves
@@ -284,7 +285,7 @@ from the manual's front matter, so a daemon ships `man/<page>.8`. The Windows
 
 ## Formula template
 
-The release build rewrites the `version` line, the four `sha256` lines found by
+`ri-release-homebrew` rewrites the `version` line, the four `sha256` lines found by
 their marker comments, and the block between `# BOTTLE-START` and
 `# BOTTLE-END`. Each `url` line stands directly above its `sha256` line. The
 formula belongs to the repository: it decides what else is installed, such as
