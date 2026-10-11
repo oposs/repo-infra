@@ -37,7 +37,7 @@ REFS = ROOT / "skills/repo-infra/references"
 def test_the_references_the_skill_names_exist():
     skill = (ROOT / "skills/repo-infra/SKILL.md").read_text(encoding="utf-8")
     for name in ("catalogue.md", "onboarding.md", "conventions.md", "release-flow.md",
-                 "teaching-the-standard.md", "examples/repo-infra"):
+                 "teaching-the-standard.md", "project-shape.md", "examples/repo-infra"):
         assert f"references/{name}" in skill
         assert (REFS / name).exists()
 
@@ -117,3 +117,38 @@ def test_the_skill_points_at_the_prose_skills():
     for name in ("writing-style", "man-pages"):
         assert "`%s`" % name in text
         assert (ROOT / "skills" / name / "SKILL.md").is_file()
+
+
+def flat(path):
+    return " ".join(path.read_text(encoding="utf-8").split())
+
+
+def test_the_loops_run_the_script_and_only_the_command_reviews_the_shape():
+    for path in (SKILL, ROOT / "commands/apply.md", REFS / "onboarding.md"):
+        text = flat(path)
+        assert "`check` until it exits 0" not in text, path.name
+        assert "the script until it exits 0" in text, path.name
+    apply = flat(ROOT / "commands/apply.md")
+    assert "Run `/repo-infra:check` first" not in apply
+    assert "Run the script first" in apply
+
+
+def test_check_runs_the_shape_review_apart_from_the_exit_code():
+    text = flat(ROOT / "commands/check.md")
+    assert "references/project-shape.md" in text
+    assert "does not change the exit code" in text
+    for state in ("`met`", "`gap`", "`excepted`"):
+        assert state in text
+
+
+def test_onboarding_reviews_the_shape_once_and_release_flow_points_at_the_snippets():
+    assert "project-shape.md" in flat(REFS / "onboarding.md")
+    release = flat(REFS / "release-flow.md")
+    assert "config-manager" not in release
+    assert "references/project-shape.md" in release
+
+
+def test_conventions_names_exceptions_and_the_skip_rename():
+    text = flat(REFS / "conventions.md")
+    assert "`exceptions`" in text
+    assert "rename it to `exceptions`" in text

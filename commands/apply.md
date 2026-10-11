@@ -2,10 +2,16 @@
 description: Bring this repository up to the infrastructure standard, on a branch, through a pull request
 ---
 
-Run `/repo-infra:check` first and show the user the report. If a piece reads
-`edited`, ask the user before acting on it. If the repository has no pieces yet,
-it is an onboarding: follow `references/onboarding.md` in the skill, where
-`apply --item <piece>` copies each piece.
+Run the script first and show the user the report:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" check
+```
+
+If a piece reads `edited`, ask the user before acting on it. If the repository
+has no pieces yet, it is an onboarding: follow `references/onboarding.md` in the
+skill, where `apply --item <piece>` copies each piece and the shape review runs
+once. An update runs no shape review; `/repo-infra:check` does.
 
 Before applying, read the repository's own build, test and release setup and
 compare it to what you are about to install. A need no piece fits is not a
@@ -54,7 +60,7 @@ never edits a caller or the config. In order:
    merge it prints the notes but not the findings; run `check` after the merge.
 
 Then you change the callers and the config from the notes and findings, and run
-`check` until it exits 0.
+the script until it exits 0.
 
 ### What it does with each file
 
