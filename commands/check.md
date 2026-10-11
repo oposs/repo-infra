@@ -61,8 +61,9 @@ part of the report and does not change the exit code.
 2. State which triggers apply, each with its evidence, for example "has a
    command line: `src/main.rs` parses arguments with clap".
 3. Give every rule of those triggers one state: `met`, `gap` with what is
-   missing, or `excepted` with the reason recorded under `exceptions` in
-   `.github/repo-infra.json`.
+   missing, `excepted` with the reason recorded under `exceptions` in
+   `.github/repo-infra.json`, or `does not apply` with the kind of program its
+   `Requires:` names, which needs no exception.
 4. List the exceptions whose id matches no rule, and the piece inputs that lack
    their paired exceptions.
 

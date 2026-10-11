@@ -72,8 +72,11 @@ def test_the_install_snippets_settle_the_differences_of_issue_57():
     assert "/etc/apt/keyrings/gitea-<gitea-owner>.asc" in blocks
     assert "-o /etc/yum.repos.d/<gitea-owner>.repo" in blocks
     assert "config-manager" not in blocks
-    assert "brew trust --formula <owner>/<name>/<name>" in blocks
-    assert "mise use -g github:<owner>/<name>" in blocks
+    assert "/debian <distribution> <component>" in blocks
+    assert "<name>" not in text()
+    assert "<gitea-url>/api/packages/<gitea-owner>/rpm/<group>.repo" in text()
+    assert "brew trust --formula <owner>/<repo>/<bin>" in blocks
+    assert "mise use -g github:<owner>/<repo>" in blocks
 
 
 def test_the_formula_template_carries_every_marker_and_installs_every_man_page():

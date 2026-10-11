@@ -137,7 +137,7 @@ def test_check_runs_the_shape_review_apart_from_the_exit_code():
     text = flat(ROOT / "commands/check.md")
     assert "references/project-shape.md" in text
     assert "does not change the exit code" in text
-    for state in ("`met`", "`gap`", "`excepted`"):
+    for state in ("`met`", "`gap`", "`excepted`", "`does not apply`"):
         assert state in text
 
 

@@ -69,7 +69,8 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
   fixed path. `references/onboarding.md`
 - D21, D27: crates.io through Trusted Publishing (`references/conventions.md`);
   Gitea package registries (`references/release-flow.md`).
-- D22, D23: musl and man pages are pieces a caller chooses. `references/catalogue.md`
+- D22, D23: musl and man pages are pieces a caller chooses; D32 makes them rules of the shape
+  (`references/project-shape.md`). `references/catalogue.md`
 - D24: a Rust workspace names its lint and test crates. `references/conventions.md`
 - D26: folded into D28. D28, D31: every release is built and tested before the
   merge, and its pull request skips `ci.yml`. `references/release-flow.md`

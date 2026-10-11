@@ -34,7 +34,7 @@ what is wrong and never gates the work.
 6. **Review the shape once.** Run the shape review of `commands/check.md`
    against `references/project-shape.md`, then agree with the owner which gaps
    this run closes and which become `exceptions` in `.github/repo-infra.json`,
-   each with its reason.
+   each with its reason. After writing `exceptions`, run the script again.
 7. **Open the pull request with the `no-changelog` label at creation.** GitHub
    keeps only the latest check run per context, so a label added after the
    changelog check failed produces a green, skipped run and waves the merge
