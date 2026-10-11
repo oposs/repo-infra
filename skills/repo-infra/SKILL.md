@@ -26,11 +26,9 @@ the repository: what it lacks goes into a caller.
 ## The two jobs
 
 **Onboarding** a repository: read it, map each need to a piece, copy the pieces
-with `apply --item <piece>`, write the callers, run `check` until it exits 0.
-`references/onboarding.md` has the procedure, the caller rules, the
-`version_files` entries and the administration items.
-`references/catalogue.md` lists the pieces and `references/examples/repo-infra/`
-holds real callers.
+with `apply --item <piece>`, write the callers, run the script until it exits 0,
+then review the shape once. `references/onboarding.md` has the procedure, and
+`references/project-shape.md` what a released project contains.
 
 **Updating** a repository already in the fold:
 
@@ -41,7 +39,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply
 
 `apply` installs and replaces pieces on the `repo-infra/apply` branch, one
 commit each, prints the upgrade notes of every version it crossed, and stops.
-You then change the callers and the config from those notes and run `check`
+You then change the callers and the config from those notes and run the script
 until it exits 0. `/repo-infra:check` and `/repo-infra:apply` walk through it.
 
 When no piece fits a need, do not patch the repository around the gap: ask the
@@ -71,11 +69,13 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
   fixed path. `references/onboarding.md`
 - D21, D27: crates.io through Trusted Publishing (`references/conventions.md`);
   Gitea package registries (`references/release-flow.md`).
-- D22, D23: musl and man pages are pieces a caller chooses. `references/catalogue.md`
+- D22, D23: musl and man pages are pieces a caller chooses; D32 makes them rules of the shape
+  (`references/project-shape.md`). `references/catalogue.md`
 - D24: a Rust workspace names its lint and test crates. `references/conventions.md`
 - D26: folded into D28. D28, D31: every release is built and tested before the
   merge, and its pull request skips `ci.yml`. `references/release-flow.md`
 - D30: pieces and callers instead of detection and assembly. This file.
+- D32: a project has a shape, with exceptions. `references/project-shape.md`
 
 ## Traps that stay
 
@@ -107,9 +107,9 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
 
 ## Reading further
 
-- `references/catalogue.md`: every piece, what it is for, its inputs and a
-  caller snippet.
+- `references/catalogue.md`: every piece, its inputs and a caller snippet.
 - `references/onboarding.md`: the procedure for a repository not yet in the fold.
+- `references/project-shape.md`: what a released project contains, by trigger.
 - `references/examples/repo-infra/`: repo-infra's own callers and config.
 - `references/conventions.md`: the house rules that cannot be derived: the
   changelog deviation, injected names, markers and bytes, the config keys.

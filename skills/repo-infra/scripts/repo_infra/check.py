@@ -23,11 +23,14 @@ from .report import Item
 PieceState = namedtuple("PieceState", "state installed edited")
 
 CONFIG = ".github/repo-infra.json"
-# What the borrowed release machinery reads (release-pr.yml, lib/*.js).
+# What the borrowed release machinery reads (release-pr.yml, lib/*.js), and
+# the exceptions the shape review reads (D32).
 KEYS = ("version_files", "release_assets", "release_files", "gitea_packages",
-        "moving_major_tag", "rust")
+        "moving_major_tag", "rust", "exceptions")
 OBSOLETE = ("ecosystems", "ci", "ci_local", "publish", "build", "publish_local",
-            "release_build", "release_build_local", "skip", "answers")
+            "release_build", "release_build_local", "answers")
+# D30 removed `skip`; D32 gave its purpose to `exceptions`, keyed by rule id.
+RENAMED = {"skip": "exceptions"}
 SCANNED = (".github", "build", "m4")
 REQUIRED_WORKFLOWS = ("ci.yml", "changelog.yml")
 
@@ -186,6 +189,12 @@ def refused_release_files(entries, version_files):
     return refused
 
 
+def _reasons(value):
+    """True for an object whose every value is a non-empty reason (D32)."""
+    return isinstance(value, dict) and all(
+        isinstance(reason, str) and reason.strip() for reason in value.values())
+
+
 def config_items(repo_root, docs):
     path = pathlib.Path(repo_root) / CONFIG
     if not path.is_file():
@@ -205,10 +214,20 @@ def config_items(repo_root, docs):
                           f"{', '.join(old)}: no longer read; the callers state this now "
                           "(D30). Remove them"))
     strange = [key for key in config
-               if key not in KEYS and key not in OBSOLETE and not key.startswith("_")]
+               if key not in KEYS and key not in OBSOLETE and key not in RENAMED
+               and not key.startswith("_")]
     if strange:
         items.append(Item("config", "repo-infra.json", "problem",
                           f"{', '.join(strange)}: not a key repo-infra reads"))
+    if "skip" in config:
+        items.append(Item("config", "skip", "problem",
+                          "skip is now exceptions (D32): rename the key, and rewrite each "
+                          "of its keys as a rule id of references/project-shape.md with "
+                          "the reason the rule does not apply"))
+    if "exceptions" in config and not _reasons(config["exceptions"]):
+        items.append(Item("config", "exceptions", "problem",
+                          "exceptions must be an object that maps each rule id of "
+                          "references/project-shape.md to a non-empty reason"))
     if not config.get("version_files"):
         items.append(Item("config", "version_files", "problem",
                           "version_files is empty; Create release PR would bump no file"))

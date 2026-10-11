@@ -28,10 +28,14 @@ what is wrong and never gates the work.
    install every missing core piece in one run. Then write the callers and
    `.github/repo-infra.json`, starting from the closest example in
    `references/examples/repo-infra/`.
-5. **Run `check` until it exits 0.** It reads the callers against the pieces
+5. **Run the script until it exits 0.** It reads the callers against the pieces
    they call, so a misspelt input or a missing `needs:` entry shows up before
    the first run on GitHub does.
-6. **Open the pull request with the `no-changelog` label at creation.** GitHub
+6. **Review the shape once.** Run the shape review of `commands/check.md`
+   against `references/project-shape.md`, then agree with the owner which gaps
+   this run closes and which become `exceptions` in `.github/repo-infra.json`,
+   each with its reason. After writing `exceptions`, run the script again.
+7. **Open the pull request with the `no-changelog` label at creation.** GitHub
    keeps only the latest check run per context, so a label added after the
    changelog check failed produces a green, skipped run and waves the merge
    through. Apply the administration items in the order below, each one confirmed
@@ -269,7 +273,8 @@ Candidates a repository's files suggest but do not decide:
 
 - `docs/manual.md` suggests `ri-ci-man`, with the `man` and `man-lua` pieces
   and `MAN_NAME` plus `include build/man.mk` in the Makefile (the `man-pages`
-  skill has the rest).
+  skill has the rest). A program with a command line and no manual gets one:
+  ask for it (`man-page` in `references/project-shape.md`).
 - `configure.ac` with `cpanfile` suggests `ri-release-source-tarball`, which
   builds the `make dist` tarball before the release pull request exists.
 - `book.toml` is a documentation site. No piece covers it.

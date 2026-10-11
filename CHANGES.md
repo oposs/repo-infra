@@ -12,8 +12,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `/repo-infra:check` reviews the project's shape after the script's report: which triggers apply (a command line, a terminal, a web interface, installed by users) and, for each rule, `met`, `gap`, `excepted` or `does not apply`. The review leaves the exit code of `check` alone. `references/project-shape.md` in the skill lists the rules, the README badges, one install snippet per channel and a Homebrew formula template (#57).
+- `.github/repo-infra.json` accepts `exceptions`, which maps a rule id of the shape to the reason it does not apply. `check` reports a value that is not an object of non-empty reasons, and tells a repository that still has `skip` to rename it to `exceptions`. Onboarding reviews the shape once and records the agreed `exceptions`.
 
 ### Changed
+- `/repo-infra:apply` starts with the script's report instead of `/repo-infra:check`, so an update runs no shape review.
+- The install commands in the skill add the rpm repository with one `curl` for dnf4 and dnf5 instead of the two `dnf config-manager` variants, and the Debian commands also run `apt install`. The Homebrew commands gain a `brew trust` line, and the registry commands follow the `distribution`, `component` and `group` set in `gitea_packages` (#57).
 
 ### Fixed
 

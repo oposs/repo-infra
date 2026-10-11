@@ -71,13 +71,16 @@ is wrong for this directory specifically, not a style preference to override.
 
 ## `.github/repo-infra.json` holds what a caller cannot say
 
-The file keeps only what the release machinery (`release-pr.yml`, `lib/*.js`)
-reads and what cannot be seen in a caller. Nothing writes it: it is hand-edited,
-and `check` and `apply` only read it. `check` reports a key it does not read as
-a `problem`, and the keys of the old assembler (`ecosystems`, `ci`, `publish`, `build`,
-`release_build`, `skip`, `answers` and the three that ended in `_local`) as
-`problem` too, so a migrated repository is told to remove
-them (D30). The callers state the same facts directly.
+The file keeps what the release machinery (`release-pr.yml`, `lib/*.js`) reads,
+what cannot be seen in a caller, and the `exceptions` the shape review reads
+(D32, which amends D30 here). Nothing writes it: it is hand-edited, and `check`
+and `apply` only read it. `check` reports a key it does not read as a
+`problem`, and the keys of the old assembler (`ecosystems`, `ci`, `publish`,
+`build`, `release_build`, `answers` and the three that ended in `_local`) as
+`problem` too, so a migrated repository is told to remove them (D30). The
+callers state the same facts directly. D30 also removed `skip`; a repository
+that still has it is told to rename it to `exceptions` and to rewrite its keys
+as rule ids.
 
 - `version_files`: where the release writes the version, and what it reads back
   to confirm the write took (D5, D6). `references/onboarding.md` has the entries
@@ -93,6 +96,10 @@ them (D30). The callers state the same facts directly.
   tags, and a floating major tag is a promise to keep it working forever.
 - `rust`: the crates `ri-ci-rust` lints and tests (D24, below). It stays because
   `lib/rust-plan.js` reads it at run time (Decision G of D30).
+- `exceptions`: one reason per rule id of `references/project-shape.md`, for a
+  rule that does not apply to this repository (D32). `check` reports a value
+  that is not an object of non-empty strings; only the shape review reads the
+  ids and the reasons.
 
 `ri-publish-crates-io` carries a prerequisite that lives outside the repository:
 crates.io pins a Trusted Publisher to a *(repository, workflow filename)* pair,

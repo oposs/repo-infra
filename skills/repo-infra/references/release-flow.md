@@ -305,19 +305,8 @@ as success only when the stored file's SHA-256 equals the asset's. For an
 counts as success when a file with the same name, version-release and
 architecture exists, and the job log says the content was not compared.
 
-What users type on Debian and Ubuntu:
-
-    sudo install -d -m 0755 /etc/apt/keyrings
-    sudo curl -o /etc/apt/keyrings/gitea-oposs.asc https://gitea.oetiker.ch/api/packages/oposs/debian/repository.key
-    echo "deb [signed-by=/etc/apt/keyrings/gitea-oposs.asc] https://gitea.oetiker.ch/api/packages/oposs/debian stable main" | sudo tee /etc/apt/sources.list.d/oposs.list
-
-On Fedora 41 and later (dnf5):
-
-    sudo dnf config-manager addrepo --from-repofile=https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
-
-On RHEL, Rocky and Alma, and Fedora before 41 (dnf4):
-
-    sudo dnf config-manager --add-repo https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
+What users type to install from the registry is under "Install snippets" in
+`references/project-shape.md`.
 
 ## Check these still hold
 

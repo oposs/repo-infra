@@ -2,7 +2,8 @@
 description: Report how far this repository has drifted from the infrastructure standard
 ---
 
-Run the checker and read the report to the user:
+The command has two parts: the script's report and the shape review. Run the
+script and read its report to the user:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" check
@@ -48,5 +49,23 @@ user: the edit may be deliberate, and moving it into a caller is a decision for
 them. A repository that has no pieces yet gets onboarded: `references/onboarding.md`
 in the skill has the procedure.
 
-`check` exits 1 when any row needs attention and 0 otherwise. That exit code is
-the whole result, so trust it over guessing from the text.
+The script exits 1 when any row needs attention and 0 otherwise. That exit
+code is the result of the script, so trust it over guessing from the text.
+
+## The shape review
+
+After the report, review what the project contains. The review is a separate
+part of the report and does not change the exit code.
+
+1. Read `references/project-shape.md` in the skill.
+2. State which triggers apply, each with its evidence, for example "has a
+   command line: `src/main.rs` parses arguments with clap".
+3. Give every rule of those triggers one state: `met`, `gap` with what is
+   missing, `excepted` with the reason recorded under `exceptions` in
+   `.github/repo-infra.json`, or `does not apply` with the kind of program its
+   `Requires:` names, which needs no exception.
+4. List the exceptions whose id matches no rule, and the piece inputs that lack
+   their paired exceptions.
+
+Report a gap; do not close it from here. Onboarding agrees with the owner which
+gaps a run closes (`references/onboarding.md`).
