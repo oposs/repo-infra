@@ -91,7 +91,7 @@
     "1": "e53112b4c3db77c02e81588934e1c6719d2663154839ec09d645484a571a9340"
   },
   "pieces/ri-release-homebrew/ri-release-homebrew.yml": {
-    "1": "9f86a1fc834eee016e20227b27a7cab5fe97f2d8f37e6c79fd0e76ad16aee169"
+    "1": "ab30fc7a70794ce8e450413b7d646bc893d46cf05390458b760d1be696d820cf"
   },
   "pieces/ri-release-nfpm/ri-release-nfpm.yml": {
     "1": "7212d14bb76aae1a942e841efb9daba45012a4f605c599d88dba65b188f0a2be"
@@ -195,10 +195,10 @@
     "9": "364df87997872aaa5563df3a777b39f2712b362deff40e8229aecf3e676df7a8"
   },
   "pieces/workflow-lib/lib/nfpm.js": {
-    "9": "e2c4cad8785e36ee74398f6a000e8065514eb3bde786846f8215f72bc4040dae"
+    "9": "bb41df4da6e18e04bbc27fe9da949942a3ee4f815e963c51aa0273280a43914e"
   },
   "pieces/workflow-lib/lib/nfpm.test.js": {
-    "9": "09fa2043a420f90e80c62a2fca08ba207626f92431154121512eb0a6a70b6afd"
+    "9": "b6f43d9f6f1f1eaa2704f2420301e53f133a3cb52e425b861482238464744a44"
   },
   "pieces/workflow-lib/lib/publish.js": {
     "6": "4171fd3b6a93256be2cd20321bb7fffc4dec8a8422730125ac689c105cd62523",
