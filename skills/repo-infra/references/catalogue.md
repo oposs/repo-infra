@@ -593,11 +593,11 @@ Installed at `.github/workflows/release-pr.yml`.
 
 **Permissions it needs:** actions: write, checks: write, contents: write, pull-requests: write, statuses: write
 
-### workflow-lib v8
+### workflow-lib v9
 
 Installed at `.github/workflows/lib`.
 
-**Purpose:** The JavaScript the release flow and the publish pieces run (D8).
+**Purpose:** The JavaScript the release flow, the publish pieces and the release build pieces run (D8, D32).
 
 **Choose it when:** Always.
 
