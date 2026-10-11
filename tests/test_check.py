@@ -328,3 +328,34 @@ def test_gitea_packages_without_url_or_owner_is_a_problem(tmp_path, packages, ab
                    GITEA_DOCS)
     assert [(n, s) for n, s, _ in found] == [("gitea_packages", "problem")]
     assert f"lacks {absent};" in found[0][2]
+
+
+EXCEPTIONS_PROBLEM = ("exceptions", "problem",
+                      "exceptions must be an object that maps each rule id of "
+                      "references/project-shape.md to a non-empty reason")
+
+
+def test_exceptions_that_map_rule_ids_to_reasons_are_accepted(tmp_path):
+    assert config(tmp_path, {"version_files": VERSIONS,
+                             "exceptions": {"homebrew": "a service that needs root"}}) == []
+
+
+def test_an_empty_exceptions_object_is_accepted(tmp_path):
+    assert config(tmp_path, {"version_files": VERSIONS, "exceptions": {}}) == []
+
+
+@pytest.mark.parametrize("value", [
+    [], "homebrew", 1, None, {"homebrew": ""}, {"homebrew": "   "}, {"homebrew": 1},
+    {"homebrew": None}, {"homebrew": ["a reason"]},
+])
+def test_exceptions_that_are_not_an_object_of_reasons_are_a_problem(tmp_path, value):
+    found = config(tmp_path, {"version_files": VERSIONS, "exceptions": value})
+    assert found == [EXCEPTIONS_PROBLEM]
+
+
+def test_skip_is_told_to_become_exceptions(tmp_path):
+    found = config(tmp_path, {"version_files": VERSIONS, "skip": {"ci-man": True}})
+    assert found == [("skip", "problem",
+                      "skip is now exceptions (D32): rename the key, and rewrite each of "
+                      "its keys as a rule id of references/project-shape.md with the reason "
+                      "the rule does not apply")]
