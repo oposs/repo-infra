@@ -24,6 +24,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The install commands in the skill add the rpm repository with one `curl` for dnf4 and dnf5 instead of the two `dnf config-manager` variants, and the Debian commands also run `apt install`. The Homebrew commands gain a `brew trust` line, and the registry commands follow the `distribution`, `component` and `group` set in `gitea_packages` (#57).
 
 ### Fixed
+- The catalogue and the header of `ri-release-source-tarball` named its artifact `release-asset-source-tarball`; the piece uploads `release-asset-source`. `apply` installs the corrected header as `ri-release-source-tarball` v2.
 
 ## 1.0.2 - 2026-10-08
 ### Fixed

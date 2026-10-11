@@ -469,7 +469,7 @@ binaries:
     bin: mytool
 ```
 
-### ri-release-source-tarball v1
+### ri-release-source-tarball v2
 
 Installed at `.github/workflows/ri-release-source-tarball.yml`.
 
@@ -479,7 +479,7 @@ Installed at `.github/workflows/ri-release-source-tarball.yml`.
 
 **The repository supplies:** ./bootstrap, configure and `make dist`.
 
-**Produces:** The artifact release-asset-source-tarball (`*.tar.gz`); list `*.tar.gz` in release_assets.
+**Produces:** The artifact release-asset-source (`*.tar.gz`); list `*.tar.gz` in release_assets.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|

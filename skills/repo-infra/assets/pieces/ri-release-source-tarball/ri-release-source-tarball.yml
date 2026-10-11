@@ -1,9 +1,9 @@
-# repo-infra: ri-release-source-tarball v1
+# repo-infra: ri-release-source-tarball v2
 #
 # Purpose: Build the `make dist` tarball before the merge (D28).
 # Choose: The project is autotools and ships a source tarball.
 # Supplies: ./bootstrap, configure and `make dist`.
-# Produces: The artifact release-asset-source-tarball (`*.tar.gz`); list `*.tar.gz` in release_assets.
+# Produces: The artifact release-asset-source (`*.tar.gz`); list `*.tar.gz` in release_assets.
 # Call:
 #   tarball:
 #     uses: ./.github/workflows/ri-release-source-tarball.yml

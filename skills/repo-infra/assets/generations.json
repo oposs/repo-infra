@@ -103,7 +103,8 @@
     "1": "05c2fea8aa5765ed6a75b40d6aa58d4cd4ca85635f1fa88ab6c609f74547891d"
   },
   "pieces/ri-release-source-tarball/ri-release-source-tarball.yml": {
-    "1": "83530e226671f4abe714edf7d9fbdaa453506a0624e7c851ee058d11daf8e14a"
+    "1": "83530e226671f4abe714edf7d9fbdaa453506a0624e7c851ee058d11daf8e14a",
+    "2": "5765579a65aa4d17fea152517819872603ce41943fe971248a0ed7ca90652f14"
   },
   "pieces/workflow-lib/lib/assets.js": {
     "4": "d48fb2a0fed392729b50322c4335e9bd67fa32e770666fee96f6607f9e7fa784",

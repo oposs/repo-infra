@@ -25,6 +25,7 @@ def test_the_tarball_job_builds_at_ref_and_uploads_a_release_asset():
     upload = job["steps"][-1]
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["with"]["name"] == "release-asset-source"
+    assert "# Produces: The artifact release-asset-source (" in PIECE.read_text(encoding="utf-8")
     assert upload["with"]["if-no-files-found"] == "error"
     assert job["timeout-minutes"] == 30
 
