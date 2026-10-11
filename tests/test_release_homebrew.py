@@ -29,11 +29,10 @@ def step(job, name):
 
 def test_the_bottle_legs_and_the_formula_condition():
     jobs = doc()["jobs"]
-    assert jobs["bottles"]["strategy"]["matrix"]["include"] == [
-        {"os": "macos-14"}, {"os": "macos-15-intel", "optional": True}]
-    assert jobs["bottles"]["continue-on-error"] == "${{ matrix.optional || false }}"
+    assert jobs["bottles"]["strategy"]["matrix"]["include"] == [{"os": "macos-14"}]
+    assert "continue-on-error" not in jobs["bottles"]
     assert jobs["formula"]["needs"] == "bottles"
-    assert jobs["formula"]["if"] == "${{ !cancelled() }}"
+    assert "if" not in jobs["formula"]
 
 
 def test_brew_trust_runs_on_homebrew_6_and_a_failure_is_not_swallowed():
