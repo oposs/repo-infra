@@ -253,8 +253,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A changelog gate on every pull request. It compares the `[Unreleased]` block at
   base and head, so editing an old released section does not satisfy it. It is a
   required check, so `release/*` branches and the `no-changelog` label are the
-  deliberate escape hatches — both job-level, so an exempt pull request skips the
-  job and the required check goes green on its own.
+  deliberate escape hatches. Both are job-level, so an exempt pull request skips
+  the job and the required check goes green on its own.
 - **Create release PR**: computes the next version from the tags, rolls
   `CHANGES.md`, sets every declared version file and opens a `release/vX.Y.Z` pull
   request. It refuses to run when no check has reported on the commit, because a
@@ -262,7 +262,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Publish release**: reads the released version back out of `CHANGES.md`,
   refuses to tag when any version file disagrees, creates an annotated tag and
   publishes the release. It exposes `version`, `tag` and `release_id` as job
-  outputs — the seam that per-language publish add-ons will attach to.
+  outputs, the seam that per-language publish add-ons will attach to.
 - `RELEASING.md` documenting the two-step release and, more importantly, why each
   of its unusual parts is the way it is.
 
