@@ -67,9 +67,12 @@ A new piece needs:
 - tests that run the steps of the piece, because nothing is standardised that
   has not been shown to run.
 
-The repository's own conversion pull request merges **after** that has shipped
-and the plugin has been updated. So no repository carries a shape the standard
-does not have, and nothing is standardised that has not been shown to run.
+The repository's own conversion pull request may merge before that ships, once
+the proof run is green and the upstream pull request changes no byte of an
+installed piece any more. After repo-infra has shipped and the plugin has been
+updated, `check` runs against the released plugin, and a piece it does not read
+as `current` is installed again. Nothing is standardised that has not been
+shown to run.
 
 ## The threshold you will hit most often
 
