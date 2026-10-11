@@ -137,6 +137,7 @@ test('a packagers value reaches the config of its packager only', () => {
 
 for (const [packagers, expected] of [
   ['{deb}', /^packagers is not JSON: /],
+  ['{\n"deb": {},\n"rpm": x\n}', /^packagers is not JSON: /],
   ['{"deb": "x"}', /^packagers must be a JSON object/],
   ['{}', /^packagers must be a JSON object/],
   ['[]', /^packagers must be a JSON object/],

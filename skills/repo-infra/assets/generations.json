@@ -182,10 +182,10 @@
     "9": "ed807eb047b26d700df69694681d197a2ec1b3fe9b0abf0c418ca8f26981d7d5"
   },
   "pieces/workflow-lib/lib/nfpm.js": {
-    "9": "9bcefff1e9b9450912f6335435f0049f40e7521476d90b3f26fb626d7625cca4"
+    "9": "e2c4cad8785e36ee74398f6a000e8065514eb3bde786846f8215f72bc4040dae"
   },
   "pieces/workflow-lib/lib/nfpm.test.js": {
-    "9": "003b32d4257cfbb5b317fd61287336feb65d4ecb9d0c041af846bba463072637"
+    "9": "09fa2043a420f90e80c62a2fca08ba207626f92431154121512eb0a6a70b6afd"
   },
   "pieces/workflow-lib/lib/publish.js": {
     "6": "4171fd3b6a93256be2cd20321bb7fffc4dec8a8422730125ac689c105cd62523",

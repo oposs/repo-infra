@@ -29,7 +29,7 @@ function parsePackagers(text) {
   try {
     packagers = JSON.parse(text);
   } catch (error) {
-    throw new Error(`packagers is not JSON: ${error.message}`);
+    throw new Error(`packagers is not JSON: ${error.message.replace(/\s+/g, ' ')}`);
   }
   const valid = isObject(packagers) && Object.keys(packagers).length > 0
     && Object.values(packagers).every((extra) => isObject(extra)
