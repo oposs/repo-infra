@@ -370,6 +370,42 @@ release-pr-current:
 
 ## Release build: called from release-build.yml
 
+### ri-release-nfpm v1
+
+Installed at `.github/workflows/ri-release-nfpm.yml`.
+
+**Purpose:** Build .deb and .rpm packages with nfpm from the musl archives, and read each back (D32).
+
+**Choose it when:** The project is a Rust program users install on Linux (linux-packages in references/project-shape.md).
+
+**The repository supplies:** An nfpm config whose contents take their sources from STAGE; every dollar-brace name in it is set by the piece or by packagers.
+
+**Needs the pieces:** ri-release-rust-binaries, workflow-lib
+
+**Produces:** The artifact release-asset-packages, <bin>_<version>-1_<arch>.deb and <bin>-<version>-1.<arch>.rpm; list them in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `config` | string | yes |  | Path of the nfpm configuration in the repository, for example nfpm.yaml. |
+| `packagers` | string | yes |  | JSON object with one key per packager, deb or rpm, each value an object of further variable names and their values for that packager. |
+| `archives` | string | yes |  | Space-separated targets whose release-asset-<target> archive is unpacked and packaged, for example x86_64-unknown-linux-musl aarch64-unknown-linux-musl. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+packages:
+  needs: binaries
+  uses: ./.github/workflows/ri-release-nfpm.yml
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    config: nfpm.yaml
+    packagers: '{"deb": {}, "rpm": {}}'
+    archives: x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+```
+
 ### ri-release-rust-binaries v1
 
 Installed at `.github/workflows/ri-release-rust-binaries.yml`.

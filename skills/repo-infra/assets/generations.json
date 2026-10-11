@@ -90,6 +90,9 @@
   "pieces/ri-publish-tag/ri-publish-tag.yml": {
     "1": "e53112b4c3db77c02e81588934e1c6719d2663154839ec09d645484a571a9340"
   },
+  "pieces/ri-release-nfpm/ri-release-nfpm.yml": {
+    "1": "7212d14bb76aae1a942e841efb9daba45012a4f605c599d88dba65b188f0a2be"
+  },
   "pieces/ri-release-pr-current/ri-release-pr-current.yml": {
     "1": "5ae40fc450e7f0534657805e2335401759c740be69a8554fffcd51d658d81397"
   },

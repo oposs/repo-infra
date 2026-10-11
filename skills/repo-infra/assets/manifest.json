@@ -118,6 +118,10 @@
       "target": ".github/workflows/ri-release-rust-binaries.yml",
       "group": "release-build"
     },
+    "ri-release-nfpm": {
+      "target": ".github/workflows/ri-release-nfpm.yml",
+      "group": "release-build"
+    },
     "ri-publish-crates-io": {
       "target": ".github/workflows/ri-publish-crates-io.yml",
       "group": "publish"
