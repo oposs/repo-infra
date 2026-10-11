@@ -90,6 +90,9 @@
   "pieces/ri-publish-tag/ri-publish-tag.yml": {
     "1": "e53112b4c3db77c02e81588934e1c6719d2663154839ec09d645484a571a9340"
   },
+  "pieces/ri-release-homebrew/ri-release-homebrew.yml": {
+    "1": "9f86a1fc834eee016e20227b27a7cab5fe97f2d8f37e6c79fd0e76ad16aee169"
+  },
   "pieces/ri-release-nfpm/ri-release-nfpm.yml": {
     "1": "7212d14bb76aae1a942e841efb9daba45012a4f605c599d88dba65b188f0a2be"
   },
@@ -183,6 +186,12 @@
     "7": "445d4ad7dc72d1e3f8028dc77a27a39119c4493d60a608b01dc7b6be8ef23d56",
     "8": "5a2f68820e32c3c9037e2776ba907fb50544e69622682d4f21a90ae451af9633",
     "9": "ed807eb047b26d700df69694681d197a2ec1b3fe9b0abf0c418ca8f26981d7d5"
+  },
+  "pieces/workflow-lib/lib/homebrew.js": {
+    "9": "b2e0e78e90b08bf05d5b685cedff7ae921db6778132319fa10a2559234997d19"
+  },
+  "pieces/workflow-lib/lib/homebrew.test.js": {
+    "9": "364df87997872aaa5563df3a777b39f2712b362deff40e8229aecf3e676df7a8"
   },
   "pieces/workflow-lib/lib/nfpm.js": {
     "9": "e2c4cad8785e36ee74398f6a000e8065514eb3bde786846f8215f72bc4040dae"

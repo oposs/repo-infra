@@ -370,6 +370,38 @@ release-pr-current:
 
 ## Release build: called from release-build.yml
 
+### ri-release-homebrew v1
+
+Installed at `.github/workflows/ri-release-homebrew.yml`.
+
+**Purpose:** Bottle the formula on macOS and rewrite Formula/<bin>.rb for the release (D32).
+
+**Choose it when:** The project is a Rust program users install with Homebrew (homebrew in references/project-shape.md).
+
+**The repository supplies:** Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
+
+**Needs the pieces:** ri-release-rust-binaries, workflow-lib
+
+**Produces:** The artifacts release-asset-bottle-<os> (list the arm64 bottle in release_assets) and release-files with the formula; no other job may write release-files.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `bin` | string | yes |  | The binary; the formula is Formula/<bin>.rb and the archives are named after it. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+homebrew:
+  needs: binaries
+  uses: ./.github/workflows/ri-release-homebrew.yml
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    bin: mytool
+```
+
 ### ri-release-nfpm v1
 
 Installed at `.github/workflows/ri-release-nfpm.yml`.

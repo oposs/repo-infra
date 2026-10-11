@@ -5,7 +5,7 @@ Upgrade notes, newest first. Each section says what a caller or
 
 ## v9
 
-No caller or config change. nfpm.js carries the logic of ri-release-nfpm, which needs this version; every file carries the new marker.
+No caller or config change. nfpm.js and homebrew.js carry the logic of ri-release-nfpm and ri-release-homebrew, which need this version; every file carries the new marker.
 
 ## v8
 

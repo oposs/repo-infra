@@ -122,6 +122,10 @@
       "target": ".github/workflows/ri-release-nfpm.yml",
       "group": "release-build"
     },
+    "ri-release-homebrew": {
+      "target": ".github/workflows/ri-release-homebrew.yml",
+      "group": "release-build"
+    },
     "ri-publish-crates-io": {
       "target": ".github/workflows/ri-publish-crates-io.yml",
       "group": "publish"
