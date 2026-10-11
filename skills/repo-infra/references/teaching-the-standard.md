@@ -32,12 +32,17 @@ repository does instead, what the options are. This is a ruling about the
 standard, not about this repository. Do not decide it yourself and do not
 present it as "may I add X".
 
-**2. Prove.** Work the answer out in the repository's own tree and get it green
-in CI. Nothing is upstreamed on reasoning alone. A thing copied from a
-repository where it works is a hypothesis until it runs against a real consumer.
-This project has already paid for that lesson once.
+**2. Prove.** Write the answer on a repo-infra branch, install it into the
+repository from that branch with `apply --item`, and get it green in CI there.
+Run `apply` from the branch's scripts
+(`PYTHONPATH=<branch>/skills/repo-infra/scripts python3 -m repo_infra apply --item <piece>`),
+so the repository carries the marker and the bytes repo-infra will ship, and
+never edit the installed file. A fix the proof forces goes into the branch and
+is installed again. Nothing is upstreamed on reasoning alone. A thing copied
+from a repository where it works is a hypothesis until it runs against a real
+consumer. This project has already paid for that lesson once.
 
-**3. Upstream.** The proven answer becomes a pull request against repo-infra,
+**3. Upstream.** The proven branch becomes a pull request against repo-infra,
 sized to the change:
 
 | Change | What must exist |
