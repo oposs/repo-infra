@@ -370,6 +370,37 @@ release-pr-current:
 
 ## Release build: called from release-build.yml
 
+### ri-release-rust-binaries v1
+
+Installed at `.github/workflows/ri-release-rust-binaries.yml`.
+
+**Purpose:** Build the release archives of a Rust program for the seven native targets (D32).
+
+**Choose it when:** The project is a Rust program users install (native-targets in references/project-shape.md).
+
+**The repository supplies:** Cargo.toml with the binary `bin`, README.md, LICENSE, and `make man` writing man/.
+
+**Needs the pieces:** man, man-lua
+
+**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows); list all seven in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+binaries:
+  uses: ./.github/workflows/ri-release-rust-binaries.yml
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    bin: mytool
+```
+
 ### ri-release-source-tarball v1
 
 Installed at `.github/workflows/ri-release-source-tarball.yml`.

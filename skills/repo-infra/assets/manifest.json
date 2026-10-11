@@ -114,6 +114,10 @@
       "target": ".github/workflows/ri-release-source-tarball.yml",
       "group": "release-build"
     },
+    "ri-release-rust-binaries": {
+      "target": ".github/workflows/ri-release-rust-binaries.yml",
+      "group": "release-build"
+    },
     "ri-publish-crates-io": {
       "target": ".github/workflows/ri-publish-crates-io.yml",
       "group": "publish"
