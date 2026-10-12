@@ -12,6 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 1.1.0 - 2026-10-12
+### New
 - `ri-release-rust-binaries` builds the release archives of a Rust program for Linux (static, x86_64 and aarch64), macOS (Intel and Apple silicon), Windows (x86_64 and arm64) and illumos, each with the binary, the README, the licence and, except in the Windows zips, every man page. A package that builds a second binary besides `bin` fails the build instead of releasing without it. Install it with `apply --item ri-release-rust-binaries` (#53).
 - `ri-release-nfpm` builds `.deb` and `.rpm` packages for amd64 and arm64 from the static Linux archives with nfpm 2.47.0 and an `nfpm.yaml` in the repository, and reads every package back before the release pull request opens. The config names the man pages with `.gz`, since the piece gzips them. Install it with `apply --item ri-release-nfpm` (#53).
 - `ri-release-homebrew` bottles the formula for Apple silicon on macOS 14 and rewrites `Formula/<bin>.rb` on every release with the version, the four archive checksums and the bottle block. Install it with `apply --item ri-release-homebrew` (#53).
