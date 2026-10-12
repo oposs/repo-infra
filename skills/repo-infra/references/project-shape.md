@@ -98,7 +98,10 @@ Requires: `docs/manual.md`, built by the `man` pieces and checked by
 
 Verify: `docs/manual.md` exists and names the options the program has, the
 Makefile sets `MAN_NAME` and includes `build/man.mk`, and `ci.yml` calls
-`ri-ci-man`. Onboarding asks for the manual; it does not wait for the file to
+`ri-ci-man`. The manual has AUTHORS, REPORTING BUGS and COPYRIGHT, and SEE ALSO
+opens with the repository URL. Report a person or AI model family in the
+`git log` authors or `Co-Authored-By:` trailers that AUTHORS omits, and a
+COPYRIGHT holder that differs from the one in `LICENSE`. Onboarding asks for the manual; it does not wait for the file to
 exist.
 
 Met by: The setup in the `man-pages` skill.

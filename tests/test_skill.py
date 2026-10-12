@@ -152,3 +152,12 @@ def test_conventions_names_exceptions_and_the_skip_rename():
     text = flat(REFS / "conventions.md")
     assert "`exceptions`" in text
     assert "rename it to `exceptions`" in text
+
+
+def test_onboarding_asks_who_holds_the_copyright_and_the_shape_checks_it():
+    # The holder is the owner's answer, never inferred from the commit authors.
+    assert "**Who holds the copyright?** A company or a person." in flat(REFS / "onboarding.md")
+    shape = flat(REFS / "project-shape.md")
+    for needle in ("AUTHORS, REPORTING BUGS and COPYRIGHT", "Co-Authored-By:",
+                   "differs from the one in `LICENSE`"):
+        assert needle in shape, needle
