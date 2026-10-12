@@ -1,0 +1,74 @@
+--- baseline/deb-amd64/control
++++ nfpm/deb-amd64/control
+@@ -5,6 +5,6 @@
+ Maintainer: Tobias Oetiker <tobi@oetiker.ch>
+ Recommends: libcap2-bin
+ Description: Path MTU discovery tool using native ICMP with Don't Fragment bit
+- Discovers the Path MTU to a network host. It sends ICMP echo requests with the
+- Don't Fragment bit set and finds the largest packet that gets through with a
+- binary search. A single static binary.
++ Discovers the Path MTU to a network host. It sends ICMP echo requests with
++ the Don't Fragment bit set and finds the largest packet that gets through
++ with a binary search. A single static binary.
+--- baseline/deb-arm64/control
++++ nfpm/deb-arm64/control
+@@ -5,6 +5,6 @@
+ Maintainer: Tobias Oetiker <tobi@oetiker.ch>
+ Recommends: libcap2-bin
+ Description: Path MTU discovery tool using native ICMP with Don't Fragment bit
+- Discovers the Path MTU to a network host. It sends ICMP echo requests with the
+- Don't Fragment bit set and finds the largest packet that gets through with a
+- binary search. A single static binary.
++ Discovers the Path MTU to a network host. It sends ICMP echo requests with
++ the Don't Fragment bit set and finds the largest packet that gets through
++ with a binary search. A single static binary.
+--- baseline/rpm-aarch64/control
++++ nfpm/rpm-aarch64/control
+@@ -2,5 +2,4 @@
+ Arch: aarch64
+ License: MIT
+ Summary: Path MTU discovery tool using native ICMP with Don't Fragment bit
+-Requires: /bin/sh
+-Requires: /bin/sh
++Recommends: libcap
+--- baseline/rpm-aarch64/files
++++ nfpm/rpm-aarch64/files
+@@ -1,4 +1,4 @@
+ -rw-r--r-- /usr/share/doc/mtuspy/LICENSE
+ -rw-r--r-- /usr/share/doc/mtuspy/README.md
+--rw-r--r-- /usr/share/man/man1/mtuspy.1
++-rw-r--r-- /usr/share/man/man1/mtuspy.1.gz
+ -rwxr-xr-x /usr/bin/mtuspy
+--- baseline/rpm-aarch64/postinst
++++ nfpm/rpm-aarch64/postinst
+@@ -1,4 +1,4 @@
+-# rpm sets no capability on its own here: cargo-generate-rpm writes no %caps,
++# rpm sets no capability on its own here: nfpm.yaml asks for no %caps,
+ # so cap_net_raw is set after install, as the deb postinst does. A failed setcap
+ # leaves mtuspy installed; it then prints its own permission advice when run.
+ if command -v setcap >/dev/null 2>&1; then
+--- baseline/rpm-x86_64/control
++++ nfpm/rpm-x86_64/control
+@@ -2,5 +2,4 @@
+ Arch: x86_64
+ License: MIT
+ Summary: Path MTU discovery tool using native ICMP with Don't Fragment bit
+-Requires: /bin/sh
+-Requires: /bin/sh
++Recommends: libcap
+--- baseline/rpm-x86_64/files
++++ nfpm/rpm-x86_64/files
+@@ -1,4 +1,4 @@
+ -rw-r--r-- /usr/share/doc/mtuspy/LICENSE
+ -rw-r--r-- /usr/share/doc/mtuspy/README.md
+--rw-r--r-- /usr/share/man/man1/mtuspy.1
++-rw-r--r-- /usr/share/man/man1/mtuspy.1.gz
+ -rwxr-xr-x /usr/bin/mtuspy
+--- baseline/rpm-x86_64/postinst
++++ nfpm/rpm-x86_64/postinst
+@@ -1,4 +1,4 @@
+-# rpm sets no capability on its own here: cargo-generate-rpm writes no %caps,
++# rpm sets no capability on its own here: nfpm.yaml asks for no %caps,
+ # so cap_net_raw is set after install, as the deb postinst does. A failed setcap
+ # leaves mtuspy installed; it then prints its own permission advice when run.
+ if command -v setcap >/dev/null 2>&1; then

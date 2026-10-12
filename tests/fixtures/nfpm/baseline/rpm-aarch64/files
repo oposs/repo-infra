@@ -1,0 +1,4 @@
+-rw-r--r-- /usr/share/doc/mtuspy/LICENSE
+-rw-r--r-- /usr/share/doc/mtuspy/README.md
+-rw-r--r-- /usr/share/man/man1/mtuspy.1
+-rwxr-xr-x /usr/bin/mtuspy

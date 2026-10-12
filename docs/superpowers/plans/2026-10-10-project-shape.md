@@ -26,9 +26,10 @@
 - Action versions in every piece match the manifest `actions` map (`actions/checkout@v7`, `actions/upload-artifact@v7`, `actions/download-artifact@v8`, `actions/github-script@v9`). `dtolnay/rust-toolchain@stable` and `Homebrew/actions/setup-homebrew@main` stay branch references.
 - No em dash in any shipped file (`tests/test_no_em_dash.py`), in this plan or in any file written for mtuspy. Write "for example", never `e.g.`. Load the `writing-style` skill before writing prose, comments, CHANGES entries or commit messages.
 - `make check` (ruff, pytest, node lib tests) is green at the end of every repo-infra task. Builds and tests use at most 4 cores: `cargo build -j4`, no `pytest -n` above 4. `make test-container` runs under `systemd-run --user --scope -p MemoryMax=4G -- ...`. Pass `timeout: 600000` to every long command.
-- Containers run with `podman`, never docker. Temporary data goes to `/scratch/oetiker/claude-tmp/claude-1003/project-shape/` (called `$S` below), never `/tmp`.
-- Every commit ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Pull request bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-- Outward-facing steps are marked **[outward]**. The owner has authorised mtuspy releases for this work. Merging pull requests in oposs/repo-infra is standing authority from the owner (subject to the auto-mode classifier, which may still ask). Every merge in mtuspy, every repo-infra release, and everything in another repository (settings, variables or branches anywhere) is marked **[ask the owner]** and waits for the owner's OK in this session.
+- Containers run with `podman`, never docker, and every `podman run` runs under `systemd-run --user --scope -p MemoryMax=2G --`. Temporary data goes to `/scratch/oetiker/claude-tmp/claude-1003/project-shape/` (called `$S` below), never `/tmp`.
+- Each Bash call starts with fresh shell state, and a subagent's working directory resets between calls. Every block from Task 5 on therefore sets the variables it uses (`S`, `M`, `RIB`, `RI`) and passes `PYTHONPATH` inline, and a block that works in an mtuspy worktree starts with `cd` to it.
+- Every commit ends with a `Co-Authored-By: Claude <model> <noreply@anthropic.com>` line naming the model that wrote it. Pull request bodies end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- Outward-facing steps are marked **[outward]**. The owner has authorised mtuspy releases for this work, and with them pushing the mtuspy branches `repo-infra/apply` and `project-shape` and opening or readying their pull requests. Merging pull requests in oposs/repo-infra is standing authority from the owner (subject to the auto-mode classifier, which may still ask). Every merge in mtuspy, every repo-infra release, and every setting, variable, secret or branch deletion in mtuspy or another repository is marked **[ask the owner]** and waits for the owner's OK in this session.
 
 ## Decisions this plan takes where the spec is silent
 
@@ -1606,6 +1607,15 @@ test('a package holding no files fails', () => {
   refusal(() => nfpm.run(env(), fakeIo({ files: 0 }).io), /^tool_1\.2\.3-1_amd64\.deb holds no files$/);
 });
 
+test('a packagers value fills in the config but stays out of the environment of nfpm', () => {
+  const { io, calls, written } = fakeIo({ config: `${CONFIG}# \${PATH}\n` });
+  nfpm.run(env({ PACKAGERS: '{"deb": {"PATH": "x"}}', PATH: '/usr/bin' }), io);
+  assert.match(written.get('/t/nfpm-x86_64-unknown-linux-musl-deb.yaml'), /^# x$/m);
+  for (const call of calls.filter((c) => c.command === 'nfpm')) {
+    assert.equal(call.env.PATH, '/usr/bin');
+  }
+});
+
 test('rfc3339 drops the milliseconds', () => {
   assert.equal(nfpm.rfc3339('0'), '1970-01-01T00:00:00Z');
 });
@@ -1790,8 +1800,12 @@ function run(env, io = nodeIo()) {
       const expanded = `${temp}/nfpm-${target}-${packager}.yaml`;
       io.write(expanded, expand(template, values, config));
       const before = new Set(io.list('packages'));
+      // The config is filled in already. nfpm gets the piece's own variables
+      // and not the packagers values: {"deb": {"PATH": "x"}} would otherwise
+      // replace the PATH nfpm is found on.
+      const own = Object.fromEntries(OWN.map((name) => [name, values[name]]));
       io.exec('nfpm', ['package', '--config', expanded, '--packager', packager,
-        '--target', 'packages'], { env: { ...env, ...values }, stdio: 'inherit' });
+        '--target', 'packages'], { env: { ...env, ...own }, stdio: 'inherit' });
       const made = io.list('packages').filter((name) => !before.has(name));
       if (made.length !== 1) {
         throw new Error(`nfpm wrote ${made.length} files for ${target} ${packager}; `
@@ -1816,7 +1830,7 @@ module.exports = { parsePackagers, parseTargets, expand, rfc3339, checkName, run
 - [ ] **Step 3: Run the test**
 
 Run: `node --test skills/repo-infra/assets/pieces/workflow-lib/lib/nfpm.test.js`
-Expected: PASS, 23 tests. (Both files ran green on 2026-10-11 with node 25; the module uses only `fs`, `child_process` and `Object.hasOwn`, which node 20 in Debian trixie has too.)
+Expected: PASS, 24 tests. (Both files ran green on 2026-10-11 with node 25; the module uses only `fs`, `child_process` and `Object.hasOwn`, which node 20 in Debian trixie has too.)
 
 - [ ] **Step 4: workflow-lib v9**
 
@@ -1961,6 +1975,8 @@ mkdir -p tests/fixtures/nfpm/repo/pkg/debian tests/fixtures/nfpm/repo/pkg/rpm
 git -C $M show origin/main:pkg/debian/postinst > tests/fixtures/nfpm/repo/pkg/debian/postinst
 chmod 755 tests/fixtures/nfpm/repo/pkg/debian/postinst
 git -C $M show origin/main:pkg/rpm/post-install.sh > tests/fixtures/nfpm/repo/pkg/rpm/post-install.sh
+sed -i 's/cargo-generate-rpm writes no %caps,/nfpm.yaml asks for no %caps,/' tests/fixtures/nfpm/repo/pkg/rpm/post-install.sh
+grep -c 'nfpm.yaml asks for no %caps,' tests/fixtures/nfpm/repo/pkg/rpm/post-install.sh    # 1
 grep -c $'\u2014' tests/fixtures/nfpm/repo/nfpm.yaml    # 0
 ```
 
@@ -2505,6 +2521,13 @@ test('the cellar of a tag wins, and a Cellar path is quoted', () => {
   assert.equal(lines[2], `    sha256 cellar: "/opt/homebrew/Cellar", sonoma: "${'c'.repeat(64)}"`);
 });
 
+test('a bottle json without a cellar fails naming the tag', () => {
+  const json = bottleJson('sonoma', 'c'.repeat(64));
+  delete json['local/tool/tool'].bottle.cellar;
+  refusal(() => brew.bottleBlock([json], { repository: 'owner/tool', version: '1.2.3' }),
+    /^the bottle json of sonoma names no cellar$/);
+});
+
 test('the optional bottle missing still publishes the other', () => {
   const text = brew.rewriteFormula(ENV, formulaJob({ jsons: [ARM] }));
   assert.equal(block(text).split('sha256 cellar:').length - 1, 1);
@@ -2657,7 +2680,9 @@ function bottleBlock(jsons, { repository, version }) {
   for (const json of jsons) {
     for (const { bottle } of Object.values(json)) {
       for (const [tag, entry] of Object.entries(bottle.tags)) {
-        lines.push(`    sha256 cellar: ${cellar(entry.cellar || bottle.cellar)}, `
+        const value = entry.cellar || bottle.cellar;
+        if (!value) throw new Error(`the bottle json of ${tag} names no cellar`);
+        lines.push(`    sha256 cellar: ${cellar(value)}, `
           + `${tag}: "${entry.sha256}"`);
       }
     }
@@ -2774,7 +2799,7 @@ module.exports = {
 ```
 
 Run: `node --test skills/repo-infra/assets/pieces/workflow-lib/lib/homebrew.test.js`
-Expected: PASS, 23 tests (green on 2026-10-11 with node 25).
+Expected: PASS, 24 tests (green on 2026-10-11 with node 25).
 
 The v9 note in `skills/repo-infra/assets/pieces/workflow-lib/CHANGES.md` becomes:
 
@@ -3128,7 +3153,7 @@ Run it. Expected: FAIL.
 
 - [ ] **Step 2: Amend `project-shape.md`** (decision P9)
 
-- `native-targets`, Met by: `Met by: \`ri-release-rust-binaries\`. mise's \`github:\` backend picks an asset by these names, so \`mise use -g github:<owner>/<name>\` works without further setup.`
+- `native-targets`, Met by: `Met by: \`ri-release-rust-binaries\`. mise's \`github:\` backend picks an asset by these names, so \`mise use -g github:<owner>/<repo>\` works without further setup.`
 - `linux-packages`, first bullet: `- a Rust program: amd64 and arm64 packages built from the musl archives by \`ri-release-nfpm\`;`
 - `homebrew`, Met by: `Met by: For a Rust program, \`ri-release-homebrew\`, which bottles the formula and rewrites it on each release from the template under "Formula template". For an interpreted program, a formula that builds from the source archive.`
 - `## Formula template`, first sentence: `\`ri-release-homebrew\` rewrites the \`version\` line, ...` (the rest unchanged).
@@ -3169,12 +3194,20 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 5: [outward] Push and open a draft pull request**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+cat > $S/pr-pieces.md <<'EOF'
+Three release pieces for Rust programs (D32, #53): `ri-release-rust-binaries`, `ri-release-nfpm` and `ri-release-homebrew`. Their logic is in workflow-lib v9 (`lib/nfpm.js`, `lib/homebrew.js`), tested with `node --test`.
+
+mtuspy proves them from this branch before it merges (Tasks 10 to 14 of `docs/superpowers/plans/2026-10-10-project-shape.md`), so the pull request stays a draft until then.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
 git push -u origin feat/release-pieces
 gh pr create --draft --base main --title "Release pieces for Rust programs (D32)" --body-file $S/pr-pieces.md
 gh pr checks --watch
 ```
 
-The body lists the three pieces and workflow-lib v9, says that mtuspy proves them from this branch before it merges (Tasks 10 to 14) and that the pull request stays a draft until then, and ends with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`. Expected: `ci-passed` and `changelog-updated` green. The pull request does not merge here; Task 15 merges it.
+Expected: `ci-passed` and `changelog-updated` green. The pull request does not merge here; Task 15 merges it.
 
 ---
 # Phase C: the proof in mtuspy and its first release
@@ -3203,6 +3236,7 @@ expected to build all seven targets.
 - [ ] **Step 1: Scratch directory and the stale `repo-infra/apply` branch** (decision P13)
 
 ```bash
+M=/home/oetiker/checkouts/mtuspy
 mkdir -p /scratch/oetiker/claude-tmp/claude-1003/project-shape
 export S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 git -C $M fetch origin
@@ -3214,6 +3248,7 @@ git -C $M merge-base --is-ancestor repo-infra/apply origin/main && echo merged
 Expected on 2026-10-11: both the local and the remote branch at `ffb9b3a`, merged into `main` by pull request #2. **[outward] [ask the owner]** Delete both, so `apply` and the worktree below start a fresh branch:
 
 ```bash
+M=/home/oetiker/checkouts/mtuspy
 git -C $M branch -d repo-infra/apply
 git -C $M push origin --delete repo-infra/apply
 ```
@@ -3221,6 +3256,7 @@ git -C $M push origin --delete repo-infra/apply
 `branch -d` refuses a branch that is not merged. Then the worktree:
 
 ```bash
+M=/home/oetiker/checkouts/mtuspy
 git -C $M worktree add /scratch/oetiker/claude-worktrees/mtuspy-release-pieces -b repo-infra/apply origin/main
 cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
 ```
@@ -3249,9 +3285,11 @@ jobs:
       ref: ${{ github.event.pull_request.head.sha }}
 ```
 
-- [ ] **Step 3: [outward] Commit, push and open a draft pull request with the label at creation**
+- [ ] **Step 3: [outward] Commit, push and open a draft pull request**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
 git add .github/workflows/proof.yml
 git commit -m "Run the release build on this branch as 0.0.0 (temporary)
 
@@ -3260,19 +3298,32 @@ as it is, the baseline the build through the release pieces is compared
 with.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+cat > $S/pr-mtuspy-proof.md <<'EOF'
+Builds the release through the release pieces of repo-infra D32, installed by `apply` from repo-infra's unreleased branch `feat/release-pieces`. The `.deb` and `.rpm` packages are built by nfpm from the musl archives instead of by cargo-deb and cargo-generate-rpm.
+
+`proof.yml` builds each push as version 0.0.0 and creates no tag, no release and no release branch. Its first run is the baseline of the unchanged build. It is removed before the merge.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
 git push -u origin repo-infra/apply
 gh pr create -R oetiker/mtuspy --draft --base main --head repo-infra/apply \
-  --label no-changelog --title "Release build through the repo-infra release pieces" \
+  --title "Release build through the repo-infra release pieces" \
   --body-file $S/pr-mtuspy-proof.md
 ```
 
-The body says: this branch proves the release pieces of repo-infra D32, installed from its unreleased branch `feat/release-pieces`; `proof.yml` builds each push as version 0.0.0 and is removed before the merge; no user-visible change, hence `no-changelog`. It ends with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+The pull request carries no `no-changelog` label: Task 11 adds the `CHANGES.md` entry, and `changelog-updated` is red until then.
 
 - [ ] **Step 4: Wait for the baseline run**
 
+Wait for the run of the pushed commit, not for the newest run of the branch. A foreground `sleep` is blocked in Claude Code, so run the loop with Monitor or in the background:
+
 ```bash
-gh run list -R oetiker/mtuspy --workflow proof.yml --branch repo-infra/apply --limit 1 --json databaseId --jq '.[0].databaseId' > $S/baseline-run-id
-gh run watch "$(cat $S/baseline-run-id)" -R oetiker/mtuspy --exit-status
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
+sha=$(git rev-parse HEAD)
+until id=$(gh run list -R oetiker/mtuspy --workflow proof.yml --commit "$sha" --json databaseId --jq '.[0].databaseId') && [ -n "$id" ]; do sleep 15; done
+echo "$id" > $S/baseline-run-id
+gh run watch "$id" -R oetiker/mtuspy --exit-status
 ```
 
 Expected: green, with jobs `build / Build <target>` for seven targets, `build / Bottle on macos-14`, `build / Bottle on macos-15-intel` and `build / Rewrite the formula`. If any job fails, stop and report the job and its log excerpt to the owner: a failing baseline leg is a finding about mtuspy's current build (for example the illumos `crt-static` the spec names), and the owner decides whether the baseline is taken from a run with that one line fixed.
@@ -3280,6 +3331,7 @@ Expected: green, with jobs `build / Build <target>` for seven targets, `build / 
 - [ ] **Step 5: Download the baseline**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 gh run download "$(cat $S/baseline-run-id)" -R oetiker/mtuspy -D $S/baseline
 ls $S/baseline
 ```
@@ -3374,15 +3426,17 @@ if __name__ == "__main__":
 - [ ] **Step 7: Record the baseline facts**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 mkdir -p $S/baseline-facts/archives
 for archive in $S/baseline/release-asset-*/*.tar.gz; do
+  case $archive in *bottle*) continue ;; esac
   tar -tzf "$archive" | LC_ALL=C sort > "$S/baseline-facts/archives/$(basename "$archive").list"
 done
 for archive in $S/baseline/release-asset-*/*.zip; do
   python3 -I -c 'import sys, zipfile; print("\n".join(sorted(zipfile.ZipFile(sys.argv[1]).namelist())))' "$archive" \
     > "$S/baseline-facts/archives/$(basename "$archive").list"
 done
-podman run --rm -v $S:/s:Z docker.io/library/ubuntu:24.04 bash -euc '
+systemd-run --user --scope -p MemoryMax=2G -- podman run --rm -v $S:/s:Z docker.io/library/ubuntu:24.04 bash -euc '
   apt-get update -qq && apt-get install -y -qq rpm >/dev/null
   sh /s/collect.sh /s/baseline /s/baseline-facts/packages'
 mkdir -p $S/baseline-facts/bottles
@@ -3391,13 +3445,14 @@ cp $S/baseline/release-files/Formula/mtuspy.rb $S/baseline-facts/mtuspy.rb
 ls -R $S/baseline-facts
 ```
 
-Expected: one `.list` per archive (each tar listing holds `mtuspy/`, `mtuspy/mtuspy`, `mtuspy/man/`, `mtuspy/man/mtuspy.1`, `mtuspy/README.md`, `mtuspy/LICENSE`; each zip listing the same without `man/`), `packages/deb-amd64`, `deb-arm64`, `rpm-x86_64`, `rpm-aarch64`, each with `files`, `control` and `postinst`, two bottle json files, and the rewritten formula with non-zero `sha256` lines and a bottle block whose `root_url` ends in `/v0.0.0`.
+Expected: one `.list` per archive, the bottles left out (each tar listing holds `mtuspy/`, `mtuspy/mtuspy`, `mtuspy/man/`, `mtuspy/man/mtuspy.1`, `mtuspy/README.md`, `mtuspy/LICENSE`; each zip listing the same without `man/`), `packages/deb-amd64`, `deb-arm64`, `rpm-x86_64`, `rpm-aarch64`, each with `files`, `control` and `postinst`, two bottle json files, and the rewritten formula with non-zero `sha256` lines and a bottle block whose `root_url` ends in `/v0.0.0`.
 
 - [ ] **Step 8: Record edaptor v1.8.0 as the second reference**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 gh release download v1.8.0 -R oposs/edaptor -p '*.deb' -p '*.rpm' -D $S/edaptor
-podman run --rm -v $S:/s:Z docker.io/library/ubuntu:24.04 bash -euc '
+systemd-run --user --scope -p MemoryMax=2G -- podman run --rm -v $S:/s:Z docker.io/library/ubuntu:24.04 bash -euc '
   apt-get update -qq && apt-get install -y -qq rpm >/dev/null
   sh /s/collect.sh /s/edaptor /s/edaptor-facts'
 ```
@@ -3409,29 +3464,30 @@ Expected: `$S/edaptor-facts/{deb-amd64,deb-arm64,rpm-x86_64,rpm-aarch64}`. Read 
 ### Task 11: Install the pieces in mtuspy
 
 **Files (mtuspy, on `repo-infra/apply`):**
-- By `apply`: `.github/workflows/lib/` (workflow-lib v8 to v9), `.github/workflows/ri-release-rust-binaries.yml`, `ri-release-nfpm.yml`, `ri-release-homebrew.yml`
+- By `apply`: `.github/workflows/lib/` (workflow-lib v8 to v9), `.github/workflows/changelog.yml` (v5 to v6), `.github/workflows/ri-release-rust-binaries.yml`, `ri-release-nfpm.yml`, `ri-release-homebrew.yml`
 - Rewrite: `.github/workflows/release-build.yml`
 - Create: `nfpm.yaml`
-- Modify: `Cargo.toml` (delete `[package.metadata.deb]` and `[package.metadata.generate-rpm]`)
+- Modify: `Cargo.toml` (delete `[package.metadata.deb]` and `[package.metadata.generate-rpm]`), `pkg/rpm/post-install.sh` (one comment line), `CHANGES.md`
 
 **Interfaces:**
-- Consumes: the pieces and `tests/fixtures/nfpm/repo/nfpm.yaml` at the head of `feat/release-pieces` (Tasks 5 to 9).
+- Consumes: the pieces, `tests/fixtures/nfpm/repo/nfpm.yaml` and `tests/fixtures/nfpm/repo/pkg/rpm/post-install.sh` at the head of `feat/release-pieces` (Tasks 5 to 9).
 - Produces: the build `proof.yml` runs in Task 12.
 
 - [ ] **Step 1: Install the pieces with `apply` from the repo-infra branch** (decision P11)
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
 cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
 git -C $RIB status --short                          # empty: nothing uncommitted
 git -C $RIB log --oneline -1 | tee $S/pieces-commit
-export PYTHONPATH=$RIB/skills/repo-infra/scripts
-for item in workflow-lib ri-release-rust-binaries ri-release-nfpm ri-release-homebrew; do
-  python3 -m repo_infra apply --item "$item" || break
+for item in workflow-lib changelog ri-release-rust-binaries ri-release-nfpm ri-release-homebrew; do
+  PYTHONPATH=$RIB/skills/repo-infra/scripts python3 -m repo_infra apply --item "$item" || break
 done
-git log --oneline -5
+git log --oneline -6
 ```
 
-Expected: `installed workflow-lib v9` followed by the v9 upgrade note, `installed ri-release-rust-binaries v1`, `installed ri-release-nfpm v1`, `installed ri-release-homebrew v1`, and four commits `Install <piece> vN from the repo-infra standard` on `repo-infra/apply`. The closing findings concern the callers, which Step 2 rewrites.
+Expected: `installed workflow-lib v9` followed by the v9 upgrade note, `installed changelog v6` with its upgrade notes (mtuspy carries v5; v6 fixes the `no-changelog` label handling), `installed ri-release-rust-binaries v1`, `installed ri-release-nfpm v1`, `installed ri-release-homebrew v1`, and five commits `Install <piece> vN from the repo-infra standard` on `repo-infra/apply`. The closing findings concern the callers, which Step 2 rewrites.
 
 - [ ] **Step 2: Rewrite `.github/workflows/release-build.yml`** as a caller
 
@@ -3490,25 +3546,48 @@ The `release-version` echo job of the old file goes; nothing reads it.
 - [ ] **Step 3: `nfpm.yaml`**, the config the container test of Task 7 builds with:
 
 ```bash
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
+cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
 cp $RIB/tests/fixtures/nfpm/repo/nfpm.yaml nfpm.yaml
 cmp nfpm.yaml $RIB/tests/fixtures/nfpm/repo/nfpm.yaml
 ```
 
 - [ ] **Step 4: `Cargo.toml`.** Delete from the line `[package.metadata.deb]` through the closing `]` of the `[package.metadata.generate-rpm]` assets, and the blank line after it, so `[dependencies]` is followed by a blank line and `[profile.release]`.
 
+- [ ] **Step 4b: The rpm script names its builder.** Its first comment says `cargo-generate-rpm writes no %caps`; nfpm builds the rpm from now on. Task 7 made the same change in the fixture, so the two files are equal:
+
+```bash
+cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
+cp $RIB/tests/fixtures/nfpm/repo/pkg/rpm/post-install.sh pkg/rpm/post-install.sh
+git diff --stat pkg/rpm/post-install.sh    # one line changed
+```
+
+The accepted package diff of Task 12 shows this line in the rpm postinst.
+
+- [ ] **Step 4c: `CHANGES.md`**, under `## [Unreleased]`, `### Changed`:
+
+```markdown
+- The illumos binary links the system C library instead of a static one.
+- The `.deb` and `.rpm` packages are built by nfpm from the static Linux release archives, so they carry the same binary and man page as the archives.
+```
+
 - [ ] **Step 5: Check locally**
 
 ```bash
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
+cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
 grep -c $'\u2014' .github/workflows/release-build.yml nfpm.yaml    # 0 for each
-python3 -m repo_infra check; echo "exit $?"
+PYTHONPATH=$RIB/skills/repo-infra/scripts python3 -m repo_infra check; echo "exit $?"
 ```
 
-Expected: no em dash; in the `pieces` section `workflow-lib` v9 and the three `ri-release-*` v1 read `current`; the `callers` section reports no `problem` for `release-build.yml` and the three pieces it calls. The `administration` rows are what they were on `main`.
+Expected: no em dash; in the `pieces` section `workflow-lib` v9, `changelog` v6 and the three `ri-release-*` v1 read `current`; the `callers` section reports no `problem` for `release-build.yml` and the three pieces it calls. The `administration` rows are what they were on `main`.
 
 - [ ] **Step 6: [outward] Commit and push**
 
 ```bash
-git add .github/workflows/release-build.yml nfpm.yaml Cargo.toml
+cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
+git add .github/workflows/release-build.yml nfpm.yaml Cargo.toml pkg/rpm/post-install.sh CHANGES.md
 git commit -m "Build the release through the repo-infra release pieces
 
 release-build.yml calls ri-release-rust-binaries, ri-release-nfpm and
@@ -3518,7 +3597,8 @@ on Linux and passed to every leg, so a release no longer ships pages
 from two pandoc versions. illumos no longer asks for crt-static, which it
 does not have. The packages are built by nfpm from the musl archives
 instead of by cargo-deb and cargo-generate-rpm from target/, so
-Cargo.toml loses its two package tables to nfpm.yaml.
+Cargo.toml loses its two package tables to nfpm.yaml, and the comment
+of the rpm script no longer names cargo-generate-rpm.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 git push
@@ -3534,10 +3614,15 @@ git push
 
 - [ ] **Step 1: Wait for the proof run**
 
+As in Task 10 Step 4, wait for the run of the pushed commit:
+
 ```bash
-gh run list -R oetiker/mtuspy --workflow proof.yml --branch repo-infra/apply --limit 1 --json databaseId,headSha
-gh run watch <databaseId> -R oetiker/mtuspy --exit-status
-echo <databaseId> > $S/proof-run-id
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
+sha=$(git rev-parse HEAD)
+until id=$(gh run list -R oetiker/mtuspy --workflow proof.yml --commit "$sha" --json databaseId --jq '.[0].databaseId') && [ -n "$id" ]; do sleep 15; done
+echo "$id" > $S/proof-run-id
+gh run watch "$id" -R oetiker/mtuspy --exit-status
 ```
 
 Expected: green, with jobs `build / binaries / Build the man pages`, seven `build / binaries / Build <target>`, `build / packages / Build the deb and rpm packages`, two `build / homebrew / Bottle on <os>` and `build / homebrew / Rewrite the formula`. A failure goes through "When the proof forces a fix" below.
@@ -3545,16 +3630,18 @@ Expected: green, with jobs `build / binaries / Build the man pages`, seven `buil
 - [ ] **Step 2: Download and collect**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 gh run download "$(cat $S/proof-run-id)" -R oetiker/mtuspy -D $S/proof
 mkdir -p $S/proof-facts/archives
 for archive in $S/proof/release-asset-*/*.tar.gz; do
+  case $archive in *bottle*) continue ;; esac
   tar -tzf "$archive" | LC_ALL=C sort > "$S/proof-facts/archives/$(basename "$archive").list"
 done
 for archive in $S/proof/release-asset-*/*.zip; do
   python3 -I -c 'import sys, zipfile; print("\n".join(sorted(zipfile.ZipFile(sys.argv[1]).namelist())))' "$archive" \
     > "$S/proof-facts/archives/$(basename "$archive").list"
 done
-podman run --rm -v $S:/s:Z docker.io/library/ubuntu:24.04 bash -euc '
+systemd-run --user --scope -p MemoryMax=2G -- podman run --rm -v $S:/s:Z docker.io/library/ubuntu:24.04 bash -euc '
   apt-get update -qq && apt-get install -y -qq rpm >/dev/null
   sh /s/collect.sh /s/proof/release-asset-packages /s/proof-facts/packages'
 ```
@@ -3562,6 +3649,7 @@ podman run --rm -v $S:/s:Z docker.io/library/ubuntu:24.04 bash -euc '
 - [ ] **Step 3: Compare archive names and layout**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 diff <(ls $S/baseline-facts/archives) <(ls $S/proof-facts/archives)
 diff -r $S/baseline-facts/archives $S/proof-facts/archives
 ```
@@ -3571,6 +3659,7 @@ Expected: no output. The seven archive names and their file lists are the same.
 - [ ] **Step 4: Compare the packages**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 ls $S/proof/release-asset-packages
 python3 -I $S/factsdiff.py $S/baseline-facts/packages $S/proof-facts/packages | tee $S/accepted.diff
 ```
@@ -3580,6 +3669,7 @@ Expected file names: `mtuspy_0.0.0-1_amd64.deb`, `mtuspy_0.0.0-1_arm64.deb`, `mt
 - [ ] **Step 5: Compare the formula and the bottles**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 diff $S/baseline-facts/mtuspy.rb $S/proof/release-files/Formula/mtuspy.rb
 ls $S/baseline/release-asset-bottle-*/ $S/proof/release-asset-bottle-*/
 ```
@@ -3589,6 +3679,7 @@ Expected: the formula differs only in the four archive `sha256` values and the b
 - [ ] **Step 6: Keep the recorded bottle json for Task 13**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 mkdir -p $S/fixtures/homebrew
 cp $S/baseline/bottle-json-macos-14/*.bottle.json $S/baseline/bottle-json-macos-15-intel/*.bottle.json $S/fixtures/homebrew/
 jq . $S/fixtures/homebrew/*.bottle.json | head -40
@@ -3620,6 +3711,8 @@ A red job or a difference the owner does not accept is fixed in repo-infra, neve
 4. In the mtuspy worktree, `check` now reads the changed piece as `edited` ("claims v1, the current version, but matches no published version"), and `apply` writes no file that claims the current version. Remove the changed files and install again:
 
    ```bash
+   S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+   RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
    cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
    rm .github/workflows/lib/nfpm.js          # each changed file of the piece
    PYTHONPATH=$RIB/skills/repo-infra/scripts python3 -m repo_infra apply --item workflow-lib
@@ -3647,6 +3740,8 @@ The fix after the last one is what mtuspy releases: Task 14 Step 1 checks that t
 - [ ] **Step 1: Fixtures**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
 cd $RIB
 cp $S/facts.sh $S/collect.sh tests/fixtures/nfpm/
 cp -r $S/baseline-facts/packages tests/fixtures/nfpm/baseline
@@ -3703,6 +3798,7 @@ Expected: PASS. The container test fails when the packages differ from the basel
 Run: `make check` (timeout 600000). Expected: PASS. Then `git diff --stat "$(cut -d' ' -f1 $S/pieces-commit)" -- skills` prints nothing: no piece byte changed since mtuspy installed them.
 
 ```bash
+cd /scratch/oetiker/claude-worktrees/repo-infra-release-pieces
 git add tests
 git commit -m "Compare ri-release-nfpm with mtuspy's cargo-deb packages (D32)
 
@@ -3725,6 +3821,8 @@ git push
 - [ ] **Step 1: The bytes mtuspy carries are the head of `feat/release-pieces`** (decision P11)
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
 cd /scratch/oetiker/claude-worktrees/mtuspy-release-pieces
 git -C $RIB status --short                     # empty
 git -C $RIB fetch origin && git -C $RIB status -sb | head -1    # not behind or ahead of origin
@@ -3751,7 +3849,7 @@ gh pr ready -R oetiker/mtuspy repo-infra/apply
 gh pr checks -R oetiker/mtuspy repo-infra/apply --watch
 ```
 
-Expected: `ci-passed` green and `changelog-updated` skipped by the label.
+Expected: `ci-passed` and `changelog-updated` green.
 
 - [ ] **Step 3: [outward] [ask the owner] Merge the pull request**
 
@@ -3796,6 +3894,7 @@ Expected: `publish`, `gitea` and `finalize` green; `false`.
 GitHub release:
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 mkdir -p $S/install/github && cd $S/install/github
 gh release download v0.2.0 -R oetiker/mtuspy -p 'mtuspy-0.2.0-x86_64-unknown-linux-musl.tar.gz'
 tar -xzf mtuspy-0.2.0-x86_64-unknown-linux-musl.tar.gz && ./mtuspy/mtuspy --version && ls mtuspy/man
@@ -3806,7 +3905,7 @@ Expected: `mtuspy 0.2.0 (<build date>)` and `mtuspy.1`.
 Gitea apt, the README snippet with `-y` added:
 
 ```bash
-podman run --rm docker.io/library/debian:trixie bash -euxc '
+systemd-run --user --scope -p MemoryMax=2G -- podman run --rm docker.io/library/debian:trixie bash -euxc '
   apt-get update -qq && apt-get install -y -qq sudo curl ca-certificates >/dev/null
   sudo install -d -m 0755 /etc/apt/keyrings
   sudo curl -fsSL -o /etc/apt/keyrings/gitea-oposs.asc https://gitea.oetiker.ch/api/packages/oposs/debian/repository.key
@@ -3819,7 +3918,7 @@ Gitea rpm, on dnf5 and on dnf4:
 
 ```bash
 for image in docker.io/library/fedora:latest docker.io/library/rockylinux:9; do
-  podman run --rm "$image" bash -euxc '
+  systemd-run --user --scope -p MemoryMax=2G -- podman run --rm "$image" bash -euxc '
     dnf install -y -q sudo
     sudo curl -fsSL -o /etc/yum.repos.d/oposs.repo https://gitea.oetiker.ch/api/packages/oposs/rpm.repo
     sudo dnf install -y mtuspy
@@ -3830,7 +3929,7 @@ done
 Homebrew on Linux (the formula installs the musl archive there). Check the image's Homebrew version first and run `brew trust` only on 6 or later; the image name `docker.io/homebrew/brew` is to be confirmed with `podman search homebrew/brew` before use:
 
 ```bash
-podman run --rm docker.io/homebrew/brew:latest bash -euxc '
+systemd-run --user --scope -p MemoryMax=2G -- podman run --rm docker.io/homebrew/brew:latest bash -euxc '
   brew --version
   brew tap oetiker/mtuspy https://github.com/oetiker/mtuspy
   if [ "$(brew --version | sed -n "1s/^Homebrew \([0-9][0-9]*\).*/\1/p")" -ge 6 ]; then brew trust --formula oetiker/mtuspy/mtuspy; fi
@@ -3843,6 +3942,7 @@ Homebrew on macOS: **[ask the owner]** to run on a Mac `brew tap oetiker/mtuspy 
 mise, isolated from the owner's own configuration:
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
 export MISE_DATA_DIR=$S/mise/data MISE_CACHE_DIR=$S/mise/cache MISE_STATE_DIR=$S/mise/state \
   MISE_CONFIG_DIR=$S/mise/config MISE_GLOBAL_CONFIG_FILE=$S/mise/config/config.toml
 mise use -g github:oetiker/mtuspy
@@ -3859,6 +3959,8 @@ Expected in every case: `mtuspy 0.2.0 (<build date>)`. A channel that fails is r
 - [ ] **Step 1: The freeze held**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
 git -C $RIB fetch origin
 git -C $RIB diff --stat "$(cut -d' ' -f1 $S/frozen-commit)" origin/feat/release-pieces -- skills/repo-infra/assets/pieces
 ```
@@ -3868,6 +3970,8 @@ Expected: no output. Otherwise mtuspy 0.2.0 carries other bytes than the release
 - [ ] **Step 2: [outward] Ready the pull request and merge it** (merging in oposs/repo-infra is standing authority)
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+RIB=/scratch/oetiker/claude-worktrees/repo-infra-release-pieces
 cd $RIB
 gh pr ready feat/release-pieces
 gh pr edit feat/release-pieces --body-file $S/pr-pieces.md
@@ -3886,6 +3990,8 @@ The body gains the mtuspy run ids of the baseline and the proof, the accepted pa
 Run the script from the released repo-infra, not from a working branch:
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+M=/home/oetiker/checkouts/mtuspy
 git -C /home/oetiker/checkouts/repo-infra fetch --tags origin
 git -C /home/oetiker/checkouts/repo-infra worktree add --detach /scratch/oetiker/claude-worktrees/repo-infra-release "$(cat $S/repo-infra-tag)"
 RI=/scratch/oetiker/claude-worktrees/repo-infra-release/skills/repo-infra/scripts/repo_infra
@@ -3893,10 +3999,9 @@ git -C $M fetch origin
 git -C $M worktree add /scratch/oetiker/claude-worktrees/mtuspy-shape -b project-shape origin/main
 cd /scratch/oetiker/claude-worktrees/mtuspy-shape
 python3 $RI check; echo "exit $?"
-git status --short
 ```
 
-Expected: `workflow-lib` v9, `ri-release-rust-binaries`, `ri-release-nfpm` and `ri-release-homebrew` v1 read `current`, no piece reads `edited` or `outdated`, and `git status` prints nothing: the released plugin asks mtuspy to change nothing. A piece that reads `edited` means repo-infra released other bytes than mtuspy carries; stop and report it to the owner. The remedy is step 4 of "When the proof forces a fix" with `$RI` in place of the branch, on this branch, before Task 17.
+Expected: `workflow-lib` v9, `ri-release-rust-binaries`, `ri-release-nfpm` and `ri-release-homebrew` v1 read `current`, and no piece reads `edited` or `outdated`: the released plugin asks mtuspy to change no piece. A piece that reads `edited` means repo-infra released other bytes than mtuspy carries; stop and report it to the owner. The remedy is step 4 of "When the proof forces a fix" with `$RI` in place of the branch, on this branch, before Task 17.
 
 ---
 
@@ -3957,7 +4062,7 @@ demo:
 	cd demo && PATH="$$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)/release:$$PATH" ansidrama record mtuspy.toml
 ```
 
-Run: `make demo` (timeout 600000). Expected: `docs/demo/mtuspy.webp` exists. **[ask the owner]** to look at the WebP before it is committed.
+Run: `CARGO_BUILD_JOBS=4 make demo` (timeout 600000). Expected: `docs/demo/mtuspy.webp` exists. **[ask the owner]** to look at the WebP before it is committed.
 
 - [ ] **Step 4: README.** Below the description line and above `## Overview`, add:
 
@@ -4043,6 +4148,8 @@ Keep the `version`, `sha256` and bottle lines as Task 14's release wrote them.
 - [ ] **Step 7: [outward] Commit, push, open the pull request**
 
 ```bash
+S=/scratch/oetiker/claude-tmp/claude-1003/project-shape
+cd /scratch/oetiker/claude-worktrees/mtuspy-shape
 grep -c $'\u2014' demo/mtuspy.toml Makefile Formula/mtuspy.rb CHANGES.md   # 0 each
 git add demo docs/demo Makefile README.md Formula/mtuspy.rb CHANGES.md
 git commit -m "Close the project shape: demo, install routes, formula template
@@ -4053,6 +4160,11 @@ installs every man page of the archive into its section, as the template
 does.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+cat > $S/pr-mtuspy-shape.md <<'EOF'
+Closes the gaps the project shape review of repo-infra D32 reported: a recording of mtuspy at the top of the README, an install section with the canonical apt, dnf, Homebrew and mise snippets, and a formula that follows the repo-infra template and installs every man page.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
 git push -u origin project-shape
 gh pr create -R oetiker/mtuspy --base main --head project-shape --title "Project shape: demo, install routes, formula template" --body-file $S/pr-mtuspy-shape.md
 gh pr checks -R oetiker/mtuspy project-shape --watch
@@ -4094,6 +4206,7 @@ def test_mtuspy_is_the_example_of_a_project_with_its_full_shape():
 - [ ] **Step 2: Copy the files** from mtuspy at the tag of Task 18:
 
 ```bash
+M=/home/oetiker/checkouts/mtuspy
 T=v0.2.1; M=/home/oetiker/checkouts/mtuspy; E=skills/repo-infra/references/examples/mtuspy
 git -C $M fetch --tags origin && mkdir -p $E
 for f in ci.yml release-build.yml release-publish.yml; do git -C $M show $T:.github/workflows/$f > $E/$f; done

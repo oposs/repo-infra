@@ -370,7 +370,106 @@ release-pr-current:
 
 ## Release build: called from release-build.yml
 
-### ri-release-source-tarball v1
+### ri-release-homebrew v1
+
+Installed at `.github/workflows/ri-release-homebrew.yml`.
+
+**Purpose:** Bottle the formula on macOS and rewrite Formula/<bin>.rb for the release (D32).
+
+**Choose it when:** The project is a Rust program users install with Homebrew (homebrew in references/project-shape.md).
+
+**The repository supplies:** Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
+
+**Needs the pieces:** ri-release-rust-binaries, workflow-lib
+
+**Produces:** The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `bin` | string | yes |  | The binary; the formula is Formula/<bin>.rb and the archives are named after it. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+homebrew:
+  needs: binaries
+  uses: ./.github/workflows/ri-release-homebrew.yml
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    bin: mytool
+```
+
+### ri-release-nfpm v1
+
+Installed at `.github/workflows/ri-release-nfpm.yml`.
+
+**Purpose:** Build .deb and .rpm packages with nfpm from the musl archives, and read each back (D32).
+
+**Choose it when:** The project is a Rust program users install on Linux (linux-packages in references/project-shape.md).
+
+**The repository supplies:** An nfpm config whose contents take their sources from STAGE and name the man pages with .gz (the piece gzips them); the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, TARGET, STAGE and ARCH, packagers sets every other dollar-brace name.
+
+**Needs the pieces:** ri-release-rust-binaries, workflow-lib
+
+**Produces:** The artifact release-asset-packages, <name>_<version>-<release>_<amd64|arm64>.deb and <name>-<version>-<release>.<x86_64|aarch64>.rpm, with name and release from the config; list them in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `config` | string | yes |  | Path of the nfpm configuration in the repository, for example nfpm.yaml. |
+| `packagers` | string | yes |  | JSON object with one key per packager, deb or rpm, each value an object of further variable names and their values for that packager. |
+| `archives` | string | yes |  | Space-separated targets whose release-asset-<target> archive is unpacked and packaged, for example x86_64-unknown-linux-musl aarch64-unknown-linux-musl. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+packages:
+  needs: binaries
+  uses: ./.github/workflows/ri-release-nfpm.yml
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    config: nfpm.yaml
+    packagers: '{"deb": {}, "rpm": {}}'
+    archives: x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+```
+
+### ri-release-rust-binaries v1
+
+Installed at `.github/workflows/ri-release-rust-binaries.yml`.
+
+**Purpose:** Build the release archives of a Rust program for the seven native targets (D32).
+
+**Choose it when:** The project is a Rust program users install (native-targets in references/project-shape.md).
+
+**The repository supplies:** Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, and `make man` writing man/.
+
+**Needs the pieces:** man, man-lua
+
+**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/); list all seven in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+binaries:
+  uses: ./.github/workflows/ri-release-rust-binaries.yml
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    bin: mytool
+```
+
+### ri-release-source-tarball v2
 
 Installed at `.github/workflows/ri-release-source-tarball.yml`.
 
@@ -380,7 +479,7 @@ Installed at `.github/workflows/ri-release-source-tarball.yml`.
 
 **The repository supplies:** ./bootstrap, configure and `make dist`.
 
-**Produces:** The artifact release-asset-source-tarball (`*.tar.gz`); list `*.tar.gz` in release_assets.
+**Produces:** The artifact release-asset-source (`*.tar.gz`); list `*.tar.gz` in release_assets.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -562,11 +661,11 @@ Installed at `.github/workflows/release-pr.yml`.
 
 **Permissions it needs:** actions: write, checks: write, contents: write, pull-requests: write, statuses: write
 
-### workflow-lib v8
+### workflow-lib v9
 
 Installed at `.github/workflows/lib`.
 
-**Purpose:** The JavaScript the release flow and the publish pieces run (D8).
+**Purpose:** The JavaScript the release flow, the publish pieces and the release build pieces run (D8, D32).
 
 **Choose it when:** Always.
 

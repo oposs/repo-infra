@@ -1,8 +1,9 @@
 """No em dash in anything the plugin ships (owner ruling, 2026-09-23).
 
-Dated history keeps its dashes: the specs and plans under docs/superpowers/ and
-the released sections of CHANGES.md. The writing-style eval inputs carry em
-dashes on purpose, because the skill is tested on removing them.
+Dated history keeps its dashes: the specs and plans under docs/superpowers/.
+CHANGES.md ships in the plugin and is checked whole, released sections
+included. The writing-style eval inputs carry em dashes on purpose,
+because the skill is tested on removing them.
 """
 
 import pathlib
@@ -31,8 +32,8 @@ def test_a_shipped_file_carries_no_em_dash(rel):
     assert not lines, "%s: em dash on line(s) %s" % (rel, lines)
 
 
-def test_the_unreleased_changelog_section_carries_no_em_dash():
+def test_the_changelog_carries_no_em_dash():
     text = (ROOT / "CHANGES.md").read_text(encoding="utf-8")
-    unreleased = text.split("## [Unreleased]", 1)[1].split("\n## ", 1)[0]
-    assert DASH not in unreleased
+    lines = [n for n, line in enumerate(text.splitlines(), 1) if DASH in line]
+    assert not lines, "CHANGES.md: em dash on line(s) %s" % lines
 

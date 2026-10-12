@@ -12,14 +12,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `ri-release-rust-binaries` builds the release archives of a Rust program for Linux (static, x86_64 and aarch64), macOS (Intel and Apple silicon), Windows (x86_64 and arm64) and illumos, each with the binary, the README, the licence and, except in the Windows zips, every man page. A package that builds a second binary besides `bin` fails the build instead of releasing without it. Install it with `apply --item ri-release-rust-binaries` (#53).
+- `ri-release-nfpm` builds `.deb` and `.rpm` packages for amd64 and arm64 from the static Linux archives with nfpm 2.47.0 and an `nfpm.yaml` in the repository, and reads every package back before the release pull request opens. The config names the man pages with `.gz`, since the piece gzips them. Install it with `apply --item ri-release-nfpm` (#53).
+- `ri-release-homebrew` bottles the formula for Apple silicon on macOS 14 and rewrites `Formula/<bin>.rb` on every release with the version, the four archive checksums and the bottle block. Install it with `apply --item ri-release-homebrew` (#53).
 - `/repo-infra:check` reviews the project's shape after the script's report: which triggers apply (a command line, a terminal, a web interface, installed by users) and, for each rule, `met`, `gap`, `excepted` or `does not apply`. The review leaves the exit code of `check` alone. `references/project-shape.md` in the skill lists the rules, the README badges, one install snippet per channel and a Homebrew formula template (#57).
 - `.github/repo-infra.json` accepts `exceptions`, which maps a rule id of the shape to the reason it does not apply. `check` reports a value that is not an object of non-empty reasons, and tells a repository that still has `skip` to rename it to `exceptions`. Onboarding reviews the shape once and records the agreed `exceptions`.
 
 ### Changed
+- `/repo-infra:check` reports `workflow-lib` as outdated until `apply` installs v9, which `ri-release-nfpm` and `ri-release-homebrew` need (#53).
+- Onboarding a Rust program that users install now suggests `ri-release-rust-binaries`, `ri-release-nfpm` with an `nfpm.yaml`, and `ri-release-homebrew` with `Formula/<bin>.rb` (#53).
+- A repository that proves a new piece installed from a repo-infra branch may merge its conversion pull request before repo-infra releases the piece. Until the plugin is updated, `check` reports that piece as `unknown`.
 - `/repo-infra:apply` starts with the script's report instead of `/repo-infra:check`, so an update runs no shape review.
 - The install commands in the skill add the rpm repository with one `curl` for dnf4 and dnf5 instead of the two `dnf config-manager` variants, and the Debian commands also run `apt install`. The Homebrew commands gain a `brew trust` line, and the registry commands follow the `distribution`, `component` and `group` set in `gitea_packages` (#57).
 
 ### Fixed
+- The catalogue and the header of `ri-release-source-tarball` named its artifact `release-asset-source-tarball`; the piece uploads `release-asset-source`. `apply` installs the corrected header as `ri-release-source-tarball` v2.
 
 ## 1.0.2 - 2026-10-08
 ### Fixed
@@ -248,8 +255,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A changelog gate on every pull request. It compares the `[Unreleased]` block at
   base and head, so editing an old released section does not satisfy it. It is a
   required check, so `release/*` branches and the `no-changelog` label are the
-  deliberate escape hatches — both job-level, so an exempt pull request skips the
-  job and the required check goes green on its own.
+  deliberate escape hatches. Both are job-level, so an exempt pull request skips
+  the job and the required check goes green on its own.
 - **Create release PR**: computes the next version from the tags, rolls
   `CHANGES.md`, sets every declared version file and opens a `release/vX.Y.Z` pull
   request. It refuses to run when no check has reported on the commit, because a
@@ -257,7 +264,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Publish release**: reads the released version back out of `CHANGES.md`,
   refuses to tag when any version file disagrees, creates an annotated tag and
   publishes the release. It exposes `version`, `tag` and `release_id` as job
-  outputs — the seam that per-language publish add-ons will attach to.
+  outputs, the seam that per-language publish add-ons will attach to.
 - `RELEASING.md` documenting the two-step release and, more importantly, why each
   of its unusual parts is the way it is.
 

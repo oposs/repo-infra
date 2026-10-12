@@ -100,3 +100,11 @@ def test_the_prose_follows_the_house_style():
     for heading in re.findall(r"^#{2,6} (.+)$", prose, re.M):
         later = [w for w in heading.split()[1:] if not w.startswith("`")]
         assert all(not w[0].isupper() for w in later), heading
+
+
+def test_the_rust_rules_name_the_release_pieces():
+    bodies = {heading.strip("`"): body for heading, body in rules()}
+    assert "`ri-release-rust-binaries`" in bodies["native-targets"]
+    assert "`ri-release-nfpm`" in bodies["linux-packages"]
+    assert "`ri-release-homebrew`" in bodies["homebrew"]
+    assert "`ri-release-homebrew` rewrites" in section("Formula template")
