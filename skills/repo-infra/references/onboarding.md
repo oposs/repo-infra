@@ -27,7 +27,8 @@ what is wrong and never gates the work.
    `ri-publish-tag`, `ri-publish-finalize`) the same way, or let a bare `apply`
    install every missing core piece in one run. Then write the callers and
    `.github/repo-infra.json`, starting from the closest example in
-   `references/examples/repo-infra/`.
+   `references/examples/repo-infra/` or, for a Rust program users install,
+   `references/examples/mtuspy/`.
 5. **Run the script until it exits 0.** It reads the callers against the pieces
    they call, so a misspelt input or a missing `needs:` entry shows up before
    the first run on GitHub does.

@@ -937,3 +937,19 @@ def test_this_repositorys_ci_yml_skips_on_every_job_but_ci_passed():
     guarded = {job_id for job_id, job in callers.jobs(doc).items()
                if callers._unwrapped(SKIP) in callers.conjuncts(job.get("if", ""))}
     assert guarded == set(callers.jobs(doc)) - {"ci-passed"}
+
+
+@pytest.mark.parametrize("name", ["ci.yml", "release-build.yml", "release-publish.yml"])
+def test_the_mtuspy_example_callers_have_no_problem(tmp_path, name):
+    # mtuspy calls pieces repo-infra does not install, so its callers are read
+    # beside the shipped workflow pieces instead of this repository's own.
+    example = REPO / "skills/repo-infra/references/examples/mtuspy"
+    folder = tmp_path / ".github/workflows"
+    folder.mkdir(parents=True)
+    for path in (REPO / "skills/repo-infra/assets/pieces").glob("ri-*/ri-*.yml"):
+        (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    for caller in ("ci.yml", "release-build.yml", "release-publish.yml"):
+        (folder / caller).write_text((example / caller).read_text(encoding="utf-8"),
+                                     encoding="utf-8")
+    docs = callers.read_workflows(tmp_path)
+    assert [i.detail for i in callers.validate(docs, load_pieces()) if i.name == name] == []

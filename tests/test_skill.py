@@ -161,3 +161,12 @@ def test_onboarding_asks_who_holds_the_copyright_and_the_shape_checks_it():
     for needle in ("AUTHORS, REPORTING BUGS and COPYRIGHT", "Co-Authored-By:",
                    "differs from the one in `LICENSE`"):
         assert needle in shape, needle
+
+
+def test_mtuspy_is_the_example_of_a_project_with_its_full_shape():
+    example = REFS / "examples/mtuspy"
+    for name in ("ci.yml", "release-build.yml", "release-publish.yml", "repo-infra.json",
+                 "nfpm.yaml", "mtuspy.rb"):
+        assert (example / name).is_file(), name
+    assert "references/examples/mtuspy/" in flat(REFS / "onboarding.md")
+    assert "references/examples/mtuspy/" in flat(REFS / "project-shape.md")
