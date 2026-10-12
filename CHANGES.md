@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- The `man-pages` skill asks every manual for AUTHORS, REPORTING BUGS and COPYRIGHT, and for the repository URL at the top of SEE ALSO. AUTHORS lists the people and AI model families in the commit history, and COPYRIGHT copies the holder from `LICENSE`, which onboarding now asks about: a company or a person. `/repo-infra:check` reports a manual without these sections, an author missing from AUTHORS and a holder that differs from `LICENSE`.
 
 ### Fixed
 

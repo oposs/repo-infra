@@ -145,11 +145,22 @@ def test_writing_style_carries_the_changelog_rules_and_the_comment_example():
 
 SECTION_ORDER = ["NAME", "SYNOPSIS", "CONFIGURATION", "DESCRIPTION", "OPTIONS",
                  "EXIT STATUS", "ENVIRONMENT", "FILES", "VERSIONS", "STANDARDS",
-                 "HISTORY", "NOTES", "CAVEATS", "BUGS", "EXAMPLES", "SEE ALSO"]
+                 "HISTORY", "NOTES", "CAVEATS", "BUGS", "EXAMPLES", "AUTHORS",
+                 "REPORTING BUGS", "COPYRIGHT", "SEE ALSO"]
 
 
 def test_man_pages_states_the_section_order_of_man_pages_7():
     assert "\n".join(SECTION_ORDER) in skill("man-pages").read_text(encoding="utf-8")
+
+
+def test_man_pages_tells_where_authors_copyright_and_home_come_from():
+    # The holder and the authors are separate facts with separate sources:
+    # LICENSE names the holder, git names the authors.
+    text = skill("man-pages").read_text(encoding="utf-8")
+    for needle in ("Co-Authored-By", "one entry per model family", "LICENSE",
+                   "Project home: <https://", "are not authors",
+                   "Ask the owner who holds the copyright"):
+        assert needle in text, needle
 
 
 def test_man_pages_shows_the_term_list_form_and_names_every_setup_step():

@@ -265,6 +265,11 @@ Ask these before choosing. Do not answer them yourself.
   authoritative? Same risk. Options: pnpm, bun.
 - **`bun.lock` and `package-lock.json` are both present.** Which package manager
   is authoritative? Same risk. Options: bun, npm.
+- **Who holds the copyright?** A company or a person. The answer goes into
+  `LICENSE` and into COPYRIGHT of the manual, and the two must agree. In a
+  repository owned by an organisation, suggest the company; in a personal
+  repository, the person. Ask also when `LICENSE` already names a holder, and
+  correct `LICENSE` first if the answer differs.
 
 The answer picks `ri-ci-node-pnpm` or `ri-ci-node-bun`. No piece covers npm
 alone; that is a gap (`references/teaching-the-standard.md`).

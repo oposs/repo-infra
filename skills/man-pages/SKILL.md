@@ -53,11 +53,62 @@ NOTES
 CAVEATS
 BUGS
 EXAMPLES
+AUTHORS
+REPORTING BUGS
+COPYRIGHT
 SEE ALSO
 ```
 
 A section the tool needs that the list lacks, for example KEYS, SIGNALS or
 API, goes between OPTIONS and EXIT STATUS.
+
+`man-pages(7)` marks AUTHORS, REPORTING BUGS and COPYRIGHT as unused, because
+the Linux man-pages project has hundreds of authors per page. A page of a
+single program has all three, and SEE ALSO.
+
+## Authors, bugs, copyright and home
+
+The copyright holder and the authors are separate facts, and each has its own
+source.
+
+- AUTHORS names everyone who contributed to the code: the commit authors and
+  the names in `Co-Authored-By:` trailers, people and AI models alike.
+  `git log --format='%an <%ae>%n%(trailers:key=Co-Authored-By,valueonly)'`
+  lists them. A person appears once, also with several addresses. An AI model
+  gets one entry per model family, such as `Claude (Anthropic)`, not one per
+  version, so a new model release does not change the page. Bots such as
+  `github-actions[bot]` are not authors.
+- REPORTING BUGS gives the URL of the issue tracker.
+- COPYRIGHT copies the copyright line of `LICENSE`, whose holder may be a
+  company while the authors are people, and names the licence with a link to
+  `LICENSE` in the repository. Ask the owner who holds the copyright, a company
+  or a person, also when `LICENSE` already names one. In a repository owned by
+  an organisation it is probably the company. A different answer changes
+  `LICENSE` first.
+- SEE ALSO opens with the repository, before the other pages.
+
+```markdown
+# AUTHORS
+
+Tobias Oetiker <tobi@oetiker.ch>,
+Claude (Anthropic).
+
+# REPORTING BUGS
+
+<https://github.com/oetiker/mytool/issues>
+
+# COPYRIGHT
+
+Copyright (c) 2026 OETIKER+PARTNER AG.
+Released under the MIT licence, see
+<https://github.com/oetiker/mytool/blob/main/LICENSE>.
+
+# SEE ALSO
+
+Project home: <https://github.com/oetiker/mytool>
+
+**ping**(8)
+```
 
 Level-1 headings are anchors. A README links to `docs/manual.md#options`, and
 renaming the heading breaks that link. Treat a rename as a breaking change and
