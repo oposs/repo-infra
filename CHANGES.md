@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- The skill carries mtuspy's callers, config, `nfpm.yaml` and formula under `references/examples/mtuspy/`, the example of a Rust program that publishes to every channel. Onboarding points a Rust program users install to it.
 
 ### Changed
 
