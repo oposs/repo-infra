@@ -382,7 +382,7 @@ Installed at `.github/workflows/ri-release-homebrew.yml`.
 
 **Needs the pieces:** ri-release-rust-binaries, workflow-lib
 
-**Produces:** The artifacts release-asset-bottle-<os> (list the arm64 bottle in release_assets) and release-files with the formula; no other job may write release-files.
+**Produces:** The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -410,11 +410,11 @@ Installed at `.github/workflows/ri-release-nfpm.yml`.
 
 **Choose it when:** The project is a Rust program users install on Linux (linux-packages in references/project-shape.md).
 
-**The repository supplies:** An nfpm config whose contents take their sources from STAGE; every dollar-brace name in it is set by the piece or by packagers.
+**The repository supplies:** An nfpm config whose contents take their sources from STAGE and name the man pages with .gz (the piece gzips them); the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, TARGET, STAGE and ARCH, packagers sets every other dollar-brace name.
 
 **Needs the pieces:** ri-release-rust-binaries, workflow-lib
 
-**Produces:** The artifact release-asset-packages, <bin>_<version>-1_<arch>.deb and <bin>-<version>-1.<arch>.rpm; list them in release_assets.
+**Produces:** The artifact release-asset-packages, <name>_<version>-<release>_<amd64|arm64>.deb and <name>-<version>-<release>.<x86_64|aarch64>.rpm, with name and release from the config; list them in release_assets.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -446,11 +446,11 @@ Installed at `.github/workflows/ri-release-rust-binaries.yml`.
 
 **Choose it when:** The project is a Rust program users install (native-targets in references/project-shape.md).
 
-**The repository supplies:** Cargo.toml with the binary `bin`, README.md, LICENSE, and `make man` writing man/.
+**The repository supplies:** Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, and `make man` writing man/.
 
 **Needs the pieces:** man, man-lua
 
-**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows); list all seven in release_assets.
+**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/); list all seven in release_assets.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|

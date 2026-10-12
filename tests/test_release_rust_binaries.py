@@ -1,6 +1,7 @@
 """ri-release-rust-binaries (D32): the seven archives of a Rust program. The
 build and the packing step run here on a fake target tree."""
 
+import os
 import pathlib
 import subprocess
 import tarfile
@@ -150,3 +151,57 @@ def test_every_leg_uploads_its_archive_as_a_release_asset():
     upload = doc()["jobs"]["binaries"]["steps"][-1]
     assert upload["with"] == {"name": "release-asset-${{ matrix.target }}", "path": "dist/*",
                               "if-no-files-found": "error"}
+
+
+GUARD = "Refuse a package with a second binary"
+
+
+def crate(root, name, extra=""):
+    """A package named `name` with src/main.rs, plus `extra` appended to its
+    Cargo.toml; cargo metadata --no-deps reads it without network."""
+    (root / "src").mkdir(parents=True)
+    (root / "src/main.rs").write_text("fn main() {}\n")
+    (root / "Cargo.toml").write_text(
+        f'[package]\nname = "{name}"\nversion = "0.0.0"\nedition = "2021"\n{extra}')
+
+
+def guard(root):
+    return subprocess.run(["bash", "-c", step("binaries", GUARD)["run"]], cwd=root,
+                          env={**os.environ, "BIN": "tool"}, capture_output=True, text=True)
+
+
+def test_the_guard_passes_a_package_with_the_one_binary(tmp_path):
+    crate(tmp_path, "tool")
+    done = guard(tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_guard_ignores_the_binaries_of_other_workspace_members(tmp_path):
+    crate(tmp_path, "tool", '\n[workspace]\nmembers = ["xtask"]\n')
+    crate(tmp_path / "xtask", "xtask")
+    done = guard(tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("extra, src_bin", [
+    ('\n[[bin]]\nname = "tool"\npath = "src/main.rs"\n\n'
+     '[[bin]]\nname = "tool-admin"\npath = "src/admin.rs"\n', None),
+    ("", "tool-admin"),
+], ids=["declared", "src-bin"])
+def test_the_guard_refuses_a_second_binary_in_the_package(tmp_path, extra, src_bin):
+    crate(tmp_path, "tool", extra)
+    (tmp_path / "src/admin.rs").write_text("fn main() {}\n")
+    if src_bin:
+        (tmp_path / "src/bin").mkdir()
+        (tmp_path / f"src/bin/{src_bin}.rs").write_text("fn main() {}\n")
+    done = guard(tmp_path)
+    assert done.returncode == 1
+    assert done.stdout.splitlines() == [
+        "::error::the package of tool also builds tool-admin; the archives, packages and "
+        "formula carry tool alone, so move tool-admin into another package"]
+
+
+def test_the_guard_runs_on_every_leg_before_the_build():
+    names = [s.get("name") for s in doc()["jobs"]["binaries"]["steps"]]
+    assert names.index(GUARD) == names.index("Build") - 1
+    assert "if" not in step("binaries", GUARD)

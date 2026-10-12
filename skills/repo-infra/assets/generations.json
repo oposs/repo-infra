@@ -91,16 +91,16 @@
     "1": "e53112b4c3db77c02e81588934e1c6719d2663154839ec09d645484a571a9340"
   },
   "pieces/ri-release-homebrew/ri-release-homebrew.yml": {
-    "1": "ab30fc7a70794ce8e450413b7d646bc893d46cf05390458b760d1be696d820cf"
+    "1": "3b105406930720a8a87a3747600edd8873a733876094901650b5963bd9d8e461"
   },
   "pieces/ri-release-nfpm/ri-release-nfpm.yml": {
-    "1": "7212d14bb76aae1a942e841efb9daba45012a4f605c599d88dba65b188f0a2be"
+    "1": "4b005f7aea5a2fbf2813e0688c1062a20a056ea5398178840958a5485dedf261"
   },
   "pieces/ri-release-pr-current/ri-release-pr-current.yml": {
     "1": "5ae40fc450e7f0534657805e2335401759c740be69a8554fffcd51d658d81397"
   },
   "pieces/ri-release-rust-binaries/ri-release-rust-binaries.yml": {
-    "1": "05c2fea8aa5765ed6a75b40d6aa58d4cd4ca85635f1fa88ab6c609f74547891d"
+    "1": "2c5597d3706e03f2a137872fe86837d2690c5a701e3e1d4b12ea84574e9caf52"
   },
   "pieces/ri-release-source-tarball/ri-release-source-tarball.yml": {
     "1": "83530e226671f4abe714edf7d9fbdaa453506a0624e7c851ee058d11daf8e14a",
