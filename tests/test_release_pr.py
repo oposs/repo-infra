@@ -163,6 +163,8 @@ def test_repo_infra_gates_its_release_on_mtuspy():
     assert jobs["gate"]["needs"] == "prepare"
     assert jobs["gate"]["permissions"] == {"contents": "write", "actions": "write"}
     assert jobs["finish"]["needs"] == ["prepare", "build", "test", "gate"]
+    # contents: write must not stay in the checkout's git config.
+    assert jobs["gate"]["steps"][0]["with"]["persist-credentials"] is False
     step = jobs["gate"]["steps"][-1]
     assert step["env"] == {"HEAD_SHA": "${{ needs.prepare.outputs.head }}",
                            "VERSION": "${{ needs.prepare.outputs.version }}"}

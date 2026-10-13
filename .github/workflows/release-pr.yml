@@ -115,6 +115,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.head }}
           sparse-checkout: .github/workflows/lib
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
