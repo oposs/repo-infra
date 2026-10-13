@@ -9,9 +9,7 @@
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-github-action.yml@v2
 #     with:
 #       ref: ${{ inputs.ref }}
-#
-# ci.yml also calls the project's own test, which stays in the repository:
-#
+# Also:
 #   action-test:
 #     uses: ./.github/workflows/action-test.yml
 #     with:

@@ -72,6 +72,9 @@ def entry(piece):
               f"{callers.permission_text(callers.needed(file, {file: doc})) or 'none'}", ""]
     if "Call" in piece.header:
         lines += ["```yaml", piece.header["Call"], "```", ""]
+    if "Also" in piece.header:
+        lines += ["**Also add to the same workflow:**", "", "```yaml",
+                  piece.header["Also"], "```", ""]
     return "\n".join(lines)
 
 

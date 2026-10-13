@@ -1124,3 +1124,28 @@ def test_a_ci_yml_that_calls_both_is_fine():
         "ri-ci-github-action.yml@v2\n  action-test:\n"
         "    uses: ./.github/workflows/action-test.yml\n")
     assert callers.action_test_problems({"ci.yml": ci}) == []
+
+
+def test_validate_reports_a_ci_yml_without_the_action_test():
+    ci = workflow.load(
+        "jobs:\n  action:\n    uses: oposs/repo-infra/.github/workflows/"
+        "ri-ci-github-action.yml@v2\n")
+    found = [i.detail for i in callers.validate({"ci.yml": ci}, load_pieces())
+             if "action-test.yml" in i.detail]
+    assert len(found) == 1
+
+
+def test_a_job_without_uses_and_a_ci_yml_without_jobs_are_tolerated():
+    for text in ("jobs:\n  build:\n    runs-on: x\n", "on: push\n"):
+        assert callers.action_test_problems({"ci.yml": workflow.load(text)}) == []
+
+
+def test_the_consumers_action_test_keeps_the_ref_contract():
+    ci = workflow.load(
+        "jobs:\n  action-test:\n    uses: ./.github/workflows/action-test.yml\n"
+        "    with:\n      ref: ${{ inputs.ref }}\n")
+    bad = workflow.load(
+        "on:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\n"
+        "jobs:\n  t:\n    runs-on: x\n    steps:\n      - uses: actions/checkout@v7\n")
+    found = callers.ref_contract_problems({"ci.yml": ci, "action-test.yml": bad}, set())
+    assert any(name == "action-test.yml" for name, _ in found)

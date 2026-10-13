@@ -200,3 +200,11 @@ def test_the_call_snippet_passes_no_secrets():
 
 def test_the_piece_declares_the_manifest_job_only():
     assert list(piece_jobs()) == ["action-manifest"]
+
+
+def test_the_catalogue_entry_shows_the_action_test_job():
+    from repo_infra import catalogue
+    entry = catalogue.entry(pieces.load_pieces()["ri-ci-github-action"])
+    assert "action-test:\n  uses: ./.github/workflows/action-test.yml" in entry
+    (job,) = workflow.load(pieces.load_pieces()["ri-ci-github-action"].header["Also"]).values()
+    assert job["secrets"] == "inherit"

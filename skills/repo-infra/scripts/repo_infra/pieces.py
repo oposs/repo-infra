@@ -31,7 +31,7 @@ def plugin_root(assets):
 
 
 COMMENT = {".yml": "#", ".yaml": "#", ".mk": "#", ".js": "//", ".m4": "dnl", ".lua": "--"}
-FIELDS = ("Purpose", "Choose", "Supplies", "Pieces", "Produces", "Call")
+FIELDS = ("Purpose", "Choose", "Supplies", "Pieces", "Produces", "Call", "Also")
 REQUIRED = ("Purpose", "Choose", "Supplies")
 _FIELD = re.compile(r"^([A-Z][a-z]+):(?: (.*))?$")
 _SECTION = re.compile(r"^## v(\d+)\s*$", re.MULTILINE)

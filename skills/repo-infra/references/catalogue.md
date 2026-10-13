@@ -80,6 +80,16 @@ action:
     ref: ${{ inputs.ref }}
 ```
 
+**Also add to the same workflow:**
+
+```yaml
+action-test:
+  uses: ./.github/workflows/action-test.yml
+  with:
+    ref: ${{ inputs.ref }}
+  secrets: inherit
+```
+
 ### ri-ci-go
 
 Called as `oposs/repo-infra/.github/workflows/ri-ci-go.yml@v2`.

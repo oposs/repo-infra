@@ -21,7 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `changelog.yml` is a short caller: its job `changelog` calls `ri-changelog`, and `changelog-updated` turns red when that job fails or is cancelled. Copy it from `assets/callers/changelog.yml`; `/repo-infra:check` reports any difference and a repository without `changelog.yml`, and the `changelog` piece is no longer in the catalogue.
 - Create release PR is a short `release-pr.yml` that calls `ri-release-prepare` and `ri-release-finish` from repo-infra and the repository's own `release-build.yml` and `ci.yml` between them. A repository may add jobs between prepare and finish; `/repo-infra:check` reports a `finish` that does not need all of them, and a repository without `release-pr.yml`. Copy it from `assets/callers/release-pr.yml`.
 - `.github/workflows/lib/` is no longer installed in a repository, and `workflow-lib` is no longer in the catalogue.
-- A GitHub Action's `ci.yml` calls its own `.github/workflows/action-test.yml` in a job `action-test`, next to `ri-ci-github-action`, which no longer calls it. `/repo-infra:check` reports a `ci.yml` that calls the piece without that job. Copy the job from the catalogue entry of `ri-ci-github-action`.
+- A GitHub Action's `ci.yml` calls its own `.github/workflows/action-test.yml` in a job `action-test`, next to `ri-ci-github-action`, which no longer calls it. `/repo-infra:check` reports a `ci.yml` that calls the piece without that job. The catalogue entry of `ri-ci-github-action` shows both jobs.
 
 ### Fixed
 
