@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+- `ri-publish-tag` takes two optional secrets, `app-id` and `app-private-key`. When both are set it moves the major tag with the GitHub App's token, which a tag ruleset can let through; without them nothing changes. A refused move fails the run with "vN could not be moved to vX.Y.Z" and names the secrets.
 - Every CI and release build workflow takes a `repository` input, the repository to check out; it defaults to the calling repository. The Homebrew bottle and formula URLs name that repository. repo-infra's release gate uses it to build mtuspy.
 
 ### Changed

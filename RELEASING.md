@@ -87,3 +87,36 @@ the re-run does exactly what the original attempt would have done.
   nothing. Abandon the release as above, then dispatch again.
 - A tag pushed by hand for the newest released version, without a GitHub
   release, makes every publish run fail until the next release creates one.
+
+## The moving major tag v2
+
+Repositories call repo-infra's workflows at `@v2`. Every release moves `v2`
+to the release it publishes, with the token of the GitHub App in the
+secrets `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY`. A tag ruleset on
+`v*` refuses every other update and every deletion; its bypass list holds
+that App and the Repository admin role.
+
+Before `v2` moves, Create release PR dispatches `gate-mtuspy.yml` on the
+release branch, which builds mtuspy with the release's own workflows. The
+release pull request does not open unless it succeeds.
+
+### Rolling back a release
+
+When a release breaks repositories that call it:
+
+1. As a repository admin, point `v2` at the commit of the previous release
+   tag:
+
+   ```sh
+   git fetch --tags origin
+   git tag -f -a v2 -m "Roll v2 back to vX.Y.Z" vX.Y.Z^{commit}
+   git push --force origin refs/tags/v2
+   ```
+
+2. Revert the defect on `main` and release again. The release moves `v2`
+   forward to the fixed version.
+
+Within `v2` a workflow may add an input with a default, an optional secret
+or an output. Removing or renaming an input, secret, output or workflow,
+changing an input's type, making an input or secret required, or asking
+for more permissions waits for `v3`; `tests/test_v2_compat.py` refuses it.

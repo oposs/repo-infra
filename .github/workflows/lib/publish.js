@@ -83,4 +83,37 @@ function validateBuildRecord(record, version, latestAtHead) {
   return null;
 }
 
-module.exports = { publishDecision, recordHeadWarning, validateBuildRecord };
+function majorTag(version) {
+  return `v${version.split('.')[0]}`;
+}
+
+// D33: moves the major tag consumers call, v2 for 2.0.1. The first release of
+// a major creates it. A tag ruleset on v* (repo-infra has one) refuses the
+// update unless the token belongs to its bypass list, the GitHub App.
+async function moveMajorTag(github, { owner, repo, version, tag, sha }) {
+  const major = majorTag(version);
+  const { data: object } = await github.rest.git.createTag({
+    owner, repo, tag: major, message: `Update ${major} to ${tag}`, object: sha, type: 'commit',
+  });
+  let updateError = null;
+  try {
+    await github.rest.git.updateRef({ owner, repo, ref: `tags/${major}`, sha: object.sha, force: true });
+    return `Moved ${major} to ${tag}.`;
+  } catch (error) {
+    if (error.status !== 422) throw error;
+    updateError = error;
+  }
+  try {
+    await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${major}`, sha: object.sha });
+    return `Moved ${major} to ${tag}.`;
+  } catch (error) {
+    if (error.status !== 422) throw error;
+    throw new Error(`${major} could not be moved to ${tag}: ${updateError.message}. A tag `
+      + 'ruleset on v* lets only its bypass list move it; pass app-id and app-private-key '
+      + 'to ri-publish-tag.');
+  }
+}
+
+module.exports = {
+  publishDecision, recordHeadWarning, validateBuildRecord, majorTag, moveMajorTag,
+};
