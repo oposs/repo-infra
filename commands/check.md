@@ -13,7 +13,8 @@ The report has four sections.
 
 - `pieces`: every installed build file, by its bytes against the published
   versions, the core build files that are missing, and the files of the v1
-  layout (below).
+  layout (below). A core workflow piece that no workflow calls reads `missing`:
+  every repository calls it, and the finding names the `uses:` line.
 - `callers`: `ci.yml`, `release-build.yml`, `release-publish.yml` and the
   workflows they call, checked against the pieces they call (inputs, secrets,
   `needs:` lists, the `if:` and `with:` of `finalize`, token permissions,

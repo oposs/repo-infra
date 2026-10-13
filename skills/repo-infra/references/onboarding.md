@@ -69,7 +69,8 @@ into `ci-local.yml`, or into a new piece (`references/teaching-the-standard.md`)
   `secrets: inherit` on those calls with the secrets by name;
 - it adds the job `release-verdict` to `ci.yml`, rewrites `ci-passed` to the
   v2 form and leaves every other line of the file alone;
-- it writes `changelog.yml` and `release-pr.yml` as the v2 callers.
+- it writes `changelog.yml` and `release-pr.yml` as the v2 callers, when they are
+  absent or still carry the v1 marker; a file already in the v2 form stays.
 
 A copy with local edits is removed as well. The commit body and the output list
 those edits (`The migration removed these local changes`); git keeps them, and
@@ -168,8 +169,6 @@ What `check` enforces on the callers:
 - Only the release build uploads artifacts named `release-asset-*` or
   `release-files`.
 - Calls of other repositories' workflows are not reviewed.
-- Every installed build file is used; a workflow file that nothing calls never
-  runs.
 - `changelog.yml` and `release-pr.yml` match `assets/callers/`, apart from the
   jobs a repository adds to `release-pr.yml` between `prepare` and `finish`.
 - `ci.yml` and `changelog.yml` carry no `paths` or `paths-ignore` filter.

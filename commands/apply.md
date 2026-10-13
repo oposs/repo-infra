@@ -45,11 +45,10 @@ config. In order:
 
 1. It refuses while a release is in progress (`release-in-progress`): an open
    release pull request, or a latest released version in `CHANGES.md` that has
-   no tag yet (checked when GitHub's tag list could be read). This
-   blocks the install of every piece, not only the release-flow pieces, because
-   the pieces call each other and a new copy cannot finish a release the old
-   one started. Let the release pull request merge and publish, or close it,
-   then run `apply` again.
+   no tag yet (checked when GitHub's tag list could be read). The migration
+   rewrites `release-pr.yml` and `ci.yml`, which that release is running, so
+   the migration and every install wait. Let the release pull request merge and
+   publish, or close it, then run `apply` again.
 2. When the repository has the v1 layout, it migrates it in one commit named
    `Migrate to the repo-infra v2 layout` (below).
 3. It installs every pending build file that has no local edit: each outdated piece,
@@ -77,7 +76,8 @@ one commit named `Migrate to the repo-infra v2 layout`. It removes the copied
 `oposs/repo-infra/.github/workflows/<piece>.yml@v2`, with the secrets passed by
 name instead of `secrets: inherit`; adds the job `release-verdict` to `ci.yml`
 and replaces `ci-passed` with the v2 form, keeping every other line; and writes
-`changelog.yml` and `release-pr.yml` as the v2 callers. It names what it removed
+`changelog.yml` and `release-pr.yml` as the v2 callers, when they are absent or
+still carry the v1 marker. It names what it removed
 that repo-infra never shipped: a copy with local edits, a file of the
 repository's own in `lib/`, a job of the old `changelog.yml` or `release-pr.yml`
 the new caller lacks. Git keeps them. Port each to a caller or drop it, then run

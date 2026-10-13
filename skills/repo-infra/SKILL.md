@@ -6,7 +6,7 @@ description: Use when bringing a repository onto the shared infrastructure stand
 # repo-infra
 
 repo-infra is a toolbox for one repository at a time: the one you are standing
-in. Workflows are called, not copied: a caller reads
+in. A caller calls each workflow at
 `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`, and each release of
 repo-infra moves `v2`, so a fix reaches every repository without a pull request.
 Build files (`build/man.mk`, `build/man-deflist.lua`, `build/container.mk`,
@@ -59,8 +59,8 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
   `references/conventions.md`
 - D7, D8, D9: logic in github-script from `lib/*.js`, git through the Git Data
   API. `references/conventions.md`
-- D10, D12, D14, D19: skills carry decisions, the tool never guesses, pieces are
-  tested by running them.
+- D10, D12, D14, D19: skills carry decisions, the tool never guesses, names answer the
+  question where they are read, pieces are tested by running them.
 - D11, D29: superseded by D30; markers name a version, bytes decide.
   `references/conventions.md`
 - D13: a required workflow never carries `paths`. `references/conventions.md`
@@ -73,7 +73,7 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
 - D22, D23: musl and man pages are pieces a caller chooses; D32 makes them rules
   of the shape. `references/catalogue.md`, `project-shape.md`
 - D24: a Rust workspace names its lint and test crates. `conventions.md`
-- D28, D31: every release is built and tested before the merge, and its pull
+- D26: folded into D28. D28, D31: every release is built and tested before the merge, and its pull
   request skips `ci.yml`. `references/release-flow.md`
 - D30, D33: pieces and callers instead of detection and assembly; workflows are
   called at `@v2` instead of copied. This file.

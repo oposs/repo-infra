@@ -61,8 +61,8 @@ A new piece needs:
   file, a folder under `skills/repo-infra/assets/pieces/<name>/` holding the file
   with the marker `# repo-infra: <name> v1`;
 - the header block after the marker: `Purpose`, `Choose` and `Supplies`;
-  `Pieces` naming the pieces it needs (the only way `apply` knows to install
-  them with it); `Produces` for the assets it makes; and `Call`, the caller job,
+  `Pieces` naming the pieces it needs (for a build file, the only way `apply`
+  knows to install them with it; on a workflow it installs nothing); `Produces` for the assets it makes; and `Call`, the caller job,
   for every workflow a caller calls;
 - for a build file, a `CHANGES.md` in that folder with a `## v1` section: the
   upgrade notes `apply` prints, saying what a caller or the config must change;
@@ -74,9 +74,13 @@ A new piece needs:
 - tests that run the steps of the piece, because nothing is standardised that
   has not been shown to run.
 
-The repository's own conversion pull request may merge before that ships, once
-the proof run is green and the upstream pull request changes no behaviour of an
-installed piece any more. Until the plugin is updated, `check` does not know a new
+A conversion that needs a changed or new workflow piece merges only after the
+repo-infra release that moves `v2`, with its `uses:` back at `@v2`. At
+`@<branch>` the call breaks when the branch is deleted; at `@v2` before the
+release the fix is missing, and a piece that does not exist there makes GitHub
+refuse the whole workflow file, so `ci-passed` never reports. A conversion that
+needs only a build file may merge once the proof run is green and the upstream
+pull request changes no behaviour of an installed piece any more. Until the plugin is updated, `check` does not know a new
 piece: a call of it is reported as a file repo-infra does not ship, which is
 expected in that window. After the update, `check` runs against the released
 plugin. A build file it reads as `edited`, because a later change touched only its
