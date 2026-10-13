@@ -123,7 +123,10 @@ def _node():
 
 def _workspace(tmp_path, base_too=True):
     ws = tmp_path / "ws"
-    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
+    # ci-passed (base_too) still reads the library from the workspace; the
+    # release_pr_current piece reads it from .repo-infra (D33).
+    lib = ".github/workflows/lib" if base_too else ".repo-infra/.github/workflows/lib"
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / lib)
     if base_too:
         shutil.copytree(ROOT / ".github/workflows/lib",
                         ws / "repo-infra-base/.github/workflows/lib")

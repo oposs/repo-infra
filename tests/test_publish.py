@@ -149,6 +149,15 @@ def _expand_inputs(script):
     return script
 
 
+def _root_workspace(tmp_path):
+    """This repository's configuration, with its library where a piece finds it."""
+    ws = tmp_path / "ws-root"
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib")
+    (ws / ".github").mkdir(exist_ok=True)
+    shutil.copy(ROOT / ".github/repo-infra.json", ws / ".github/repo-infra.json")
+    return ws
+
+
 def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT, expected=None):
     """Run the script of the ri-publish-finalize piece under node against a
     fake release.
@@ -156,12 +165,14 @@ def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT, expected=Non
     Substring assertions cannot answer the question that matters -- does this
     job publish a release that is missing its .deb? -- so this runs the
     piece's real code. `assets.js` is required from this repository's own
-    installed copy of workflow-lib, which test_self_check.py keeps current.
+    copy of the workflow library.
     """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
 
+    if workspace == ROOT:
+        workspace = _root_workspace(tmp_path)
     script = _expand_inputs(_piece_scripts()[0])
     if expected is None:
         # The caller passes the files its publish jobs attach as `expected`.
@@ -255,7 +266,8 @@ def test_an_expected_input_that_is_no_list_of_name_patterns_fails_the_job(tmp_pa
 
 def _build_workspace(tmp_path, release_assets):
     ws = tmp_path / "ws"
-    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib")
+    (ws / ".github").mkdir(exist_ok=True)
     (ws / ".github/repo-infra.json").write_text(json.dumps(
         {"version_files": [], "release_assets": release_assets}))
     return ws
@@ -420,7 +432,7 @@ const context = { repo: { owner: 'o', repo: 'r' } };
     path = tmp_path / "parked.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ROOT,
-                          env={"GITHUB_WORKSPACE": str(ROOT), "PATH": os.environ["PATH"]})
+                          env={"GITHUB_WORKSPACE": str(_root_workspace(tmp_path)), "PATH": os.environ["PATH"]})
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
 

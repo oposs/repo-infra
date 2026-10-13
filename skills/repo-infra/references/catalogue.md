@@ -277,8 +277,6 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-rust.yml@v2`.
 
 **The repository supplies:** Cargo.toml and Cargo.lock; the optional "rust" key in .github/repo-infra.json names the crates to lint and to test (D24).
 
-**Needs the pieces:** workflow-lib
-
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
@@ -325,8 +323,6 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-pr-current.yml@v2`.
 
 **The repository supplies:** Nothing.
 
-**Needs the pieces:** workflow-lib
-
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
@@ -356,7 +352,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-homebrew.yml@v2`.
 
 **The repository supplies:** Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
 
-**Needs the pieces:** ri-release-rust-binaries, workflow-lib
+**Needs the pieces:** ri-release-rust-binaries
 
 **Produces:** The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
 
@@ -388,7 +384,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-nfpm.yml@v2`.
 
 **The repository supplies:** An nfpm config whose contents take their sources from STAGE and name the man pages with .gz (the piece gzips them); the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, TARGET, STAGE and ARCH, packagers sets every other dollar-brace name.
 
-**Needs the pieces:** ri-release-rust-binaries, workflow-lib
+**Needs the pieces:** ri-release-rust-binaries
 
 **Produces:** The artifact release-asset-packages, <name>_<version>-<release>_<amd64|arm64>.deb and <name>-<version>-<release>.<x86_64|aarch64>.rpm, with name and release from the config; list them in release_assets.
 
@@ -512,8 +508,6 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-finalize.yml@v2`.
 
 **The repository supplies:** release_assets in .github/repo-infra.json.
 
-**Needs the pieces:** workflow-lib
-
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `release_id` | string | yes |  | The draft release to publish, from ri-publish-tag. |
@@ -546,8 +540,6 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-gitea.yml@v2`.
 **Choose it when:** The project ships packages to Gitea.
 
 **The repository supplies:** gitea_packages (url, owner) in .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
-
-**Needs the pieces:** workflow-lib
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -582,8 +574,6 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-tag.yml@v2`.
 **Choose it when:** Always; release-publish.yml calls it.
 
 **The repository supplies:** version_files and moving_major_tag in .github/repo-infra.json.
-
-**Needs the pieces:** workflow-lib
 
 **Outputs:** `version`, `tag`, `release_id`, `head`
 

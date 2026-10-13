@@ -47,7 +47,8 @@ def run(tmp_path, *, tag=None, releases=(), record=None,
     if node is None:
         pytest.skip("node is not installed")
     ws = tmp_path / "ws"
-    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib")
+    (ws / ".github").mkdir(exist_ok=True)
     (ws / "CHANGES.md").write_text(CHANGES)
     (ws / ".github/repo-infra.json").write_text(json.dumps(
         {"version_files": []}))

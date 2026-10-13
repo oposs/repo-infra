@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - The reusable workflows (`ri-*.yml`) live once, in `.github/workflows/` of repo-infra. The catalogue shows each one with the line consumers call it by, `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`. `ri-ci-lib` is no longer in the catalogue.
+- The reusable workflows load the workflow library from the repo-infra commit they were called from. A repository that calls them needs no `.github/workflows/lib/` of its own.
 
 ### Fixed
 

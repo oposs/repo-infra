@@ -341,6 +341,15 @@ def ref_found(text, reserved=False):
     return callers.ref_problems(workflow.load(text), reserved)
 
 
+def test_the_library_checkout_of_a_piece_needs_no_ref_input():
+    library = ("      - uses: actions/checkout@v7\n        with:\n"
+               "          repository: ${{ job.workflow_repository }}\n"
+               "          ref: ${{ job.workflow_sha }}\n          path: .repo-infra\n")
+    assert ref_found(GOOD + library, reserved=True) == []
+    assert ref_found(GOOD + library.replace("job.workflow_repository", "other/repo"),
+                     reserved=True) != []
+
+
 def test_a_conforming_project_workflow_has_no_ref_problem():
     assert ref_found(GOOD, reserved=True) == []
 

@@ -4,7 +4,6 @@
 # Choose: The project ships packages to Gitea.
 # Supplies: gitea_packages (url, owner) in .github/repo-infra.json, the secret
 #   GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
-# Pieces: workflow-lib
 # Call:
 #   gitea:
 #     needs: [publish]
@@ -62,6 +61,15 @@ jobs:
         with:
           ref: ${{ inputs.head }}
 
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
       - uses: actions/github-script@v9
         env:
           GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
@@ -71,7 +79,7 @@ jobs:
             const crypto = require('crypto');
             const fs = require('fs');
             const ws = process.env.GITHUB_WORKSPACE;
-            const gitea = require(`${ws}/.github/workflows/lib/gitea.js`);
+            const gitea = require(`${ws}/.repo-infra/.github/workflows/lib/gitea.js`);
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const release_id = Number('${{ inputs.release_id }}');

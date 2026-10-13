@@ -17,7 +17,7 @@ LIB = ROOT / "skills/repo-infra/assets/pieces/workflow-lib/lib"
 SHAPE = ROOT / "skills/repo-infra/references/project-shape.md"
 FILLED = {"<Class>": "Tool", "<one-line description>": "A tool", "<owner>": "owner",
           "<repo>": "tool", "<SPDX license>": "MIT", "<bin>": "tool"}
-LIBRARY = "require(`${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/homebrew.js`)"
+LIBRARY = "require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/homebrew.js`)"
 
 
 def doc():
@@ -71,7 +71,7 @@ def test_no_formula_logic_is_left_in_shell():
 
 def test_the_piece_names_the_library_it_runs():
     header = PIECE.read_text(encoding="utf-8").split("\n\n", 1)[0]
-    assert "# Pieces: ri-release-rust-binaries, workflow-lib" in header
+    assert "# Pieces: ri-release-rust-binaries" in header
 
 
 def test_the_library_tests_use_the_template_of_the_shape_reference():

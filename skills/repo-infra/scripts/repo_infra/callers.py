@@ -381,6 +381,10 @@ def ref_problems(doc, reserved, skip=()):
             uses = str(step.get("uses", "")).lower()
             given = step.get("with") if isinstance(step.get("with"), dict) else {}
             if uses.startswith("actions/checkout@"):
+                # The library checkout of a piece (D33) takes the code under
+                # test from nowhere; it reads repo-infra itself.
+                if str(given.get("repository", "")).strip() == "${{ job.workflow_repository }}":
+                    continue
                 if not _INPUT_REF.fullmatch(str(given.get("ref", "")).strip()):
                     found.append(f"job {job_id} has an actions/checkout step without "
                                  "`ref: ${{ inputs.ref }}`; it would test main while the "

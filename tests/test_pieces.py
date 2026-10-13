@@ -103,3 +103,46 @@ def test_every_ri_workflow_of_repo_infra_is_a_piece_or_home_only():
                                    if p.group in ("ci", "release-build")], ids=ids)
 def test_a_ci_or_build_piece_keeps_the_ref_contract(piece):
     assert callers.ref_problems(doc_of(piece), reserved=piece.group == "ci") == []
+
+
+LIB_CHECKOUT = {
+    "uses": "actions/checkout@v7",
+    "with": {"repository": "${{ job.workflow_repository }}",
+             "ref": "${{ job.workflow_sha }}",
+             "path": ".repo-infra",
+             "sparse-checkout": ".github/workflows/lib"}}
+LIB_PATH = ".repo-infra/.github/workflows/lib"
+
+
+def _library_jobs(piece):
+    return {job_id: job for job_id, job in doc_of(piece)["jobs"].items()
+            if ".github/workflows/lib" in str(job.get("steps", ""))}
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_a_piece_requires_the_library_only_from_its_own_commit(piece):
+    text = piece.files[piece.target]
+    for line in text.splitlines():
+        if ".github/workflows/lib" in line and not line.lstrip().startswith("#"):
+            assert (LIB_PATH in line or "sparse-checkout: .github/workflows/lib" in line), line
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_the_library_checkout_follows_every_source_checkout(piece):
+    """actions/checkout cleans the workspace, so a source checkout after the
+    library checkout would delete .repo-infra (D33)."""
+    for job_id, job in _library_jobs(piece).items():
+        steps = job["steps"]
+        libs = [i for i, s in enumerate(steps) if s == LIB_CHECKOUT]
+        assert len(libs) == 1, f"{job_id}: one library checkout"
+        sources = [i for i, s in enumerate(steps)
+                   if str(s.get("uses", "")).startswith("actions/checkout@") and s != LIB_CHECKOUT]
+        scripts = [i for i, s in enumerate(steps)
+                   if str(s.get("uses", "")).startswith("actions/github-script@")]
+        assert all(i < libs[0] for i in sources), f"{job_id}: source checkout after the library"
+        assert all(libs[0] < i for i in scripts), f"{job_id}: script before the library"
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_a_remote_piece_needs_no_workflow_lib_piece(piece):
+    assert "workflow-lib" not in piece.needs

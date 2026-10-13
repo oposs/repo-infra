@@ -3,7 +3,7 @@
 # Purpose: Bottle the formula on macOS and rewrite Formula/<bin>.rb for the release (D32).
 # Choose: The project is a Rust program users install with Homebrew (homebrew in references/project-shape.md).
 # Supplies: Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
-# Pieces: ri-release-rust-binaries, workflow-lib
+# Pieces: ri-release-rust-binaries
 # Produces: The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
 # Call:
 #   homebrew:
@@ -67,6 +67,15 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
       - uses: actions/download-artifact@v8
         with:
           pattern: release-asset-*-apple-darwin
@@ -85,7 +94,7 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const { pointAtArchives } = require(`${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/homebrew.js`);
+            const { pointAtArchives } = require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/homebrew.js`);
             try {
               core.info(`The local tap reads ${pointAtArchives(process.env)}`);
             } catch (error) {
@@ -118,7 +127,7 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const { renameBottles } = require(`${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/homebrew.js`);
+            const { renameBottles } = require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/homebrew.js`);
             try {
               for (const name of renameBottles()) core.info(`bottle/${name}`);
             } catch (error) {
@@ -147,6 +156,15 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
       - uses: actions/download-artifact@v8
         with:
           pattern: release-asset-*
@@ -169,7 +187,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         with:
           script: |
-            const { rewriteFormula } = require(`${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/homebrew.js`);
+            const { rewriteFormula } = require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/homebrew.js`);
             try {
               core.info(rewriteFormula(process.env));
             } catch (error) {

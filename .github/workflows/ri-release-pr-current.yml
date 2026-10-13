@@ -3,7 +3,6 @@
 # Purpose: Mark open release pull requests stale when main moves (D28).
 # Choose: Always; ci.yml calls it.
 # Supplies: Nothing.
-# Pieces: workflow-lib
 # Call:
 #   release-pr-current:
 #     uses: oposs/repo-infra/.github/workflows/ri-release-pr-current.yml@v2
@@ -52,6 +51,15 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -66,7 +74,7 @@ jobs:
             let releasePrs;
             try {
               releaseLib = require(
-                `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/release.js`);
+                `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/release.js`);
               const prs = await github.paginate(github.rest.pulls.list, {
                 owner, repo, state: 'open', per_page: 100,
               });

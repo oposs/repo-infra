@@ -4,7 +4,6 @@
 # Choose: The repository has Cargo.toml.
 # Supplies: Cargo.toml and Cargo.lock; the optional "rust" key in .github/repo-infra.json
 #   names the crates to lint and to test (D24).
-# Pieces: workflow-lib
 # Call:
 #   rust:
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-rust.yml@v2
@@ -44,6 +43,15 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
       - uses: dtolnay/rust-toolchain@stable
 
       - run: cargo metadata --no-deps --format-version 1 > "$RUNNER_TEMP/cargo-metadata.json"
@@ -54,7 +62,7 @@ jobs:
           script: |
             const fs = require('fs');
             const ws = process.env.GITHUB_WORKSPACE;
-            const { rustPlan } = require(`${ws}/.github/workflows/lib/rust-plan.js`);
+            const { rustPlan } = require(`${ws}/.repo-infra/.github/workflows/lib/rust-plan.js`);
             const configPath = `${ws}/.github/repo-infra.json`;
             const config = fs.existsSync(configPath)
               ? JSON.parse(fs.readFileSync(configPath, 'utf8'))

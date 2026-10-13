@@ -3,7 +3,6 @@
 # Purpose: Tag the merged release and create its draft release (D28).
 # Choose: Always; release-publish.yml calls it.
 # Supplies: version_files and moving_major_tag in .github/repo-infra.json.
-# Pieces: workflow-lib
 # Call:
 #   publish:
 #     uses: oposs/repo-infra/.github/workflows/ri-publish-tag.yml@v2
@@ -57,6 +56,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -69,7 +77,7 @@ jobs:
             const fs = require('fs');
             const path = require('path');
             const ws = process.env.GITHUB_WORKSPACE;
-            const lib = `${ws}/.github/workflows/lib`;
+            const lib = `${ws}/.repo-infra/.github/workflows/lib`;
             const changesLib = require(`${lib}/changes.js`);
             const bumpLib = require(`${lib}/bump.js`);
 
