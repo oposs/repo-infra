@@ -396,3 +396,23 @@ test('verdictOutputs: someone else\'s release/x is ordinary', async () => {
   const out = await verdictOutputs({}, { eventName: 'pull_request', owner: 'o', repo: 'r', pr });
   assert.deepEqual(out, { mode: 'ordinary', ok: 'true', message: '' });
 });
+
+test('releaseTitle names the repository, not the owner, then the tag', () => {
+  assert.equal(r.releaseTitle('edaptor', 'v1.8.0'), 'edaptor v1.8.0');
+  assert.equal(r.releaseTitle('repo-infra', 'v2.0.0'), 'repo-infra v2.0.0');
+});
+
+test('the draft release is created with releaseTitle, and nothing renames it later', () => {
+  const fs = require('node:fs');
+  const dir = `${__dirname}/..`;
+  const finish = fs.readFileSync(`${dir}/ri-release-finish.yml`, 'utf8');
+  assert.match(finish, /name: releaseLib\.releaseTitle\(repo, tag\)/);
+  assert.doesNotMatch(finish, /^\s+name: tag,/m);
+  // The publish pieces update the release by id and leave its title alone.
+  for (const f of ['ri-publish-tag.yml', 'ri-publish-finalize.yml']) {
+    const text = fs.readFileSync(`${dir}/${f}`, 'utf8');
+    for (const m of text.matchAll(/updateRelease\(\{([^}]*)\}\)/g)) {
+      assert.doesNotMatch(m[1], /\bname:/, f);
+    }
+  }
+});

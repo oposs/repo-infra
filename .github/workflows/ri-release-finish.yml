@@ -190,7 +190,7 @@ jobs:
               owner, repo,
               tag_name: tag,
               target_commitish: head,
-              name: tag,
+              name: releaseLib.releaseTitle(repo, tag),
               body: changesLib.notesFor(
                 Buffer.from(rolled.content, 'base64').toString('utf8'), version,
               ),

@@ -31,6 +31,10 @@ function untaggedRelease(latest, tags) {
   return tags.includes(`v${latest.version}`) ? null : latest.version;
 }
 
+// One shape in every repository: the repository name (not the owner), a space,
+// the tag. The draft is created with it; no later step renames the release.
+const releaseTitle = (repo, tag) => `${repo} ${tag}`;
+
 const carriesRecord = (release) => release.assets.some((a) => a.name === BUILD_RECORD);
 
 // Drafts a closed release pull request left behind. Only ours (they carry the
@@ -287,5 +291,5 @@ module.exports = {
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
   staleReleasePr, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
-  fetchParkedRuns, verdictOutputs,
+  fetchParkedRuns, verdictOutputs, releaseTitle,
 };

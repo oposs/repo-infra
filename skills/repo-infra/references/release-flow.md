@@ -47,7 +47,8 @@ repository's own, and a repository may add more between `prepare` and `finish`
 - `test`: calls the repository's `.github/workflows/ci.yml` with `ref: head`,
   in parallel with `build`.
 - `finish`: calls `ri-release-finish` and needs the other three. It checks and commits the `release_files`,
-  checks the assets against `release_assets`, creates the draft release with
+  checks the assets against `release_assets`, creates the draft release, titled
+  `<repository name> <tag>` (`edaptor v1.8.0`), with
   every asset and `release-build.json` (`{version, base, head, assets}`), sets
   the commit status `release-built` on the head, creates the check run
   `changelog-updated` (success) on the head and opens the pull request. Then
