@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- repo-infra's release pull request could not be merged: the ruleset reported "2 of 2 required status checks are expected" although `ci-passed` and `changelog-updated` had passed. The release gate now builds mtuspy on a branch `gate/vX.Y.Z` of its own, deleted after the gate, instead of on the release branch.
 
 ## 2.0.0 - 2026-10-13
 ### New

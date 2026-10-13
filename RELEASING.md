@@ -100,9 +100,13 @@ needs no bypass. Anyone with write access can
 also move `v2` by hand; write access is limited to a small group, and a
 repository admin resets a wrong move with the rollback below.
 
-Before `v2` moves, Create release PR dispatches `gate-mtuspy.yml` on the
-release branch, which builds mtuspy with the release's own workflows. The
-release pull request does not open unless it succeeds.
+Before `v2` moves, Create release PR dispatches `gate-mtuspy.yml`, which
+builds mtuspy with the release's own workflows. The release pull request does
+not open unless it succeeds. The gate runs on branch `gate/vX.Y.Z`, a commit
+with the release's tree whose parent is the release head, and the branch is
+deleted afterwards. A run on the release head would take the release pull
+request's required check runs into its own check suite, where the pull
+request does not see them.
 
 ### Rolling back a release
 
