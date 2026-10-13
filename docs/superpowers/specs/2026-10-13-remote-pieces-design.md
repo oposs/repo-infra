@@ -239,8 +239,9 @@ Before 2.0.0 there is no `v2`, and the test is skipped.
 
 - repo-infra's `.github/repo-infra.json` sets `moving_major_tag: true`;
   `ri-publish-tag` moves `v2` after the release tag.
-- A tag ruleset on `v*` in repo-infra blocks deletion only. It has no
-  bypass actor.
+- A tag ruleset on `v*` in repo-infra blocks deletion only. Its bypass
+  list holds the Repository admin role, so an admin can delete a wrong tag.
+  The release job needs no bypass, because moving a tag is not a deletion.
 - `ri-publish-tag` moves the major tag with the job's own token
   (`contents: write`) and takes no secrets. No GitHub App holds the right to
   move `v2`: write access to repo-infra is a small trusted group, and an

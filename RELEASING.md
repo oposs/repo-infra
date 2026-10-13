@@ -94,7 +94,9 @@ the re-run does exactly what the original attempt would have done.
 Repositories call repo-infra's workflows at `@v2`. Every release moves `v2`
 to the release it publishes, with the publish job's own `GITHUB_TOKEN`
 (`contents: write`). A tag ruleset on `v*` refuses deleting a tag and
-nothing else, so the move needs no bypass. Anyone with write access can
+nothing else; its bypass list holds the Repository admin role, so an admin
+can delete a wrong tag. Moving a tag is not a deletion, so the release job
+needs no bypass. Anyone with write access can
 also move `v2` by hand; write access is limited to a small group, and a
 repository admin resets a wrong move with the rollback below.
 

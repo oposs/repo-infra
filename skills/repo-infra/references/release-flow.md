@@ -229,7 +229,9 @@ changes. Two things are added, because consumers run whatever `v2` points at:
   release pull request does not open unless the gate succeeds.
 - **The moving tag.** `ri-publish-tag` moves `v2` to the release after tagging
   it, with the job's own token (`contents: write`). The tag ruleset on `v*`
-  refuses deletion only, so the move needs no bypass. A repository whose tag
+  refuses deletion only, and its bypass list holds the Repository admin role
+  so an admin can delete a wrong tag. Moving a tag is not a deletion, so the
+  release job needs no bypass. A repository whose tag
   ruleset also restricts updates sees the move fail with "vN could not be
   moved to vX.Y.Z". `RELEASING.md` has the rollback.
 
@@ -288,8 +290,8 @@ jobs** on the publish run.
   `vX.Y.Z is in CHANGES.md on main but has no tag`. The ways out are
   **Re-run failed jobs** on its publish run, when that run failed for another
   reason than the tree comparison; for a release that is already out under
-  another tag, pushing `vX.Y.Z` by hand (the ruleset covers the branch, not
-  tags); or, to abandon it, a pull request that moves its entries back under
+  another tag, pushing `vX.Y.Z` by hand (a tag ruleset like repo-infra's
+  refuses only deletion, so the push goes through); or, to abandon it, a pull request that moves its entries back under
   `[Unreleased]`.
 
 **Update branch** on a release pull request moves the branch after the build.
