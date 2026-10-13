@@ -93,8 +93,9 @@ jobs:
   # D33: a release of repo-infra builds mtuspy with its own pieces before the
   # pull request opens, so v2 never moves to pieces that break a consumer.
   # It dispatches gate-mtuspy.yml on the release branch, a run of its own,
-  # so the gate's artifacts never reach this run's draft. Only this job
-  # holds actions: write; consumers' build jobs never do.
+  # so the gate's artifacts never reach this run's draft. Dispatching a
+  # workflow needs actions: write. Besides prepare's guard, only this job
+  # holds it; consumers' build jobs never do.
   gate:
     name: Build mtuspy with the release's pieces
     needs: prepare

@@ -19,6 +19,7 @@ const api = ({ dispatched = { workflow_run_id: 42 }, runs = [] } = {}) => {
       calls.push(['getWorkflowRun', args]);
       const run = runs[Math.min(i, runs.length - 1)];
       i += 1;
+      if (run.error) throw new Error(run.error);
       return { data: run };
     } } },
   };
@@ -51,6 +52,27 @@ test('waitForRun gives up at the timeout', async () => {
   const c = clock();
   await assert.rejects(waitForRun(github, { owner: 'o', repo: 'r', runId: 42, ...c, timeoutMs: 5000, intervalMs: 1000 }),
     /run 42 did not finish within 5 s: u/);
+});
+
+test('waitForRun survives two failed polls and resolves on the completed run', async () => {
+  const github = api({ runs: [{ error: 'HTTP 502' }, { error: 'HTTP 503' },
+    { status: 'completed', conclusion: 'success', html_url: 'u' }] });
+  const run = await waitForRun(github, { owner: 'o', repo: 'r', runId: 42, ...clock(), timeoutMs: 10000, intervalMs: 1000 });
+  assert.deepEqual(run, { conclusion: 'success', html_url: 'u' });
+});
+
+test('a successful poll resets the count of failed polls', async () => {
+  const github = api({ runs: [{ error: 'e' }, { error: 'e' }, { error: 'e' }, { status: 'queued' },
+    { error: 'e' }, { error: 'e' }, { error: 'e' }, { status: 'completed', conclusion: 'success', html_url: 'u' }] });
+  const run = await waitForRun(github, { owner: 'o', repo: 'r', runId: 42, ...clock(), timeoutMs: 100000, intervalMs: 1000 });
+  assert.equal(run.conclusion, 'success');
+});
+
+test('waitForRun rejects on the fourth consecutive failed poll with the last message', async () => {
+  const github = api({ runs: [{ error: 'HTTP 500' }, { error: 'HTTP 501' }, { error: 'HTTP 502' }, { error: 'HTTP 503' }] });
+  await assert.rejects(waitForRun(github, { owner: 'o', repo: 'r', runId: 42, ...clock(), timeoutMs: 100000, intervalMs: 1000 }),
+    /HTTP 503/);
+  assert.equal(github.calls.length, 4);
 });
 
 test('runGate passes only on success', async () => {

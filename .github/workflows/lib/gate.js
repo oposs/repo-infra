@@ -7,6 +7,7 @@
 // tests need no network and no real time.
 
 const RUN_ID_FIELD = 'workflow_run_id';
+const MAX_FAILED_POLLS = 3;
 
 async function dispatch(github, { owner, repo, workflow, ref }) {
   const { data } = await github.request(
@@ -25,12 +26,26 @@ async function waitForRun(github, {
   owner, repo, runId, sleep, now, timeoutMs, intervalMs,
 }) {
   const start = now();
+  let failed = 0;
+  let url = '';
   for (;;) {
-    const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
-    if (run.status === 'completed') return { conclusion: run.conclusion, html_url: run.html_url };
+    let run = null;
+    try {
+      ({ data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId }));
+      failed = 0;
+    } catch (error) {
+      // A transient API failure (a 5xx) must not throw away a two-hour wait.
+      failed += 1;
+      if (failed > MAX_FAILED_POLLS) {
+        throw new Error(`run ${runId} could not be read ${failed} times in a row: ${error.message}`);
+      }
+    }
+    if (run) {
+      if (run.status === 'completed') return { conclusion: run.conclusion, html_url: run.html_url };
+      url = run.html_url;
+    }
     if (now() - start + intervalMs > timeoutMs) {
-      throw new Error(`run ${runId} did not finish within ${Math.round(timeoutMs / 1000)} s: `
-        + `${run.html_url}`);
+      throw new Error(`run ${runId} did not finish within ${Math.round(timeoutMs / 1000)} s: ${url}`);
     }
     await sleep(intervalMs);
   }
