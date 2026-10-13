@@ -454,3 +454,69 @@ def test_the_retired_markers_are_not_reported_as_unknown(tmp_path):
     install(tmp_path, ".github/workflows/lib/release.js", "// repo-infra: workflow-lib v9\n")
     install(tmp_path, ".github/workflows/ri-ci-lib.yml", "# repo-infra: ri-ci-lib v3\n")
     assert [i for i in check.unknown_items(tmp_path, load_pieces())] == []
+
+
+# --- action pins older than the pieces' (#59) ---------------------------------
+
+UPLOAD = "      - uses: actions/upload-artifact@v7\n"
+
+
+def pin_store(tmp_path):
+    return make_assets(tmp_path / "assets", {}, remote={
+        "ri-up": workflow_piece("ri-up", 2) + UPLOAD})
+
+
+def pins(tmp_path, text, name="docs.yml"):
+    root = tmp_path / "repo"
+    install(root, f".github/workflows/{name}", text)
+    items = check.action_pin_items(root, load_pieces(pin_store(tmp_path)))
+    return [(i.section, i.name, i.state, i.detail) for i in items]
+
+
+def steps(*uses):
+    return ("name: Docs\non: push\njobs:\n  docs:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n" + "".join(f"      - uses: {u}\n" for u in uses))
+
+
+def test_a_workflow_pinning_an_older_major_than_the_pieces_is_reported(tmp_path):
+    assert pins(tmp_path, steps("actions/upload-artifact@v4")) == [(
+        "callers", "docs.yml", "outdated",
+        "docs.yml pins actions/upload-artifact@v4 and repo-infra's workflows pin v7. "
+        "Dependabot moves an action to one version in every workflow, so its update "
+        "from v4 can downgrade the files already past it. Pin v7")]
+
+
+def test_each_action_older_than_the_pieces_is_its_own_row(tmp_path):
+    found = pins(tmp_path, steps("actions/checkout@v4.2.1", "actions/upload-artifact@v6",
+                                 "actions/upload-artifact@v7"))
+    assert [(name, detail.split(" and ")[0]) for _, name, _, detail in found] == [
+        ("docs.yml", "docs.yml pins actions/checkout@v4"),
+        ("docs.yml", "docs.yml pins actions/upload-artifact@v6")]
+
+
+@pytest.mark.parametrize("uses", [
+    "actions/upload-artifact@v7", "actions/upload-artifact@v8",
+    "actions/upload-artifact@v7.1.0", "actions/checkout@v7",
+    "actions/upload-artifact@0123456789abcdef0123456789abcdef01234567",
+    "actions/upload-artifact@main", "actions/cache@v1",
+    "./.github/actions/local", "docker://alpine:3",
+    "actions/upload-artifact/.github/workflows/build.yml@v1",
+])
+def test_a_pin_as_new_as_the_pieces_or_not_a_major_is_not_reported(tmp_path, uses):
+    assert pins(tmp_path, steps(uses)) == []
+
+
+def test_a_commented_out_pin_is_not_reported(tmp_path):
+    assert pins(tmp_path, steps("actions/checkout@v7")
+                + "      # - uses: actions/upload-artifact@v4\n") == []
+
+
+def test_a_copy_of_a_piece_is_not_a_repository_owned_workflow(tmp_path):
+    copy = workflow_piece("ri-up", 2) + "      - uses: actions/upload-artifact@v4\n"
+    assert pins(tmp_path, copy, name="ri-up.yml") == []
+
+
+def test_check_reports_an_older_pin_than_the_pieces(tmp_path):
+    install(tmp_path, ".github/workflows/docs.yml", steps("actions/checkout@v4"))
+    assert ("callers", "docs.yml", "outdated") in {
+        (i.section, i.name, i.state) for i in check.run(tmp_path, CONFORMING)}

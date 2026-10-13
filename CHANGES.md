@@ -13,6 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+- `/repo-infra:check` reports a workflow of the repository that pins an action at an older major than repo-infra's workflows, for example `docs.yml` with `actions/upload-artifact@v4` where the workflows use `v7`. Dependabot moves an action to one version in every workflow, so its pull request from `v4` would downgrade the files already on `v7`. The row reads `outdated` under `callers` and names the file, the action and both majors (#59).
 - `ri-publish-tag` takes two optional secrets, `app-client-id` and `app-private-key`. When both are set it moves the major tag with the GitHub App's token, which a tag ruleset can let through; without them nothing changes. A refused move fails the run with "vN could not be moved to vX.Y.Z" and names the secrets.
 - Every CI and release build workflow takes a `repository` input, the repository to check out; it defaults to the calling repository. The Homebrew bottle and formula URLs name that repository. repo-infra's release gate uses it to build mtuspy.
 

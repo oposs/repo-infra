@@ -330,6 +330,63 @@ def path_filter_items(docs):
     return items
 
 
+# A step's `uses:` on a line of its own; a commented-out line does not match.
+_ACTION = re.compile(r"^[ \t]*(?:-[ \t]+)?uses:[ \t]*['\"]?([^\s'\"#]+)", re.MULTILINE)
+# A major tag or version: v4, v4.2, v4.2.1. A SHA or a branch is no major.
+_MAJOR = re.compile(r"^v(\d+)(?:\.\d+){0,2}$")
+
+
+def action_pins(text):
+    """[(owner/repo in lower case, as written, major)] for each action the
+    workflow `text` pins at a major. Local actions, docker:// images and
+    reusable workflow calls are no action pins."""
+    found = []
+    for uses in _ACTION.findall(text):
+        name, at, ref = uses.rpartition("@")
+        major = _MAJOR.match(ref)
+        if (not at or not major or name.startswith(("./", "docker://"))
+                or "/.github/workflows/" in f"/{name}"):
+            continue
+        action = "/".join(name.split("/")[:2])
+        found.append((action.lower(), action, int(major[1])))
+    return found
+
+
+def action_pin_items(repo_root, pieces):
+    """A repository-owned workflow that pins an action at an older major than
+    the pieces do (#59). Dependabot updates one action to one version in every
+    workflow, and the update it opens for the old pin downgrades the files
+    already past that version."""
+    piece_files = {path for piece in pieces.values() for path in piece.files}
+    newest = {}
+    for path, text in (item for piece in pieces.values() for item in piece.files.items()):
+        if path.startswith(f"{callers.WORKFLOWS}/") and path.endswith((".yml", ".yaml")):
+            for key, _, major in action_pins(text):
+                newest[key] = max(major, newest.get(key, 0))
+    folder = pathlib.Path(repo_root) / callers.WORKFLOWS
+    if not folder.is_dir():
+        return []
+    items = []
+    for path in sorted(folder.iterdir()):
+        if (not path.is_file() or path.suffix not in (".yml", ".yaml")
+                or f"{callers.WORKFLOWS}/{path.name}" in piece_files):
+            continue
+        oldest = {}
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for key, action, major in action_pins(text):
+            if major < newest.get(key, 0) and major < oldest.get(key, (None, major + 1))[1]:
+                oldest[key] = (action, major)
+        for key, (action, major) in sorted(oldest.items()):
+            want = newest[key]
+            items.append(Item(
+                "callers", path.name, "outdated",
+                f"{path.name} pins {action}@v{major} and repo-infra's workflows pin v{want}. "
+                "Dependabot moves an action to one version in every workflow, so its "
+                f"update from v{major} can downgrade the files already past it. Pin "
+                f"v{want}"))
+    return items
+
+
 def classify_remote(facts):
     items = []
 
@@ -379,4 +436,5 @@ def run(repo_root, facts, assets=ASSETS):
             + callers.validate(docs, pieces, assets, home=home)
             + config_items(repo_root, docs)
             + path_filter_items(docs)
+            + action_pin_items(repo_root, pieces)
             + classify_remote(facts))

@@ -23,7 +23,12 @@ The report has four sections.
   workflow its reader cannot follow (flow mappings, anchors, text that is not
   UTF-8) is reported only when it is one of those three, is called by a
   workflow or by such a reported file, or carries a piece marker. Any other
-  such workflow is skipped.
+  such workflow is skipped. Any workflow of the repository that is not a
+  piece is also compared with the pieces' action pins: one that pins an action
+  at an older major than the pieces do (`actions/upload-artifact@v4` against
+  `v7`) reads `outdated`, because dependabot would raise every workflow to one
+  version and downgrade the files already past it. SHA and branch pins are not
+  compared.
 - `config`: `.github/repo-infra.json`.
 - `administration`: the default branch, the ruleset, the label and the Actions
   setting, read from GitHub.
@@ -57,7 +62,8 @@ A build file is in one of these states:
 - `missing`: a piece every repository carries, or one an installed piece needs,
   is not installed.
 
-Callers and config rows read `missing`, `problem` or `conflict`; administration
+Callers rows read `missing`, `outdated`, `problem` or `conflict`, config rows
+`missing`, `problem` or `conflict`; administration
 rows read `ok`, `missing`, `outdated` or `conflict`.
 
 Report the output as it is. Do not summarise a `conflict` into "needs updating":
