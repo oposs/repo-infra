@@ -889,7 +889,7 @@ def test_a_remote_piece_no_workflow_calls_is_not_an_installed_copy_problem(tmp_p
     (folder / "ci.yml").write_text(text, encoding="utf-8")
     found = [(i.name, i.detail) for i in
              callers.validate(callers.read_workflows(tmp_path), load_pieces())]
-    assert found == [KNOWN_DEFECT]
+    assert found == []
 
 
 def test_a_piece_called_only_from_an_unreadable_workflow_is_not_called_unused(tmp_path,
@@ -917,12 +917,6 @@ def test_a_call_omitting_a_required_ref_is_reported_once(tmp_path, store):
 
 # --- review of the follow-up wave -------------------------------------------
 
-# Task 6 of D33 retires this: ri-ci-github-action calls ./action-test.yml, which
-# does not exist in repo-infra. test_self_check pins it and fails when it is gone.
-KNOWN_DEFECT = ("ri-ci-github-action.yml",
-                "job action-test calls action-test.yml, which does not exist")
-
-
 def own_validated(tmp_path, ci):
     folder = tmp_path / ".github/workflows"
     folder.mkdir(parents=True)
@@ -930,8 +924,7 @@ def own_validated(tmp_path, ci):
         (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     (folder / "ci.yml").write_text(ci, encoding="utf-8")
     return [(i.name, i.detail) for i in
-            callers.validate(callers.read_workflows(tmp_path), load_pieces())
-            if (i.name, i.detail) != KNOWN_DEFECT]
+            callers.validate(callers.read_workflows(tmp_path), load_pieces())]
 
 
 def test_the_home_only_library_tests_are_not_a_piece_to_call(tmp_path):
@@ -1111,3 +1104,23 @@ def test_validate_reviews_release_pr(tmp_path):
 
 def test_this_repositorys_release_pr_has_no_problem():
     assert release_pr(own("release-pr.yml")) == []
+
+
+# --- the action's own test (D33) --------------------------------------------
+
+def test_a_ci_yml_that_calls_the_action_piece_must_call_action_test():
+    ci = workflow.load(
+        "jobs:\n  action:\n    uses: oposs/repo-infra/.github/workflows/"
+        "ri-ci-github-action.yml@v2\n")
+    assert callers.action_test_problems({"ci.yml": ci}) == [(
+        "ci.yml", "ci.yml calls ri-ci-github-action and not ./.github/workflows/"
+        "action-test.yml; the action's own test never runs. Add the job `action-test` "
+        "from the catalogue entry of ri-ci-github-action")]
+
+
+def test_a_ci_yml_that_calls_both_is_fine():
+    ci = workflow.load(
+        "jobs:\n  action:\n    uses: oposs/repo-infra/.github/workflows/"
+        "ri-ci-github-action.yml@v2\n  action-test:\n"
+        "    uses: ./.github/workflows/action-test.yml\n")
+    assert callers.action_test_problems({"ci.yml": ci}) == []

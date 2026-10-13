@@ -13,9 +13,8 @@ from repo_infra.pieces import ASSETS, load_pieces
 
 PIECES = load_pieces()
 WORKFLOW_PIECES = sorted((p for p in PIECES.values() if p.workflow), key=lambda p: p.name)
-# The release pieces are tested by their own files; every other workflow piece is
-# reviewed here as one a caller calls.
-CALLED = [p for p in WORKFLOW_PIECES if p.group != "release"]
+# Every workflow piece is one a caller calls.
+CALLED = WORKFLOW_PIECES
 ALL = sorted(PIECES.values(), key=lambda p: p.name)
 ACTIONS = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))["actions"]
 GROUPS = {"ci", "release-build", "publish", "release", "build"}
@@ -92,6 +91,14 @@ def test_the_call_snippet_calls_this_piece_correctly(piece):
     file = pathlib.PurePosixPath(piece.target).name
     local = dict(job, uses=f"./.github/workflows/{file}")
     assert callers.call_problems(job_id, local, {file: doc_of(piece)}) == []
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_no_piece_calls_through_dot_slash(piece):
+    """Inside a workflow called from another repository, `./` names a file of
+    repo-infra, never of the caller (D33)."""
+    assert [job_id for job_id, job in doc_of(piece)["jobs"].items()
+            if str(job.get("uses", "")).startswith("./")] == []
 
 
 def test_every_ri_workflow_of_repo_infra_is_a_piece_or_home_only():

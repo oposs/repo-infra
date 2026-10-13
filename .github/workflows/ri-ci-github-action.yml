@@ -3,10 +3,17 @@
 # Purpose: Check action.yml against its callers and run the project's own action test.
 # Choose: The repository has action.yml.
 # Supplies: action.yml, and .github/workflows/action-test.yml: the project's own test,
-#   called with `ref` (D20).
+#   called from ci.yml with `ref` and `secrets: inherit` (D20, D33).
 # Call:
 #   action:
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-github-action.yml@v2
+#     with:
+#       ref: ${{ inputs.ref }}
+#
+# ci.yml also calls the project's own test, which stays in the repository:
+#
+#   action-test:
+#     uses: ./.github/workflows/action-test.yml
 #     with:
 #       ref: ${{ inputs.ref }}
 #     secrets: inherit
@@ -88,13 +95,3 @@ jobs:
               sys.exit("\n".join(problems))
           print("action.yml is valid; every local caller matches it")
           PY
-
-  # The project brings the test, the standard brings the seam (D20). The path
-  # and the trigger are fixed by the contract in references/conventions.md, so
-  # this job stays a literal file with nothing substituted into it -- repo-infra
-  # never learns what inputs this particular action takes.
-  action-test:
-    uses: ./.github/workflows/action-test.yml
-    with:
-      ref: ${{ inputs.ref }}
-    secrets: inherit

@@ -65,7 +65,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-github-action.yml@v2`.
 
 **Choose it when:** The repository has action.yml.
 
-**The repository supplies:** action.yml, and .github/workflows/action-test.yml: the project's own test, called with `ref` (D20).
+**The repository supplies:** action.yml, and .github/workflows/action-test.yml: the project's own test, called from ci.yml with `ref` and `secrets: inherit` (D20, D33).
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -78,7 +78,6 @@ action:
   uses: oposs/repo-infra/.github/workflows/ri-ci-github-action.yml@v2
   with:
     ref: ${{ inputs.ref }}
-  secrets: inherit
 ```
 
 ### ri-ci-go

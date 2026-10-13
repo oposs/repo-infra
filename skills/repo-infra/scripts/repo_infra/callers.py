@@ -678,6 +678,20 @@ def unreadable_concerns(docs, pieces):
     return found
 
 
+def action_test_problems(docs):
+    """D33: a piece in oposs/repo-infra cannot call a workflow of the
+    repository that calls it, so ci.yml calls action-test.yml itself."""
+    ci = docs.get("ci.yml")
+    if not isinstance(ci, dict):
+        return []
+    targets = {normal_uses(job.get("uses")) for job in jobs(ci).values()}
+    if "ri-ci-github-action.yml" in targets and "action-test.yml" not in targets:
+        return [("ci.yml", "ci.yml calls ri-ci-github-action and not ./.github/workflows/"
+                           "action-test.yml; the action's own test never runs. Add the job "
+                           "`action-test` from the catalogue entry of ri-ci-github-action")]
+    return []
+
+
 def _callable(pieces, file):
     """True when the workflow piece installed as `file` runs only when called:
     its header carries a Call: snippet."""
@@ -737,5 +751,6 @@ def validate(docs, pieces, assets=ASSETS):
              + frame_problems(docs, pieces)
              + ref_contract_problems(docs, piece_files)
              + ref_passing_problems(docs)
+             + action_test_problems(docs)
              + permission_problems(docs))
     return items + [Item("callers", name, "problem", detail) for name, detail in found]
