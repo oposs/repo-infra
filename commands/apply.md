@@ -83,6 +83,12 @@ repository's own in `lib/`, a job of the old `changelog.yml` or `release-pr.yml`
 the new caller lacks. Git keeps them. Port each to a caller or drop it, then run
 the script until it exits 0. It stops with `release-in-progress` like any install.
 
+GitHub refuses every run that calls a piece, `ci-passed` included, unless the
+organisation's Actions policy (Settings, Actions, General, "Policies") allows
+the reusable workflows of `oposs/repo-infra`: all actions and reusable
+workflows, or `oposs/repo-infra/.github/workflows/*` listed under "Allow
+specified actions and reusable workflows".
+
 ### What it does with each file
 
 One rule applies per file, for a bare `apply` and for `apply --item`:

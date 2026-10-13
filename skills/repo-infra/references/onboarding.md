@@ -9,6 +9,12 @@ A repository with the v1 layout (copied `ri-*.yml` files, `.github/workflows/lib
 the old `changelog.yml` and `release-pr.yml`) is not onboarded again. It runs
 `apply`, which migrates it in one pull request (below).
 
+GitHub refuses every run that calls a piece, `ci-passed` included, unless the
+organisation's Actions policy (Settings, Actions, General, "Policies") allows
+the reusable workflows of `oposs/repo-infra`: all actions and reusable
+workflows, or `oposs/repo-infra/.github/workflows/*` listed under "Allow
+specified actions and reusable workflows".
+
 ## The procedure
 
 1. **Read the repository's real setup.** The Makefile or build file, the
@@ -75,6 +81,10 @@ into `ci-local.yml`, or into a new piece (`references/teaching-the-standard.md`)
 A copy with local edits is removed as well. The commit body and the output list
 those edits (`The migration removed these local changes`); git keeps them, and
 each is ported to a caller or dropped. Then run the script until it exits 0.
+
+Before the migration merges, check the organisation's Actions policy (see the
+top of this page): v1 ran only the repository's own workflows, so a policy that
+does not allow `oposs/repo-infra` went unnoticed until now.
 
 ## Callers
 
