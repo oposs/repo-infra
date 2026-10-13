@@ -25,6 +25,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Create release PR is a short `release-pr.yml` that calls `ri-release-prepare` and `ri-release-finish` from repo-infra and the repository's own `release-build.yml` and `ci.yml` between them. A repository may add jobs between prepare and finish; `/repo-infra:check` reports a `finish` that does not need all of them, and a repository without `release-pr.yml`. Copy it from `assets/callers/release-pr.yml`.
 - `.github/workflows/lib/` is no longer installed in a repository, and `workflow-lib` is no longer in the catalogue.
 - A GitHub Action's `ci.yml` calls its own `.github/workflows/action-test.yml` in a job `action-test`, next to `ri-ci-github-action`, which no longer calls it. `/repo-infra:check` reports a `ci.yml` that calls the piece without that job. The catalogue entry of `ri-ci-github-action` shows both jobs.
+- `/repo-infra:check` expects every call of a repo-infra workflow to read `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`, with each secret passed by name. It reports another ref or none, `secrets: inherit` on such a call, a file repo-infra does not ship, an input the workflow does not declare and a required input or secret left out, reading the workflows from the installed plugin. Calls of other repositories' workflows are no longer reported.
+- `/repo-infra:check` reports copies of the workflows, `.github/workflows/lib/`, `ri-ci-lib.yml` and the old `changelog.yml` and `release-pr.yml` as the v1 layout, and says to run `apply`. A job that calls a copy through `./` is reported the same way.
+- The catalogue's `gitea` job for `ri-publish-gitea` passes `GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}` instead of `secrets: inherit`. A repository in another organisation that copied the old job publishes with an empty token; name the secret there.
 
 ### Fixed
 

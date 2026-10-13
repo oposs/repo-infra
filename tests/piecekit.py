@@ -18,6 +18,12 @@ SKIP_IF = next(line for line in RELEASE_PR_SKIP.splitlines() if line.startswith(
 CI_PASSED = (ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8")
 CHANGELOG = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
 RELEASE_PR = (ASSETS / "callers/release-pr.yml").read_text(encoding="utf-8")
+# The pieces of repo-infra those callers call at @v2 (D33), from this plugin;
+# a store that validates the callers passes them as `remote`, so each call
+# finds a piece to be held to.
+SHIPPED_REMOTE = {name: (ASSETS.parents[2] / f".github/workflows/{name}.yml").read_text(
+    encoding="utf-8") for name in ("ri-changelog", "ri-release-verdict",
+                                   "ri-release-prepare", "ri-release-finish")}
 
 
 def digest(text):

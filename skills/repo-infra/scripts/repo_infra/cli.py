@@ -132,7 +132,8 @@ def apply_command(args):
             print(f"\n{name} v{version}\n{text}")
     docs = callers.read_workflows(args.root)
     findings = [f"{item.name}: {item.detail}" for item in
-                callers.validate(docs, pieces, ASSETS) + checking.config_items(args.root, docs)
+                callers.validate(docs, pieces, ASSETS, home=checking.is_home(args.root))
+                + checking.config_items(args.root, docs)
                 if item.state in report.ATTENTION] + kept
     if findings:
         print("\nThe callers, the config and the files left behind need these changes:")

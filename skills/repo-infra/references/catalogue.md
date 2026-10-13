@@ -588,7 +588,8 @@ gitea:
   with:
     release_id: ${{ needs.publish.outputs.release_id }}
     head: ${{ needs.publish.outputs.head }}
-  secrets: inherit
+  secrets:
+    GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
 ```
 
 ### ri-publish-tag

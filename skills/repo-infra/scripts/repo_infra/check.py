@@ -33,6 +33,11 @@ OBSOLETE = ("ecosystems", "ci", "ci_local", "publish", "build", "publish_local",
 RENAMED = {"skip": "exceptions"}
 SCANNED = (".github", "build", "m4")
 REQUIRED_WORKFLOWS = ("ci.yml", "changelog.yml")
+# D33: pieces that left the store, and how a consumer's copy of each is found.
+RETIRED = {"changelog": ".github/workflows/changelog.yml",
+           "release-pr": ".github/workflows/release-pr.yml",
+           "ri-ci-lib": ".github/workflows/ri-ci-lib.yml"}
+LIBRARY = "workflow-lib"
 
 
 def _digest(data):
@@ -126,7 +131,9 @@ def unknown_items(repo_root, pieces):
                 markers = parse_markers(path.read_text(encoding="utf-8"))
             except (UnicodeDecodeError, OSError):
                 continue
-            if markers and markers[0].asset not in pieces:
+            # A retired piece is the v1 layout, layout_items' to report (D33).
+            if (markers and markers[0].asset not in pieces
+                    and markers[0].asset not in RETIRED and markers[0].asset != LIBRARY):
                 first = markers[0]
                 items.append(Item(
                     "pieces", first.asset, "unknown",
@@ -134,6 +141,37 @@ def unknown_items(repo_root, pieces):
                     f"v{first.version}` and repo-infra ships no such piece. A file of the "
                     "assembled standard (ci, release-build, release-publish) is a caller "
                     "now: rewrite it from references/onboarding.md"))
+    return items
+
+
+def layout_items(repo_root, pieces):
+    """The files of the v1 layout (D30) in a consumer (D33): copies of the
+    pieces it now calls, the library they load from repo-infra, and the
+    retired pieces."""
+    root = pathlib.Path(repo_root)
+    items = []
+    for name, piece in sorted(pieces.items()):
+        if piece.remote and (root / piece.target).is_file():
+            items.append(Item("pieces", name, "outdated",
+                              f"{piece.target} is a copy (v1 layout); repositories call "
+                              f"{piece.uses}. Run apply to migrate (D33)"))
+    if (root / ".github/workflows/lib").is_dir():
+        items.append(Item("pieces", LIBRARY, "outdated",
+                          ".github/workflows/lib/ is a copy of the library (v1 layout); the "
+                          "pieces load it from repo-infra. Run apply to migrate (D33)"))
+    for name, path in RETIRED.items():
+        target = root / path
+        if not target.is_file():
+            continue
+        markers = parse_markers(target.read_text(encoding="utf-8", errors="replace"))
+        # changelog.yml and release-pr.yml are callers in v2 and carry no
+        # marker; ri-ci-lib.yml has no v2 form at all.
+        if name == "ri-ci-lib" or (markers and markers[0].asset == name):
+            fate = ("repositories no longer test a library of their own"
+                    if name == "ri-ci-lib" else "it is a caller now")
+            items.append(Item("pieces", name, "outdated",
+                              f"{path} is the v1 {name} piece; {fate}. Run apply to "
+                              "migrate (D33)"))
     return items
 
 
@@ -334,9 +372,11 @@ def classify_remote(facts):
 def run(repo_root, facts, assets=ASSETS):
     pieces = load_pieces(assets)
     docs = callers.read_workflows(repo_root)
+    home = is_home(repo_root)
     return (piece_items(repo_root, pieces, load_published(assets))
+            + ([] if home else layout_items(repo_root, pieces))
             + core_call_items(docs, pieces)
-            + callers.validate(docs, pieces, assets)
+            + callers.validate(docs, pieces, assets, home=home)
             + config_items(repo_root, docs)
             + path_filter_items(docs)
             + classify_remote(facts))

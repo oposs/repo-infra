@@ -90,7 +90,8 @@ def test_the_call_snippet_calls_this_piece_correctly(piece):
     assert job["uses"] == piece.uses
     file = pathlib.PurePosixPath(piece.target).name
     local = dict(job, uses=f"./.github/workflows/{file}")
-    assert callers.call_problems(job_id, local, {file: doc_of(piece)}) == []
+    assert callers.call_problems(job_id, local, file, doc_of(piece)) == []
+    assert callers.call_problems(job_id, job, file, doc_of(piece), remote=True) == []
 
 
 @pytest.mark.parametrize("piece", REMOTE, ids=ids)

@@ -1,13 +1,16 @@
 import json
+import pathlib
 from types import SimpleNamespace
 
 import pytest
 from piecekit import digest, install, lib_file, make_assets, workflow_piece
 
 from repo_infra import callers, check
+from repo_infra.check import layout_items
 from repo_infra.pieces import load_pieces, load_published
 from repo_infra.remote import Facts
 
+ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 OLD = workflow_piece("ri-x", 1, body="old")
 NEW = workflow_piece("ri-x", 2, body="new")
 LIB1 = {"a.js": lib_file("lib-x", 1, "a1"), "b.js": lib_file("lib-x", 1, "b1")}
@@ -388,3 +391,66 @@ def test_home_is_the_checkout_that_holds_the_manifest(tmp_path):
     assert not check.is_home(tmp_path)
     install(tmp_path, "skills/repo-infra/assets/manifest.json", "{}")
     assert check.is_home(tmp_path)
+
+
+def test_a_core_remote_piece_called_at_v2_is_not_reported(tmp_path):
+    pieces = load_pieces(remote_store(tmp_path))
+    docs = {"ci.yml": {"jobs": {"r": {
+        "uses": "oposs/repo-infra/.github/workflows/ri-r.yml@v2"}}}}
+    assert check.core_call_items(docs, pieces) == []
+
+
+# --- the v1 layout (D33) ------------------------------------------------------
+
+def test_a_copied_piece_and_the_library_are_the_v1_layout(tmp_path):
+    install(tmp_path, ".github/workflows/ri-ci-rust.yml", "# repo-infra: ri-ci-rust v1\n")
+    install(tmp_path, ".github/workflows/lib/release.js", "// repo-infra: workflow-lib v9\n")
+    install(tmp_path, ".github/workflows/changelog.yml", "name: Changelog\n# repo-infra: changelog v6\n")
+    install(tmp_path, ".github/workflows/release-pr.yml", "name: Create release PR\n# repo-infra: release-pr v6\n")
+    install(tmp_path, ".github/workflows/ri-ci-lib.yml", "# repo-infra: ri-ci-lib v3\n")
+    found = {(i.name, i.state): i.detail for i in layout_items(tmp_path, load_pieces())}
+    assert found[("ri-ci-rust", "outdated")] == (
+        ".github/workflows/ri-ci-rust.yml is a copy (v1 layout); repositories call "
+        "oposs/repo-infra/.github/workflows/ri-ci-rust.yml@v2. Run apply to migrate (D33)")
+    assert found[("workflow-lib", "outdated")] == (
+        ".github/workflows/lib/ is a copy of the library (v1 layout); the pieces load it "
+        "from repo-infra. Run apply to migrate (D33)")
+    assert found[("changelog", "outdated")] == (
+        ".github/workflows/changelog.yml is the v1 changelog piece; it is a caller now. "
+        "Run apply to migrate (D33)")
+    assert found[("release-pr", "outdated")] == (
+        ".github/workflows/release-pr.yml is the v1 release-pr piece; it is a caller now. "
+        "Run apply to migrate (D33)")
+    assert found[("ri-ci-lib", "outdated")] == (
+        ".github/workflows/ri-ci-lib.yml is the v1 ri-ci-lib piece; repositories no longer "
+        "test a library of their own. Run apply to migrate (D33)")
+    assert len(found) == 5
+
+
+def test_a_v2_changelog_caller_is_not_the_v1_layout(tmp_path):
+    install(tmp_path, ".github/workflows/changelog.yml",
+            (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8"))
+    install(tmp_path, ".github/workflows/release-pr.yml",
+            (ASSETS / "callers/release-pr.yml").read_text(encoding="utf-8"))
+    assert layout_items(tmp_path, load_pieces()) == []
+
+
+def test_repo_infra_itself_has_no_v1_layout():
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert check.is_home(root)
+    assert [i for i in check.run(root, CONFORMING) if "v1 layout" in i.detail
+            or "v1 " in i.detail] == []
+
+
+def test_check_reports_the_v1_layout_of_a_consumer(tmp_path):
+    install(tmp_path, ".github/workflows/lib/release.js", "// repo-infra: workflow-lib v9\n")
+    assert ("pieces", "workflow-lib", "outdated") in {
+        (i.section, i.name, i.state) for i in check.run(tmp_path, CONFORMING)}
+
+
+def test_the_retired_markers_are_not_reported_as_unknown(tmp_path):
+    install(tmp_path, ".github/workflows/release-pr.yml",
+            "name: Create release PR\n# repo-infra: release-pr v6\n")
+    install(tmp_path, ".github/workflows/lib/release.js", "// repo-infra: workflow-lib v9\n")
+    install(tmp_path, ".github/workflows/ri-ci-lib.yml", "# repo-infra: ri-ci-lib v3\n")
+    assert [i for i in check.unknown_items(tmp_path, load_pieces())] == []

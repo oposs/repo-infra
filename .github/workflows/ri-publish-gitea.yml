@@ -14,7 +14,8 @@
 #     with:
 #       release_id: ${{ needs.publish.outputs.release_id }}
 #       head: ${{ needs.publish.outputs.head }}
-#     secrets: inherit
+#     secrets:
+#       GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
 #
 # Uploads every .deb and .rpm on the release to the Gitea package
 # registry named in .github/repo-infra.json "gitea_packages". Gitea signs
