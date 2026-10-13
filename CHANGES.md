@@ -25,7 +25,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The reusable workflows (`ri-*.yml`) live once, in `.github/workflows/` of repo-infra. The catalogue shows each one with the line consumers call it by, `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`. `ri-ci-lib` and `ri-ci-repo-infra-selftest`, which test repo-infra itself, are no longer in the catalogue.
 - The reusable workflows load the workflow library from the repo-infra commit they were called from. A repository that calls them needs no `.github/workflows/lib/` of its own.
 - `ci-passed` reads its release-mode verdict from a new job, `release-verdict`, which calls `ri-release-verdict`. Copy both jobs from `assets/callers/ci-passed.yml`; `/repo-infra:check` reports a `ci.yml` without `release-verdict`, and `release-verdict` carries no release pull request skip. `ci-passed` fails with "release-verdict gave an unknown mode" when that job reports a mode other than `release` or `ordinary`, or none.
-- `changelog.yml` is a short caller: its job `changelog` calls `ri-changelog`, and `changelog-updated` turns red when that job fails or is cancelled. Copy it from `assets/callers/changelog.yml`; `/repo-infra:check` reports any difference and a repository without `changelog.yml`, and the `changelog` piece is no longer in the catalogue.
+- `changelog.yml` is a short caller: its job `changelog` calls `ri-changelog`, and `changelog-updated` turns red when that job fails or is cancelled. Copy it from `assets/callers/changelog.yml`; `/repo-infra:check` reports a difference in its jobs or triggers and a repository without `changelog.yml`, and the `changelog` piece is no longer in the catalogue.
 - Create release PR is a short `release-pr.yml` that calls `ri-release-prepare` and `ri-release-finish` from repo-infra and the repository's own `release-build.yml` and `ci.yml` between them. A repository may add jobs between prepare and finish; `/repo-infra:check` reports a `finish` that does not need all of them, and a repository without `release-pr.yml`. Copy it from `assets/callers/release-pr.yml`.
 - `.github/workflows/lib/` is no longer installed in a repository, and `workflow-lib` is no longer in the catalogue.
 - A GitHub Action's `ci.yml` calls its own `.github/workflows/action-test.yml` in a job `action-test`, next to `ri-ci-github-action`, which no longer calls it. `/repo-infra:check` reports a `ci.yml` that calls the piece without that job. The catalogue entry of `ri-ci-github-action` shows both jobs.
@@ -40,7 +40,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
-- The release pull request showed "Approve workflows to run" until it merged. Create release PR now deletes the parked runs behind that banner for up to 60 seconds after it opens the pull request, and only warns when none appear or one cannot be deleted. Its `finish` job now needs `actions: write`, which the shipped `release-pr.yml` grants; a `release-pr.yml` copied before this needs the line too, and `/repo-infra:check` reports it (#58).
+- The release pull request showed "Approve workflows to run" until it merged. Create release PR now deletes the parked runs behind that banner for up to 60 seconds after it opens the pull request, and only warns when none appear or one cannot be deleted. Its `finish` job now needs `actions: write`, which the shipped `release-pr.yml` grants (#58).
 
 ## 1.1.2 - 2026-10-13
 ### New
