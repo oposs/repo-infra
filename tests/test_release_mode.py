@@ -79,12 +79,24 @@ def _judge(tmp_path, **env):
     ({"MODE": "release", "OK": "true", "FAILED": "true"}, True),
     ({"MODE": "release", "OK": "false", "MESSAGE": STALE}, False),
     ({"MODE": "release", "OK": ""}, False),
+    # An empty or unknown mode is no verdict. On the release pull request
+    # every other job is skipped, so falling through to the ordinary rules
+    # would go green without reading ok.
+    ({"MODE": ""}, False),
+    ({"MODE": "", "OK": "false"}, False),
+    ({"MODE": "Release"}, False),
+    ({"MODE": "Release", "OK": "false"}, False),
+    ({"MODE": "Ordinary"}, False),
+    ({"MODE": "garbage"}, False),
+    ({"MODE": "garbage", "OK": "false"}, False),
 ])
 def test_ci_passed_step_table(tmp_path, env, passes):
     proc = _judge(tmp_path, **env)
     assert (proc.returncode == 0) is passes, proc.stdout
-    if env.get("OK") == "false":
+    if env.get("OK") == "false" and env.get("MODE") == "release":
         assert f"::error::{STALE}" in proc.stdout
+    if env.get("MODE", "ordinary") not in ("ordinary", "release"):
+        assert "::error::release-verdict gave an unknown mode" in proc.stdout
 
 
 def test_release_pr_current_runs_on_push_only_and_may_write_checks():

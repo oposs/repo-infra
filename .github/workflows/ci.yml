@@ -131,6 +131,10 @@ jobs:
             echo "::notice::$MESSAGE"
             exit 0
           fi
+          if [ "$MODE" != ordinary ]; then
+            echo "::error::release-verdict gave an unknown mode ($MODE); no verdict, no green"
+            exit 1
+          fi
           if [ "$FAILED" = true ]; then
             echo "::error::a job this one needs failed or was cancelled"
             exit 1
