@@ -747,18 +747,6 @@ def action_test_problems(docs):
     return []
 
 
-def _callable(pieces, file):
-    """True when the workflow piece installed as `file` runs only when called:
-    its header carries a Call: snippet."""
-    return any(p.workflow and pathlib.PurePosixPath(p.target).name == file
-               and "Call" in p.header for p in pieces.values())
-
-
-def _core(pieces, file):
-    return any(p.core and pathlib.PurePosixPath(p.target).name == file
-               for p in pieces.values())
-
-
 def remote_call_problems(job_id, job, remote_docs, home):
     """D33: a consumer calls a piece of repo-infra at @v2, the tag every
     release moves; repo-infra calls its own pieces through ./. P9 of the
@@ -797,9 +785,6 @@ def validate(docs, pieces, assets=ASSETS, home=False):
                    for p in pieces.values() if p.workflow}
     remote_docs = {pathlib.PurePosixPath(p.target).name: workflow.load(p.files[p.target])
                    for p in pieces.values() if p.remote}
-    # A remote piece is called, never installed (D33): no copy to report.
-    byte_files = {pathlib.PurePosixPath(p.target).name
-                  for p in pieces.values() if p.workflow and not p.remote}
     concerns = unreadable_concerns(docs, pieces)
     items = [Item("callers", name, "problem", f"cannot be read: {doc}")
              for name, doc in docs.items() if name in concerns]
@@ -815,20 +800,6 @@ def validate(docs, pieces, assets=ASSETS, home=False):
             else:
                 continue
             items += [Item("callers", name, "problem", p) for p in said]
-    called_by_text = {target for doc in docs.values()
-                      if isinstance(doc, workflow.ReadError)
-                      for target in getattr(doc, "calls", ())}
-    # frame_problems names a ci.yml without ri-release-pr-current already.
-    framed = {f"{RELEASE_PR_CURRENT}.yml"} if isinstance(docs.get("ci.yml"), dict) else set()
-    items += [Item("callers", file, "problem",
-                   f"{file} is installed and no workflow calls it, so it never runs. Add "
-                   "its Call: from the catalogue to a caller"
-                   # A removed core piece reads missing and bare apply reinstalls it.
-                   + ("; it is a core piece, so do not remove it" if _core(pieces, file)
-                      else ", or remove the file"))
-              for file in sorted(byte_files)
-              if file in docs and file not in framed and _callable(pieces, file)
-              and not calls(docs, file) and file not in called_by_text]
     found = (closing_problems(docs, assets) + changelog_problems(docs, assets)
              + release_skip_problems(docs, assets)
              + release_pr_problems(docs, pieces)

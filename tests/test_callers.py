@@ -899,10 +899,7 @@ def test_a_piece_marker_in_a_file_that_is_not_utf8_is_still_found(tmp_path, stor
             "cannot be read: it is not UTF-8 text (byte 0xe9 at offset 29)") in found
 
 
-# --- an installed piece nothing calls ---------------------------------------
-
-UNCALLED = ("{} is installed and no workflow calls it, so it never runs. Add its Call: "
-            "from the catalogue to a caller, or remove the file")
+# --- a remote piece nothing calls -------------------------------------------
 
 
 def test_a_remote_piece_no_workflow_calls_is_not_an_installed_copy_problem(tmp_path):
@@ -920,18 +917,6 @@ def test_a_remote_piece_no_workflow_calls_is_not_an_installed_copy_problem(tmp_p
     found = [(i.name, i.detail) for i in
              callers.validate(callers.read_workflows(tmp_path), load_pieces(), home=True)]
     assert found == []
-
-
-def test_a_piece_called_only_from_an_unreadable_workflow_is_not_called_unused(tmp_path,
-                                                                            store):
-    found = problems(tmp_path, store, release_build=calling("ri-a.yml"))
-    assert ("ri-a.yml", "problem", UNCALLED.format("ri-a.yml")) not in found
-    assert unreadable_names(found) == ["release-build.yml"]
-
-
-def test_an_installed_piece_in_the_store_fixture_nothing_calls_is_a_problem(tmp_path, store):
-    found = problems(tmp_path, store, deploy="# ri-b.yml is installed\non: push\njobs: {}\n")
-    assert ("ri-b.yml", "problem", UNCALLED.format("ri-b.yml")) in found
 
 
 def test_a_call_omitting_a_required_ref_is_reported_once(tmp_path, store):
