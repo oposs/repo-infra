@@ -121,7 +121,10 @@ def test_apply_migrates_a_v1_repository_in_one_commit(tmp_path, monkeypatch, cap
         assert (repo / ".github/workflows" / name).read_text(encoding="utf-8") == (
             ASSETS / "callers" / name).read_text(encoding="utf-8")
     assert checking.layout_items(repo, pieces) == []
-    assert "migrated to the v2 layout: " in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "migrated to the v2 layout: " in out
+    assert "local changes" not in out
+    assert "local changes" not in git(repo, "log", "-1", "--format=%b")
     # The removals are in the commit, not left in the work tree.
     removed = git(repo, "show", "--name-status", "--format=", "HEAD").splitlines()
     assert "D\t.github/workflows/lib/release.js" in removed
@@ -130,6 +133,32 @@ def test_apply_migrates_a_v1_repository_in_one_commit(tmp_path, monkeypatch, cap
     # A second apply finds nothing to migrate.
     assert cli.main(["apply", "--root", str(repo), "--repo", "o/r"]) == 0
     assert len(git(repo, "log", "--format=%s", "main..HEAD").splitlines()) == 1
+
+
+def test_apply_names_the_local_changes_the_migration_removes(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "repo"
+    shutil.copytree(V1_MTUSPY, repo)
+    flows = repo / ".github/workflows"
+    rust = flows / "ri-ci-rust.yml"
+    rust.write_text(rust.read_text(encoding="utf-8") + "# a local fix\n", encoding="utf-8")
+    (flows / "lib/mine.js").write_text("module.exports = {};\n", encoding="utf-8")
+    pr = flows / "release-pr.yml"
+    pr.write_text(pr.read_text(encoding="utf-8")
+                  + "  notify:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n",
+                  encoding="utf-8")
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "v1")
+    monkeypatch.setattr(cli, "read_facts", lambda repo_name: cli.CONFORMING_FACTS)
+    assert cli.main(["apply", "--root", str(repo), "--repo", "o/r"]) == 0
+    out = capsys.readouterr().out
+    body = git(repo, "log", "--format=%b", "-1", "--grep", "Migrate to the repo-infra v2")
+    for said in (".github/workflows/ri-ci-rust.yml: edited locally",
+                 ".github/workflows/lib/mine.js: not shipped by repo-infra",
+                 ".github/workflows/release-pr.yml: edited locally",
+                 ".github/workflows/release-pr.yml: the v2 caller drops its job notify"):
+        assert said in out
+        assert said in body
 
 
 def test_a_release_in_progress_stops_the_migration(tmp_path, monkeypatch, capsys):

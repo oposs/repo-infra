@@ -323,3 +323,45 @@ def test_an_unreadable_ci_is_refused_before_anything_is_written(tmp_path):
     with pytest.raises(ApplyError, match="ci.yml"):
         migrate.migrate(repo, PIECES, ASSETS)
     assert workflows(repo) == before
+
+
+# --- what the migration removes that repo-infra never shipped ---------------
+
+def test_an_unedited_v1_repository_has_no_local_changes(tmp_path):
+    assert migrate.local_changes(v1_repo(tmp_path), PIECES, ASSETS) == []
+
+
+def test_local_changes_name_edited_copies_extra_library_files_and_dropped_jobs(tmp_path):
+    repo = v1_repo(tmp_path)
+    flows = repo / ".github/workflows"
+    rust = flows / "ri-ci-rust.yml"
+    rust.write_text(rust.read_text(encoding="utf-8") + "# a local fix\n", encoding="utf-8")
+    (flows / "lib/mine.js").write_text("module.exports = {};\n", encoding="utf-8")
+    pr = flows / "release-pr.yml"
+    pr.write_text(pr.read_text(encoding="utf-8")
+                  + "  notify:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo\n",
+                  encoding="utf-8")
+    found = migrate.local_changes(repo, PIECES, ASSETS)
+    assert found == [
+        ".github/workflows/lib/mine.js: not shipped by repo-infra",
+        ".github/workflows/release-pr.yml: edited locally; the v2 caller replaces it",
+        ".github/workflows/release-pr.yml: the v2 caller drops its job notify; add it "
+        "again by hand",
+        ".github/workflows/ri-ci-rust.yml: edited locally; the copy is removed and the "
+        "edits no longer run",
+    ]
+    # Read before the migration: afterwards the files are gone.
+    migrate.migrate(repo, PIECES, ASSETS)
+    assert migrate.local_changes(repo, PIECES, ASSETS) == []
+
+
+def test_a_stamped_v1_copy_is_not_an_edit(tmp_path):
+    """v0.3.1 wrote ` sha256=<hex>` after the marker; the record holds the
+    bytes without it."""
+    repo = v1_repo(tmp_path)
+    rust = repo / ".github/workflows/ri-ci-rust.yml"
+    text = rust.read_text(encoding="utf-8")
+    rust.write_text(text.replace("# repo-infra: ri-ci-rust v1", "# repo-infra: ri-ci-rust v1 "
+                                 "sha256=00ff", 1), encoding="utf-8")
+    assert "sha256=00ff" in rust.read_text(encoding="utf-8")
+    assert migrate.local_changes(repo, PIECES, ASSETS) == []

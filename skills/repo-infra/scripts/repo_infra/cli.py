@@ -72,6 +72,12 @@ def _states(root, pieces, published):
             for name, piece in pieces.items()}
 
 
+# Heads the files and jobs the migration removes that repo-infra never
+# shipped, in apply's output and in the commit body.
+LOST = ("The migration removed these local changes; git keeps them. Port each to a "
+        "caller or drop it:")
+
+
 def _v1_layout(args):
     """True when a bare apply migrates (D33): a consumer that still has a
     file of the v1 layout. --item installs the one piece it names."""
@@ -113,10 +119,19 @@ def apply_command(args):
         # The branch may carry other versions of the files than the one the
         # first look found, so what to install is decided on this one.
         if _v1_layout(args):
+            # Read before the migration removes the files.
+            lost = migrate.local_changes(args.root, pieces, ASSETS)
             written = changed(args.root, migrate.migrate(args.root, pieces, ASSETS))
+            message = f"{MIGRATE_SUBJECT}\n\n{MIGRATE_BODY}"
+            if lost:
+                message += f"\n\n{LOST}\n" + "\n".join(f"- {line}" for line in lost)
             if written:
-                commit_paths(args.root, written, f"{MIGRATE_SUBJECT}\n\n{MIGRATE_BODY}")
+                commit_paths(args.root, written, message)
             print(f"migrated to the v2 layout: {len(written)} files")
+            if lost:
+                print(f"\n{LOST}")
+                for line in lost:
+                    print(f"  {line}")
         states = _states(args.root, files, published)
         names = [args.item] if args.item else _pending(args.root, files, states, published)
     notes, kept = [], []

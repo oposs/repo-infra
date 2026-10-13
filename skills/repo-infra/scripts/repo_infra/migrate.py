@@ -8,12 +8,15 @@ file whose jobs came out other than intended, rather than commit a broken
 workflow.
 """
 
+import hashlib
+import json
 import pathlib
 import re
 import shutil
 
 from . import callers, workflow
 from .apply import ApplyError
+from .check import unstamped
 from .markers import parse_markers
 from .pieces import ASSETS, HOME_REPO, MAJOR
 
@@ -261,6 +264,66 @@ def _is_retired(path, piece):
     return bool(markers) and markers[0].asset == piece
 
 
+def _workflow_files(folder):
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix in (".yml", ".yaml"))
+
+
+def _plan(root, pieces, assets):
+    """(files removed, {caller path: v2 text}) of the migration."""
+    folder = root / WORKFLOWS
+    remote = {pathlib.PurePosixPath(p.target).name for p in pieces.values() if p.remote}
+    files = _workflow_files(folder)
+    gone = [p for p in files if p.name in remote | {"ri-ci-lib.yml"}]
+    lib = folder / "lib"
+    if lib.is_dir():
+        gone += sorted(p for p in lib.rglob("*") if p.is_file())
+    callers_dir = pathlib.Path(assets) / "callers"
+    replaced = {folder / name: (callers_dir / name).read_text(encoding="utf-8")
+                for name, piece in CALLERS.items() if _is_retired(folder / name, piece)}
+    return gone, replaced
+
+
+def _v1_record(assets):
+    """{repository path: {sha256}} of every published version of the files
+    the v1 layout copied (D30); generations.json lost them with D33."""
+    record = json.loads((pathlib.Path(assets) / "v1-generations.json").read_text(
+        encoding="utf-8"))
+    return {path: set(digests) for path, digests in record.items() if not path.startswith("_")}
+
+
+def local_changes(repo_root, pieces, assets=ASSETS):
+    """What the migration would remove or overwrite that repo-infra did not
+    ship: copies whose bytes match no published v1 version, files of the
+    repository's own in lib/, and jobs a v1 changelog.yml or release-pr.yml
+    carries that the v2 caller lacks. git keeps the bytes, but a deleted copy
+    in a long diff does not show that it carried a fix, so apply names them."""
+    root = pathlib.Path(repo_root)
+    record = _v1_record(assets)
+    gone, replaced = _plan(root, pieces, assets)
+    found = []
+    for path in sorted(gone + [p for p in replaced if p.is_file()]):
+        rel = path.relative_to(root).as_posix()
+        if rel not in record:
+            found.append(f"{rel}: not shipped by repo-infra")
+            continue
+        digest = hashlib.sha256(unstamped(path.read_bytes())).hexdigest()
+        if digest not in record[rel]:
+            fate = ("the v2 caller replaces it" if path in replaced
+                    else "the copy is removed and the edits no longer run")
+            found.append(f"{rel}: edited locally; {fate}")
+        if path in replaced:
+            try:
+                old = callers.jobs(workflow.load(path.read_text(encoding="utf-8")))
+            except (workflow.ReadError, UnicodeDecodeError):
+                continue
+            new = callers.jobs(workflow.load(replaced[path]))
+            found += [f"{rel}: the v2 caller drops its job {job}; add it again by hand"
+                      for job in old if job not in new]
+    return found
+
+
 def migrate(repo_root, pieces, assets):
     """Bring a consumer from the v1 layout to the v2 one. Every new text is
     computed before the first file changes, so a refusal leaves the
@@ -268,18 +331,13 @@ def migrate(repo_root, pieces, assets):
     root = pathlib.Path(repo_root)
     folder = root / WORKFLOWS
     remote = {pathlib.PurePosixPath(p.target).name for p in pieces.values() if p.remote}
-    files = sorted(p for p in folder.iterdir()
-                   if p.is_file() and p.suffix in (".yml", ".yaml")) if folder.is_dir() else []
-    gone = [p for p in files if p.name in remote | {"ri-ci-lib.yml"}]
+    files = _workflow_files(folder)
+    gone, writes = _plan(root, pieces, assets)
     used = used_secrets(p.read_text(encoding="utf-8", errors="replace") for p in files)
     secrets_of = passed_secrets(pieces, used)
     callers_dir = pathlib.Path(assets) / "callers"
     pattern = (callers_dir / "ci-passed.yml").read_text(encoding="utf-8")
     skip = _skip_line(assets)
-    writes = {}
-    for name, piece in CALLERS.items():
-        if _is_retired(folder / name, piece):
-            writes[folder / name] = (callers_dir / name).read_text(encoding="utf-8")
     for path in files:
         if path in gone or path in writes:
             continue
@@ -292,12 +350,9 @@ def migrate(repo_root, pieces, assets):
     touched = []
     for path in gone:
         path.unlink()
-        touched.append(f"{WORKFLOWS}/{path.name}")
-    lib = folder / "lib"
-    if lib.is_dir():
-        touched += sorted(p.relative_to(root).as_posix() for p in lib.rglob("*")
-                          if p.is_file())
-        shutil.rmtree(lib)
+        touched.append(path.relative_to(root).as_posix())
+    if (folder / "lib").is_dir():
+        shutil.rmtree(folder / "lib")
     for path, text in writes.items():
         old = path.read_text(encoding="utf-8") if path.is_file() else None
         if text != old:
