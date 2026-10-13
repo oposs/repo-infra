@@ -161,10 +161,15 @@ def test_repo_infra_gates_its_release_on_mtuspy():
     jobs = load(OWN)["jobs"]
     assert list(jobs) == ["prepare", "build", "test", "gate", "finish"]
     assert jobs["gate"]["needs"] == "prepare"
-    assert jobs["gate"]["permissions"] == {"contents": "read", "actions": "write"}
+    assert jobs["gate"]["permissions"] == {"contents": "write", "actions": "write"}
     assert jobs["finish"]["needs"] == ["prepare", "build", "test", "gate"]
-    script = jobs["gate"]["steps"][-1]["with"]["script"]
-    assert "workflow: 'gate-mtuspy.yml'" in script and "process.env.BRANCH" in script
+    step = jobs["gate"]["steps"][-1]
+    assert step["env"] == {"HEAD_SHA": "${{ needs.prepare.outputs.head }}",
+                           "VERSION": "${{ needs.prepare.outputs.version }}"}
+    script = step["with"]["script"]
+    assert "workflow: 'gate-mtuspy.yml'" in script
+    assert "head: process.env.HEAD_SHA, version: process.env.VERSION" in script
+    assert "${{" not in script
 
 
 def test_no_other_job_of_the_release_flow_may_write_actions():

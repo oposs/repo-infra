@@ -14,8 +14,8 @@ name: Create release PR
 #   build    .github/workflows/release-build.yml, which calls the build
 #            pieces the repository needs
 #   test     .github/workflows/ci.yml on the release branch, beside build
-#   gate     repo-infra only: dispatch gate-mtuspy.yml on the release branch
-#            and wait for it (D33)
+#   gate     repo-infra only: dispatch gate-mtuspy.yml on a commit of its own
+#            with the release's tree and wait for it (D33)
 #   finish   ri-release-finish: commit the declared release files, draft the
 #            release, mark the head, write the two required checks, open the
 #            pull request, judge it against main, then delete the
@@ -93,17 +93,22 @@ jobs:
 
   # D33: a release of repo-infra builds mtuspy with its own pieces before the
   # pull request opens, so v2 never moves to pieces that break a consumer.
-  # It dispatches gate-mtuspy.yml on the release branch, a run of its own,
-  # so the gate's artifacts never reach this run's draft. Dispatching a
-  # workflow needs actions: write. Besides this job only prepare and finish
-  # hold it, to delete parked runs; consumers' build jobs never do.
+  # It dispatches gate-mtuspy.yml, a run of its own, so the gate's artifacts
+  # never reach this run's draft. The run sits on branch gate/v<version>, a
+  # commit with the release head's tree and the head as parent, never on the
+  # release head: in 2.0.0 the gate run on the head took finish's ci-passed
+  # and changelog-updated into its check suite, and the pull request waited
+  # for checks that had passed. Creating that commit and branch needs
+  # contents: write; dispatching a workflow needs actions: write. Besides this
+  # job only prepare and finish hold actions: write, to delete parked runs;
+  # consumers' build jobs never do.
   gate:
     name: Build mtuspy with the release's pieces
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
-      contents: read
+      contents: write
       actions: write
     steps:
       - uses: actions/checkout@v7
@@ -118,15 +123,18 @@ jobs:
       - name: Dispatch the gate and wait for it
         uses: actions/github-script@v9
         env:
-          BRANCH: release/v${{ needs.prepare.outputs.version }}
+          HEAD_SHA: ${{ needs.prepare.outputs.head }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         with:
           script: |
             const gate = require(`${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/gate.js`);
             const { owner, repo } = context.repo;
             const verdict = await gate.runGate(github, {
-              owner, repo, workflow: 'gate-mtuspy.yml', ref: process.env.BRANCH,
+              owner, repo, workflow: 'gate-mtuspy.yml',
+              head: process.env.HEAD_SHA, version: process.env.VERSION,
               sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
               now: () => Date.now(), timeoutMs: 110 * 60 * 1000, intervalMs: 30 * 1000,
+              warn: (message) => core.warning(message),
             });
             if (!verdict.ok) {
               core.setFailed(verdict.message);
