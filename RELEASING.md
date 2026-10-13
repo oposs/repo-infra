@@ -27,8 +27,8 @@ cannot be given a bypass: the bypass list accepts users, teams and GitHub Apps,
 and the Actions token is none of those. Landing the release through a pull
 request needs no stored credential and works with the protection rather than
 around it. Tagging is unaffected: the branch ruleset covers `main`, and the
-tag ruleset on `v*` (see below) refuses moving or deleting a tag, not creating
-one.
+tag ruleset on `v*` (see below) refuses deleting a tag, not creating or
+moving one.
 
 ## Why the release pull request merges without an approval
 
@@ -81,7 +81,7 @@ the re-run does exactly what the original attempt would have done.
   no tag` while the last release has no tag. If its publish run failed for
   another reason than the tree comparison, **Re-run failed jobs** on it. For
   a release that is already out under another tag, push `vX.Y.Z` by hand (the
-  tag ruleset refuses moving or deleting a tag, not creating one). To abandon it, merge a pull request
+  tag ruleset refuses deleting a tag, not creating one). To abandon it, merge a pull request
   that moves its entries back under `[Unreleased]`.
 - Publish fails with `main at <sha> does not match the release built from
   <head>` only when the up-to-date rule was off at the merge. It tags
@@ -92,11 +92,11 @@ the re-run does exactly what the original attempt would have done.
 ## The moving major tag v2
 
 Repositories call repo-infra's workflows at `@v2`. Every release moves `v2`
-to the release it publishes, with the token of the GitHub App in the
-secrets `RELEASE_APP_CLIENT_ID` (the App's Client ID, not its numeric App
-ID) and `RELEASE_APP_PRIVATE_KEY`. A tag ruleset on
-`v*` refuses every other update and every deletion; its bypass list holds
-that App and the Repository admin role.
+to the release it publishes, with the publish job's own `GITHUB_TOKEN`
+(`contents: write`). A tag ruleset on `v*` refuses deleting a tag and
+nothing else, so the move needs no bypass. Anyone with write access can
+also move `v2` by hand; write access is limited to a small group, and a
+repository admin resets a wrong move with the rollback below.
 
 Before `v2` moves, Create release PR dispatches `gate-mtuspy.yml` on the
 release branch, which builds mtuspy with the release's own workflows. The

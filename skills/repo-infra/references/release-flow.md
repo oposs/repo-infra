@@ -228,11 +228,10 @@ changes. Two things are added, because consumers run whatever `v2` points at:
   `references/examples/mtuspy/source.json` with the release's own pieces. The
   release pull request does not open unless the gate succeeds.
 - **The moving tag.** `ri-publish-tag` moves `v2` to the release after tagging
-  it, with the token of a GitHub App: the repository secrets
-  `RELEASE_APP_CLIENT_ID` (the App's Client ID, not its numeric App ID) and
-  `RELEASE_APP_PRIVATE_KEY` are passed under the same names. A tag
-  ruleset on `v*` refuses every other update and every deletion. `RELEASING.md`
-  has the rollback.
+  it, with the job's own token (`contents: write`). The tag ruleset on `v*`
+  refuses deletion only, so the move needs no bypass. A repository whose tag
+  ruleset also restricts updates sees the move fail with "vN could not be
+  moved to vX.Y.Z". `RELEASING.md` has the rollback.
 
 CI also runs `v2-compat`, which refuses a change to a piece that would break
 callers of `v2`: a removed piece, input, secret or output, a changed input type,
