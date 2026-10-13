@@ -13,12 +13,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+### Changed
+
+### Fixed
+
+## 2.0.0 - 2026-10-13
+### New
 - `/repo-infra:check` reports a workflow of the repository that pins an action at an older major than repo-infra's workflows or another workflow of the repository, for example `docs.yml` with `actions/upload-artifact@v4` where `build.yml` uses `v7`. Dependabot moves an action to one version in every workflow, so its pull request from `v4` would downgrade the files already on `v7`. The row reads `outdated` under `callers` and names the file, the action, both majors and where the newer pin is (#59).
 - When a tag ruleset refuses to move the major tag (`moving_major_tag`), the publish run fails with "vN could not be moved to vX.Y.Z" and says the ruleset restricts updates on `v*`. `ri-publish-tag` moves the tag with the workflow's own token, so a ruleset that restricts only deletion lets the move through.
 - Every CI and release build workflow takes a `repository` input, the repository to check out; it defaults to the calling repository. The Homebrew bottle and formula URLs name that repository. repo-infra's release gate uses it to build mtuspy.
 
 ### Changed
-
 - Releases are titled `<repository name> vX.Y.Z` in every repository, for example `edaptor v1.8.0`, matching repositories that used that form before onboarding. Repositories whose releases carried the bare tag as title change pattern from their next release (#60).
 - Repositories call repo-infra's workflows instead of copying them: every `uses:` reads `oposs/repo-infra/.github/workflows/<piece>.yml@v2`, and each release of repo-infra moves `v2`, so fixes arrive without a pull request. Run `/repo-infra:apply` once to migrate; repo-infra 1.x gets no further fixes.
 - repo-infra's CI refuses a change to a workflow piece that would break callers of `v2`: a removed piece, input, secret or output, a changed input type, a newly required input or secret, or a wider permission. See RELEASING.md.
@@ -39,7 +44,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The mtuspy example under `references/examples/mtuspy/` shows the v2 callers: `ci.yml`, `release-build.yml`, `release-publish.yml`, `changelog.yml` and `release-pr.yml`. `source.json` names the mtuspy release repo-infra's release gate builds.
 
 ### Fixed
-
 - The release pull request showed "Approve workflows to run" until it merged. Create release PR now deletes the parked runs behind that banner for up to 60 seconds after it opens the pull request, and only warns when none appear or one cannot be deleted. Its `finish` job now needs `actions: write`, which the shipped `release-pr.yml` grants (#58).
 
 ## 1.1.2 - 2026-10-13
