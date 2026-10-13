@@ -61,8 +61,8 @@ def test_name_secrets_drops_inherit_when_the_piece_declares_none():
 
 def test_passed_secrets_are_the_required_ones_and_the_optional_ones_in_use():
     """inherit passed every secret; named, an optional secret the repository
-    never had would read as one it is expected to set (ri-publish-tag's
-    RELEASE_APP_CLIENT_ID)."""
+    never had would read as one it is expected to set (ri-publish-gitea's
+    GITEA_PACKAGE_TOKEN)."""
     pieces = {"ri-publish-tag": PIECES["ri-publish-tag"],
               "ri-publish-gitea": PIECES["ri-publish-gitea"]}
     used = migrate.used_secrets(["env:\n  T: ${{ secrets.gitea_package_token }}\n"])
@@ -277,7 +277,7 @@ def test_migrate_turns_the_v1_mtuspy_into_the_v2_layout(tmp_path):
     # The v1 copy of ri-publish-gitea used the token, ri-publish-tag no secret.
     assert ("    secrets:\n      GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}\n"
             in publish)
-    assert "RELEASE_APP_CLIENT_ID" not in publish
+    assert publish.count("    secrets:\n") == 1
     assert "secrets: inherit" not in publish
     assert check.layout_items(repo, PIECES) == []
     docs = callers.read_workflows(repo)

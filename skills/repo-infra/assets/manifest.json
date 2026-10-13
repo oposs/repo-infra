@@ -142,8 +142,7 @@
     "oven-sh/setup-bun": "v2",
     "shogo82148/actions-setup-perl": "v1",
     "rust-lang/crates-io-auth-action": "v1",
-    "oposs/mkp-builder": "v2",
-    "actions/create-github-app-token": "v3"
+    "oposs/mkp-builder": "v2"
   },
   "gh": {
     "ruleset-main": {
