@@ -89,8 +89,9 @@ and its `actions/github-script` step requires
 defines the job, not the caller (GitHub changelog, early September 2026). They
 are absent on GitHub Enterprise Server, which no consumer uses.
 
-Called from a release branch of repo-infra, the same step loads the library of
-that branch, so the gate tests the library and the pieces of one commit.
+Called from the gate's branch, whose commit has the release's tree, the same
+step loads the library of that commit, so the gate tests the library and the
+pieces of one tree.
 
 ## A source input on every piece
 
@@ -198,11 +199,17 @@ builds repo-infra's release.
   `version` read from the example's source record. It runs no publish piece
   and needs no secret.
 - A job `gate` in repo-infra's own `release-pr.yml`, between `prepare` and
-  `finish`, holds `actions: write`. It dispatches the gate on the release
-  branch with `return_run_details` (the dispatch API returns the run id since
+  `finish`, holds `actions: write` and `contents: write`. It creates a commit
+  with the release head's tree and the head as parent on branch
+  `gate/vX.Y.Z`, dispatches the gate on that branch with
+  `return_run_details` (the dispatch API returns the run id since
   February 2026), waits for that run and fails unless it succeeded. `finish`
   needs `gate`, so a failed gate stops the release pull request and `v2`
-  does not move. Consumers' build jobs never get `actions: write`.
+  does not move. The job deletes the branch afterwards; a failed deletion
+  is a warning. The gate never runs on the release head: there its check
+  suite would take in the `ci-passed` and `changelog-updated` check runs
+  that `finish` writes, and the release pull request would not see them
+  (release 2.0.0). Consumers' build jobs never get `actions: write`.
 - `references/examples/mtuspy/source.json` records the source:
   `repository`, `ref` (a tag) and `version`.
 - A test holds the gate's jobs and inputs equal to the six example caller

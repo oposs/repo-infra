@@ -1,7 +1,8 @@
 name: Gate (mtuspy)
 
-# The release gate (D33). Create release PR dispatches it on the release
-# branch and waits for it; the release pull request does not open unless it
+# The release gate (D33). Create release PR dispatches it on branch
+# gate/vX.Y.Z, a commit with the release head's tree (lib/gate.js says why),
+# and waits for it; the release pull request does not open unless it
 # succeeds. It runs mtuspy's CI and release-build jobs through ./, so the
 # pieces and the library of the dispatched commit build the mtuspy release
 # recorded in references/examples/mtuspy/source.json. Its artifacts stay in

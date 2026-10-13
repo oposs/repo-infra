@@ -223,8 +223,12 @@ changes. Two things are added, because consumers run whatever `v2` points at:
 
 - **The mtuspy gate.** A job `gate` of `release-pr.yml` needs `prepare`, runs
   beside `build` and `test`, and is one of the jobs `finish` waits for. It
-  dispatches `gate-mtuspy.yml` on the release branch and waits for it. That
-  workflow builds the mtuspy release recorded in
+  dispatches `gate-mtuspy.yml` on branch `gate/vX.Y.Z` and waits for it. That
+  branch holds a commit of its own with the release head's tree and the head
+  as parent, and the job deletes it afterwards. A run on the release head
+  would take the release pull request's required check runs into its own
+  check suite, where the pull request does not see them. The gate workflow
+  builds the mtuspy release recorded in
   `references/examples/mtuspy/source.json` with the release's own pieces. The
   release pull request does not open unless the gate succeeds.
 - **The moving tag.** `ri-publish-tag` moves `v2` to the release after tagging
