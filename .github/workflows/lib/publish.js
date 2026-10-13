@@ -87,6 +87,9 @@ function majorTag(version) {
   return `v${version.split('.')[0]}`;
 }
 
+// A ruleset refusal has not been seen from a real run: 422 and 403 are both taken for it.
+const refused = (error) => error.status === 422 || error.status === 403;
+
 // D33: moves the major tag consumers call, v2 for 2.0.1. The first release of
 // a major creates it. A tag ruleset on v* (repo-infra has one) refuses the
 // update unless the token belongs to its bypass list, the GitHub App.
@@ -100,16 +103,16 @@ async function moveMajorTag(github, { owner, repo, version, tag, sha }) {
     await github.rest.git.updateRef({ owner, repo, ref: `tags/${major}`, sha: object.sha, force: true });
     return `Moved ${major} to ${tag}.`;
   } catch (error) {
-    if (error.status !== 422) throw error;
+    if (!refused(error)) throw error;
     updateError = error;
   }
   try {
     await github.rest.git.createRef({ owner, repo, ref: `refs/tags/${major}`, sha: object.sha });
     return `Moved ${major} to ${tag}.`;
   } catch (error) {
-    if (error.status !== 422) throw error;
+    if (!refused(error)) throw error;
     throw new Error(`${major} could not be moved to ${tag}: ${updateError.message}. A tag `
-      + 'ruleset on v* lets only its bypass list move it; pass app-id and app-private-key '
+      + 'ruleset on v* lets only its bypass list move it; pass app-client-id and app-private-key '
       + 'to ri-publish-tag.');
   }
 }

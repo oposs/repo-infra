@@ -92,7 +92,8 @@ the re-run does exactly what the original attempt would have done.
 
 Repositories call repo-infra's workflows at `@v2`. Every release moves `v2`
 to the release it publishes, with the token of the GitHub App in the
-secrets `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY`. A tag ruleset on
+secrets `RELEASE_APP_CLIENT_ID` (the App's Client ID, not its numeric App
+ID) and `RELEASE_APP_PRIVATE_KEY`. A tag ruleset on
 `v*` refuses every other update and every deletion; its bypass list holds
 that App and the Repository admin role.
 
