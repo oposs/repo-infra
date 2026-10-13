@@ -32,13 +32,16 @@ repository does instead, what the options are. This is a ruling about the
 standard, not about this repository. Do not decide it yourself and do not
 present it as "may I add X".
 
-**2. Prove.** Write the answer on a repo-infra branch, install it into the
-repository from that branch with `apply --item`, and get it green in CI there.
-Run `apply` from the branch's scripts
+**2. Prove.** Write the answer on a repo-infra branch and get it green in CI
+in the repository. For a workflow piece, push the branch to repo-infra and
+point the repository's `uses:` at it for the proof run:
+`oposs/repo-infra/.github/workflows/<piece>.yml@<branch>`. `check` reports that
+ref until the line reads `@v2` again. For a build file, run `apply` from the
+branch's scripts
 (`PYTHONPATH=<branch>/skills/repo-infra/scripts python3 -m repo_infra apply --item <piece>`),
 so the repository carries the marker and the bytes repo-infra will ship. Never
 edit the installed file. A fix the proof forces goes into the branch and is
-installed again. Nothing is upstreamed on reasoning alone. A thing copied
+run again. Nothing is upstreamed on reasoning alone. A thing copied
 from a repository where it works is a hypothesis until it runs against a real
 consumer. This project has already paid for that lesson once.
 
@@ -47,32 +50,36 @@ sized to the change:
 
 | Change | What must exist |
 |---|---|
-| A fix to a piece (a wrong cache directory, a mistyped target) | The changed piece at a new version, its `## vN` section in the piece's `CHANGES.md`, `make generations`, `make catalogue` and a test |
+| A fix to a workflow piece (a wrong cache directory, a mistyped target) | The changed workflow, a `CHANGES.md` entry, `make catalogue` and a test. It must keep the interface of `v2`; CI refuses a removed or renamed input, secret or output, a newly required one and a wider permission |
+| A fix to a build file | The changed file at a new version, its `## vN` section in the piece's `CHANGES.md`, `make generations`, `make catalogue` and a test |
 | A new piece, a new rule | Numbered decision in the design doc, plus everything a new piece needs (below) |
 
 A new piece needs:
 
-- a folder under `skills/repo-infra/assets/pieces/<name>/` holding the file;
-- the marker `# repo-infra: <name> v1` on the first comment line;
+- for a workflow, the file `.github/workflows/<piece>.yml` of repo-infra (the
+  name starts with `ri-`) with the marker `# repo-infra: <piece> v2` on the first comment line; for a build
+  file, a folder under `skills/repo-infra/assets/pieces/<name>/` holding the file
+  with the marker `# repo-infra: <name> v1`;
 - the header block after the marker: `Purpose`, `Choose` and `Supplies`;
   `Pieces` naming the pieces it needs (the only way `apply` knows to install
   them with it); `Produces` for the assets it makes; and `Call`, the caller job,
   for every workflow a caller calls;
-- a `CHANGES.md` in that folder with a `## v1` section: the upgrade notes `apply`
-  prints, saying what a caller or the config must change;
-- an entry in `assets/manifest.json` giving the install path, the group and
-  whether every repository carries it;
-- `make generations`, which records the hash of the new version, and `make
-  catalogue`, which regenerates `references/catalogue.md`;
+- for a build file, a `CHANGES.md` in that folder with a `## v1` section: the
+  upgrade notes `apply` prints, saying what a caller or the config must change;
+- an entry in `assets/manifest.json`: for a workflow its group and
+  `"kind": "remote"`, for a build file the install path, the group and whether
+  every repository carries it;
+- `make generations` for a build file, which records the hash of the new
+  version, and `make catalogue`, which regenerates `references/catalogue.md`;
 - tests that run the steps of the piece, because nothing is standardised that
   has not been shown to run.
 
 The repository's own conversion pull request may merge before that ships, once
 the proof run is green and the upstream pull request changes no behaviour of an
-installed piece any more. Until the plugin is updated, `check` reports a new
-piece as `unknown` and a newer `workflow-lib` as newer than the plugin; both are
+installed piece any more. Until the plugin is updated, `check` does not know a new
+piece: a call of it is reported as a file repo-infra does not ship, which is
 expected in that window. After the update, `check` runs against the released
-plugin. A piece it reads as `edited`, because a later change touched only its
+plugin. A build file it reads as `edited`, because a later change touched only its
 comments, is removed and installed again with `apply --item`.
 
 ## The threshold you will hit most often

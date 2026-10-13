@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Repositories call repo-infra's workflows instead of copying them: every `uses:` reads `oposs/repo-infra/.github/workflows/<piece>.yml@v2`, and each release of repo-infra moves `v2`, so fixes arrive without a pull request. Run `/repo-infra:apply` once to migrate; repo-infra 1.x gets no further fixes.
 - repo-infra's CI refuses a change to a workflow piece that would break callers of `v2`: a removed piece, input, secret or output, a changed input type, a newly required input or secret, or a wider permission. See RELEASING.md.
 - The reusable workflows (`ri-*.yml`) live once, in `.github/workflows/` of repo-infra. The catalogue shows each one with the line consumers call it by, `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`. `ri-ci-lib` is no longer in the catalogue.
 - The reusable workflows load the workflow library from the repo-infra commit they were called from. A repository that calls them needs no `.github/workflows/lib/` of its own.

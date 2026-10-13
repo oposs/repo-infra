@@ -2,11 +2,14 @@
 
 A Claude Code plugin that teaches an AI how these repositories are structured,
 built, tested, reviewed and released, and gives it a toolbox for doing so. The
-toolbox is a set of pieces (reusable workflows named `ri-*.yml`, the release
-flow files, a workflow library, build fragments) that a repository copies 1:1,
-and a catalogue that says what each piece is for. The repository owns the short
-callers (`ci.yml`, `release-build.yml`, `release-publish.yml`, `ci-local.yml`)
-that use them.
+toolbox is a set of pieces (reusable workflows named `ri-*.yml`, build files)
+and a catalogue that says what each piece is for. A repository calls the
+workflows from short callers (`ci.yml`, `release-build.yml`,
+`release-publish.yml`, `release-pr.yml`, `changelog.yml`, `ci-local.yml`) with
+`uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`; each release of
+repo-infra moves `v2`, so fixes arrive without a pull request. Build files are
+installed by `/repo-infra:apply`, which also migrates a repository that still
+copies the workflows.
 
 Design: [`docs/superpowers/specs/2026-10-02-pieces-and-callers-design.md`](docs/superpowers/specs/2026-10-02-pieces-and-callers-design.md)
 (the original standard is in
@@ -30,19 +33,20 @@ In the repository to bring up to the standard:
 /repo-infra:apply
 ```
 
-`check` reports every installed piece as `current`, `outdated`, `edited` or
-`unknown`, checks the callers against the pieces they call, checks
+`check` reports every installed build file as `current`, `outdated`, `edited` or
+`unknown`, reports the v1 layout and every call of a repo-infra workflow that
+does not read `@v2`, checks the callers against the workflows they call, checks
 `.github/repo-infra.json`, and lists the administration items (default branch,
-ruleset, label, Actions setting). It never writes. `apply` replaces outdated
-pieces on a `repo-infra/apply` branch, one commit each, prints the upgrade notes
-and what the callers must change, and stops. `apply --item <piece>` installs one
-piece, and `apply --item <name>` writes one repository setting through the
-GitHub API.
+ruleset, label, Actions setting). It never writes. `apply` migrates a v1
+repository in one commit named "Migrate to the repo-infra v2 layout", replaces
+outdated build files on a `repo-infra/apply` branch, prints what the callers
+must change, and stops. `apply --item <piece>` installs one build file, and
+`apply --item <name>` writes one repository setting through the GitHub API.
 
 A repository not yet in the fold is onboarded from the skill: it reads the
 repository, picks pieces from `skills/repo-infra/references/catalogue.md`,
-copies them with `apply --item` and writes the callers
-(`skills/repo-infra/references/onboarding.md`).
+writes the callers that call them and installs the build files with
+`apply --item` (`skills/repo-infra/references/onboarding.md`).
 
 ## Testing
 

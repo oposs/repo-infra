@@ -239,8 +239,9 @@ Before 2.0.0 there is no `v2`, and the test is skipped.
   `ri-publish-tag` moves `v2` after the release tag.
 - A tag ruleset on `v*` in repo-infra blocks updates and deletion. Its
   bypass list holds a GitHub App and the Repository admin role.
-- `ri-publish-tag` gets two optional secrets, `app-id` and
-  `app-private-key`. When both are set it mints an installation token with
+- `ri-publish-tag` gets two optional secrets, `app-client-id` and
+  `app-private-key`; the repository secret `RELEASE_APP_CLIENT_ID` holds the
+  App's Client ID. When both are set it mints an installation token with
   `actions/create-github-app-token` and moves the major tag with it. An
   installation token lasts one hour, so it cannot be stored as a secret, and
   a token handed over as a job output is redacted. repo-infra's caller passes

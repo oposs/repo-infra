@@ -32,18 +32,21 @@ triggers either.
 
 ## Built and tested before the pull request exists (D28)
 
-`Create release PR` runs four jobs:
+`Create release PR` is `release-pr.yml`, a caller that wires four jobs. The
+first and the last call repo-infra at `@v2`; the two between them are the
+repository's own, and a repository may add more between `prepare` and `finish`
+(`finish` then needs them too):
 
-- `prepare`: the guard, the refusals (a release pull request is open; the
+- `prepare`: calls `ri-release-prepare` with the input `release_type`. It does the guard, the refusals (a release pull request is open; the
   latest release in `CHANGES.md` has no tag), the removal of stale drafts and
   of the parked runs of closed release branches, the roll, the version bump
   and the commit of `release/vX.Y.Z`. It outputs `version`, `date`, `head` and
   `base`, the dispatched `main` commit.
-- `build`: calls `.github/workflows/release-build.yml` with `version` and
-  `ref: head`.
-- `test`: calls `.github/workflows/ci.yml` with `ref: head`, in parallel with
-  `build`.
-- `finish`: needs the other three. It checks and commits the `release_files`,
+- `build`: calls the repository's `.github/workflows/release-build.yml` with
+  `version` and `ref: head`.
+- `test`: calls the repository's `.github/workflows/ci.yml` with `ref: head`,
+  in parallel with `build`.
+- `finish`: calls `ri-release-finish` and needs the other three. It checks and commits the `release_files`,
   checks the assets against `release_assets`, creates the draft release with
   every asset and `release-build.json` (`{version, base, head, assets}`), sets
   the commit status `release-built` on the head, creates the check run
@@ -57,6 +60,21 @@ triggers either.
 The ruleset requires `ci-passed` and `changelog-updated` by context only, with
 no app (`integration_id`), so the two check runs `finish` writes with
 `GITHUB_TOKEN` satisfy it, and the pull request merges at once.
+
+The two required checks are inline jobs in the caller, because a job that calls
+a workflow reports as `<job> / <called job>`, which the ruleset does not match.
+They read a verdict that repo-infra computes:
+
+- `ci-passed` in `ci.yml` needs the job `release-verdict`, which calls
+  `ri-release-verdict` and outputs `mode`, `ok` and `message`. In release mode
+  `ci-passed` passes when `ok` is `true` and prints `message` otherwise; in
+  ordinary mode it fails when a needed job failed or was cancelled. It fails when
+  `release-verdict` itself was skipped, failed or was cancelled, so a missing
+  verdict is never green.
+- `changelog-updated` in `changelog.yml` needs the job `changelog`, which calls
+  `ri-changelog`. The job fails on a refused changelog and sets `message`;
+  `changelog-updated` is red when `changelog` failed or was cancelled and skipped
+  only by the `no-changelog` label on a branch other than `release/*`.
 
 A pull request opened by `GITHUB_TOKEN` still parks its own `pull_request`
 runs in an **approval-required** state, shown as a banner in the merge box.
@@ -135,7 +153,8 @@ does not help; the block is attached to the commit. `oetiker/smalti` lost its
 entire first release, 0.1.0, to exactly this, and had to push an empty commit to
 escape.
 
-`checks.js:guardIgnoreIds` therefore lists **every run of this workflow on this
+`checks.js:guardIgnoreIds`, in the workflow library `ri-release-prepare` loads
+from repo-infra, therefore lists **every run of this workflow on this
 commit** (through `GITHUB_WORKFLOW_REF`, which needs the `actions: read`
 permission) and ignores the jobs of all of them, plus the current run's jobs
 unconditionally, because a run that has only just started can be missing from
@@ -191,6 +210,29 @@ not need. Its input `expected` lists the name patterns the publish jobs attach
 before publishing, because ordering cannot report its own absence and an
 assertion can. The same holds for `ci-passed` in `ci.yml`: it needs every other
 job, and `check` verifies it.
+
+## repo-infra's own release
+
+repo-infra releases through the same `release-pr.yml` and `release-publish.yml`,
+which call its pieces through `./` so a pull request runs the pieces it
+changes. Two things are added, because consumers run whatever `v2` points at:
+
+- **The mtuspy gate.** A job `gate` of `release-pr.yml` needs `prepare`, runs
+  beside `build` and `test`, and is one of the jobs `finish` waits for. It
+  dispatches `gate-mtuspy.yml` on the release branch and waits for it. That
+  workflow builds the mtuspy release recorded in
+  `references/examples/mtuspy/source.json` with the release's own pieces. The
+  release pull request does not open unless the gate succeeds.
+- **The moving tag.** `ri-publish-tag` moves `v2` to the release after tagging
+  it, with the token of a GitHub App: the repository secret
+  `RELEASE_APP_CLIENT_ID` (the App's Client ID, not its numeric App ID) is passed
+  as `app-client-id`, and `RELEASE_APP_PRIVATE_KEY` as `app-private-key`. A tag
+  ruleset on `v*` refuses every other update and every deletion. `RELEASING.md`
+  has the rollback.
+
+CI also runs `v2-compat`, which refuses a change to a piece that would break
+callers of `v2`: a removed piece, input, secret or output, a changed input type,
+a newly required input or secret, or a wider permission.
 
 ## What the build may do
 

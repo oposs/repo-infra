@@ -11,13 +11,14 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" check
 
 The report has four sections.
 
-- `pieces`: every installed piece, by its bytes against the published
-  versions, and the core pieces that are missing.
+- `pieces`: every installed build file, by its bytes against the published
+  versions, the core build files that are missing, and the files of the v1
+  layout (below).
 - `callers`: `ci.yml`, `release-build.yml`, `release-publish.yml` and the
   workflows they call, checked against the pieces they call (inputs, secrets,
   `needs:` lists, the `if:` and `with:` of `finalize`, token permissions,
   `ref`), the triggers and concurrency group of `ci.yml` and
-  `release-publish.yml`, and installed workflow pieces that nothing calls. A
+  `release-publish.yml`, and the calls of repo-infra workflows (below). A
   workflow its reader cannot follow (flow mappings, anchors, text that is not
   UTF-8) is reported only when it is one of those three, is called by a
   workflow or by such a reported file, or carries a piece marker. Any other
@@ -26,7 +27,22 @@ The report has four sections.
 - `administration`: the default branch, the ruleset, the label and the Actions
   setting, read from GitHub.
 
-A piece is in one of these states:
+Every call of a repo-infra workflow must read
+`uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`, with each secret passed
+by name. `check` reports another ref (`@main`, `@v2.0.0`) or none, `secrets:
+inherit` on such a call, a file repo-infra does not ship, an input the workflow
+does not declare, and a required input or secret left out. It reads the workflows
+from the installed plugin. Calls of other repositories' workflows are not
+reviewed. repo-infra itself calls its pieces through `./`.
+
+The v1 layout is reported in `pieces` as `outdated`, each finding saying to run
+apply: a copy of a workflow piece (`ri-*.yml`), `.github/workflows/lib/`,
+`ri-ci-lib.yml`, and the old `changelog.yml` and `release-pr.yml` that still
+carry a piece marker. A job that calls a copy through `./` is a finding in
+`callers`. Tell the user to run `/repo-infra:apply`, which migrates in one
+commit; do not edit the copies.
+
+A build file is in one of these states:
 
 - `current`: the latest version, unedited.
 - `outdated`: an older published version, unedited. `apply` replaces it.

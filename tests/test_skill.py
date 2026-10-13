@@ -170,3 +170,23 @@ def test_mtuspy_is_the_example_of_a_project_with_its_full_shape():
         assert (example / name).is_file(), name
     assert "references/examples/mtuspy/" in flat(REFS / "onboarding.md")
     assert "references/examples/mtuspy/" in flat(REFS / "project-shape.md")
+
+
+def test_the_skill_says_pieces_are_called_at_v2_not_copied():
+    text = flat(ROOT / "skills/repo-infra/SKILL.md")
+    assert "oposs/repo-infra/.github/workflows/<piece>.yml@v2" in text
+    for ref in ("onboarding.md", "release-flow.md", "conventions.md"):
+        body = flat(REFS / ref)
+        assert "copied 1:1" not in body and "byte for byte" not in body, ref
+
+
+def test_onboarding_and_apply_name_the_migration():
+    assert "v1 layout" in flat(REFS / "onboarding.md")
+    assert "Migrate to the repo-infra v2 layout" in flat(ROOT / "commands/apply.md")
+
+
+def test_release_flow_names_the_two_judges_and_the_split():
+    text = flat(REFS / "release-flow.md")
+    for name in ("ri-release-verdict", "ri-changelog", "ri-release-prepare",
+                 "ri-release-finish", "release-verdict"):
+        assert f"`{name}`" in text, name

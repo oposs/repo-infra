@@ -2,8 +2,12 @@
 
 How to bring a repository that is not in the fold onto the standard. repo-infra
 does not decide what a repository needs: you read it, choose pieces from
-`references/catalogue.md`, copy them, and write the callers. `check` reports
-what is wrong and never gates the work.
+`references/catalogue.md`, and write the callers that call them. `check`
+reports what is wrong and never gates the work.
+
+A repository with the v1 layout (copied `ri-*.yml` files, `.github/workflows/lib/`,
+the old `changelog.yml` and `release-pr.yml`) is not onboarded again. It runs
+`apply`, which migrates it in one pull request (below).
 
 ## The procedure
 
@@ -14,19 +18,24 @@ what is wrong and never gates the work.
 3. **For a need no piece fits, ask the user.** That is stage 1 of
    `references/teaching-the-standard.md`. Never patch the repository around
    the gap.
-4. **Copy the pieces 1:1.** One piece at a time:
+4. **Write the callers and install the build files.** A new repository copies
+   the five callers (`ci.yml`, `release-build.yml`, `release-publish.yml`,
+   `release-pr.yml`, `changelog.yml`) from `references/examples/mtuspy/` and
+   adapts them; `assets/callers/` holds the word-for-word parts (`changelog.yml`,
+   `release-pr.yml`, the jobs `release-verdict` and `ci-passed`). Each job calls a piece
+   from the catalogue with its `Call:` snippet, which reads
+   `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`. Build files are
+   the only pieces installed, one at a time:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item ri-ci-python
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item man
    ```
 
-   `apply --item <piece>` installs a piece that is not there yet, on the
-   `repo-infra/apply` branch, as one commit named `Install <piece> vN from the
-   repo-infra standard`. Install the core pieces (`changelog`, `release-pr`,
-   `workflow-lib`, `dependabot`, `ri-ci-lib`, `ri-release-pr-current`,
-   `ri-publish-tag`, `ri-publish-finalize`) the same way, or let a bare `apply`
-   install every missing core piece in one run. Then write the callers and
-   `.github/repo-infra.json`, starting from the closest example in
+   `apply --item <piece>` installs a build file (`man`, `man-lua`, `container`,
+   `container-m4`, `dependabot`) that is not there yet, on the `repo-infra/apply`
+   branch, as one commit named `Install <piece> vN from the repo-infra standard`.
+   A bare `apply` installs every missing core build file. Write
+   `.github/repo-infra.json` from the closest example in
    `references/examples/repo-infra/` or, for a Rust program users install,
    `references/examples/mtuspy/`.
 5. **Run the script until it exits 0.** It reads the callers against the pieces
@@ -43,23 +52,47 @@ what is wrong and never gates the work.
    with the user first: the rename and the label before the push, the rest
    after the merge.
 
-A piece is never edited in the repository. Whatever the repository needs that
-the piece does not do goes into a caller, into `ci-local.yml`, or into a new
-piece (`references/teaching-the-standard.md`).
+A piece is never edited in the repository, and a called workflow cannot be.
+Whatever the repository needs that the piece does not do goes into a caller,
+into `ci-local.yml`, or into a new piece (`references/teaching-the-standard.md`).
+
+## Migrating the v1 layout
+
+`check` reports every file of the v1 layout as `outdated` and says to run
+`apply`. A bare `apply` on such a repository writes one commit on the
+`repo-infra/apply` branch, named `Migrate to the repo-infra v2 layout`:
+
+- it removes the copied `ri-*.yml` files, `.github/workflows/lib/` and
+  `ri-ci-lib.yml`;
+- it points every `uses: ./.github/workflows/ri-...` at
+  `oposs/repo-infra/.github/workflows/<piece>.yml@v2` and replaces
+  `secrets: inherit` on those calls with the secrets by name;
+- it adds the job `release-verdict` to `ci.yml`, rewrites `ci-passed` to the
+  v2 form and leaves every other line of the file alone;
+- it writes `changelog.yml` and `release-pr.yml` as the v2 callers.
+
+A copy with local edits is removed as well. The commit body and the output list
+those edits (`The migration removed these local changes`); git keeps them, and
+each is ported to a caller or dropped. Then run the script until it exits 0.
 
 ## Callers
 
 The repository owns these files. A caller is short: it calls pieces with
-`uses: ./.github/workflows/<piece>.yml`, passes `with:` and `secrets: inherit`,
-and holds the repository's own jobs or calls `ci-local.yml` for them. The
+`uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`, passes `with:` and
+each secret by name, and holds the repository's own jobs or calls `ci-local.yml` for them. The
 catalogue gives a caller snippet for each piece.
 
 `ci.yml` triggers on `push` and `pull_request` to `main` and on
 `workflow_call` with the input `ref`, because Create release PR runs it on the
-release branch. Every job is a call (or an inline job) that takes
-`ref: ${{ inputs.ref }}`, followed by `ci-passed`. Copy `ci-passed` from
-`assets/callers/ci-passed.yml` in the skill word for word and fill in its
-`needs:` with every other job of the file. It stays an inline job because a
+release branch. A call of a repository's own file (`ci-local.yml`,
+`release-build.yml`, `action-test.yml`) stays `uses: ./.github/workflows/<file>`
+and may write `secrets: inherit`; a call of a repo-infra piece never does, because
+GitHub hands a workflow of another organisation empty inherited secrets.
+Every job except `release-verdict` and `ci-passed` is a call (or an inline job)
+that takes `ref: ${{ inputs.ref }}`. Copy the jobs
+`release-verdict` (a call of `ri-release-verdict`) and `ci-passed` from
+`assets/callers/ci-passed.yml` in the skill word for word and fill in the
+`needs:` of `ci-passed` with every other job of the file. `ci-passed` stays an inline job because a
 job that calls a reusable workflow reports as `ci-passed / <job>`, and the
 ruleset requires the context `ci-passed`. `check` compares the job with that
 file and reports a difference.
@@ -69,7 +102,8 @@ Every job of `ci.yml` other than `ci-passed` carries the `if:` of
 a further condition (D31). It is false only on the `pull_request` run of the
 release pull request Create release PR opened. That run parks for approval,
 Create release PR has already tested the commit, and `ci-passed` ignores the
-test results there; approved without the `if:`, it builds and tests everything
+test results there (`release-verdict` carries no such `if:`, because its verdict
+is what decides there); approved without the `if:`, it builds and tests everything
 a second time. The condition tests the same three fields as `isReleasePr` in
 `lib/release.js`: the head branch starts with `release/`, the head is in this
 repository, and `github-actions[bot]` opened the pull request. A looser one
@@ -117,8 +151,13 @@ What `check` enforces on the callers:
   `release_id`, `tag` and `head` from the `publish` job's outputs, as the
   `Call:` header of `ri-publish-finalize` shows. Without the `if:` it runs after
   every push of `CHANGES.md`, also one that publishes nothing, and fails.
-- Each call passes only inputs the called file declares, passes every required
-  input, and passes every required secret or writes `secrets: inherit`.
+- Each call passes only inputs the called file declares and passes every
+  required input. A call of a repo-infra piece passes every required secret by
+  name (`secrets: inherit` is a finding); a call of the repository's own file
+  passes them or writes `secrets: inherit`.
+- Each call of a repo-infra piece reads
+  `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`: the file must be a
+  piece and the ref exactly `v2`. A call of a copy through `./` is the v1 layout.
 - Each call job grants at least the token permissions the called file asks for,
   recursively. A called workflow can only lower what it receives, so a job with
   too little makes GitHub refuse to start the run.
@@ -128,9 +167,11 @@ What `check` enforces on the callers:
   file that declares `ref` passes `ref: ${{ inputs.ref }}`.
 - Only the release build uploads artifacts named `release-asset-*` or
   `release-files`.
-- No call names a workflow in another repository. Everything stays local.
-- Every installed workflow piece that has a `Call:` snippet is called by some
-  workflow. One that nothing calls never runs.
+- Calls of other repositories' workflows are not reviewed.
+- Every installed build file is used; a workflow file that nothing calls never
+  runs.
+- `changelog.yml` and `release-pr.yml` match `assets/callers/`, apart from the
+  jobs a repository adds to `release-pr.yml` between `prepare` and `finish`.
 - `ci.yml` and `changelog.yml` carry no `paths` or `paths-ignore` filter.
 
 ## Project-owned workflows
