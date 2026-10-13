@@ -172,6 +172,12 @@ What `check` enforces on the callers:
 - `changelog.yml` and `release-pr.yml` match `assets/callers/`, apart from the
   jobs a repository adds to `release-pr.yml` between `prepare` and `finish`.
 - `ci.yml` and `changelog.yml` carry no `paths` or `paths-ignore` filter.
+- No workflow of the repository pins an action at an older major than the
+  pieces or another of its workflows do (`docs.yml` at
+  `actions/upload-artifact@v4`, the pieces at `v7`). Dependabot raises an
+  action to one version in every workflow, and its pull request from `v4`
+  would downgrade the files already past it; raise the old pin before
+  dependabot runs.
 
 ## Project-owned workflows
 

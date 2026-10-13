@@ -23,12 +23,13 @@ The report has four sections.
   workflow its reader cannot follow (flow mappings, anchors, text that is not
   UTF-8) is reported only when it is one of those three, is called by a
   workflow or by such a reported file, or carries a piece marker. Any other
-  such workflow is skipped. Any workflow of the repository that is not a
-  piece is also compared with the pieces' action pins: one that pins an action
-  at an older major than the pieces do (`actions/upload-artifact@v4` against
-  `v7`) reads `outdated`, because dependabot would raise every workflow to one
-  version and downgrade the files already past it. SHA and branch pins are not
-  compared.
+  such workflow is skipped. Each workflow of the repository that is not a
+  piece is also compared with the action pins of the pieces and of the
+  repository's other workflows: one that pins an action at an older major than
+  any of them (`actions/upload-artifact@v4` against `v7`) reads `outdated` and
+  names where the newer pin is, because dependabot would raise every workflow
+  to one version and downgrade the files already past it. SHA and branch pins
+  are not compared.
 - `config`: `.github/repo-infra.json`.
 - `administration`: the default branch, the ruleset, the label and the Actions
   setting, read from GitHub.

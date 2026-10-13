@@ -354,38 +354,44 @@ def action_pins(text):
 
 def action_pin_items(repo_root, pieces):
     """A repository-owned workflow that pins an action at an older major than
-    the pieces do (#59). Dependabot updates one action to one version in every
-    workflow, and the update it opens for the old pin downgrades the files
-    already past that version."""
+    the pieces or another workflow of the repository do (#59). Dependabot
+    updates one action to one version in every workflow, and the update it
+    opens for the old pin downgrades the files already past that version. In
+    v2 dependabot never sees the pieces, so the downgrade happens between the
+    repository's own files; the pieces' pins are a floor besides."""
     piece_files = {path for piece in pieces.values() for path in piece.files}
+    # {action: (major, where)}; the pieces win a tie, then the first file.
     newest = {}
     for path, text in (item for piece in pieces.values() for item in piece.files.items()):
         if path.startswith(f"{callers.WORKFLOWS}/") and path.endswith((".yml", ".yaml")):
             for key, _, major in action_pins(text):
-                newest[key] = max(major, newest.get(key, 0))
+                if major > newest.get(key, (0,))[0]:
+                    newest[key] = (major, "repo-infra's workflows pin")
     folder = pathlib.Path(repo_root) / callers.WORKFLOWS
     if not folder.is_dir():
         return []
+    owned = [(path.name, action_pins(path.read_text(encoding="utf-8", errors="replace")))
+             for path in sorted(folder.iterdir())
+             if path.is_file() and path.suffix in (".yml", ".yaml")
+             and f"{callers.WORKFLOWS}/{path.name}" not in piece_files]
+    for name, found in owned:
+        for key, _, major in found:
+            if major > newest.get(key, (0,))[0]:
+                newest[key] = (major, f"{name} pins")
     items = []
-    for path in sorted(folder.iterdir()):
-        if (not path.is_file() or path.suffix not in (".yml", ".yaml")
-                or f"{callers.WORKFLOWS}/{path.name}" in piece_files):
-            continue
+    for name, found in owned:
         oldest = {}
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for key, action, major in action_pins(text):
-            if major < newest.get(key, 0) and major < oldest.get(key, (None, major + 1))[1]:
+        for key, action, major in found:
+            if major < newest[key][0] and major < oldest.get(key, (None, major + 1))[1]:
                 oldest[key] = (action, major)
         for key, (action, major) in sorted(oldest.items()):
-            want = newest[key]
+            want, where = newest[key]
             items.append(Item(
-                "callers", path.name, "outdated",
-                f"{path.name} pins {action}@v{major} and repo-infra's workflows pin v{want}. "
-                "Dependabot moves an action to one version in every workflow, so its "
-                f"update from v{major} can downgrade the files already past it. Pin "
-                f"v{want}"))
+                "callers", name, "outdated",
+                f"{name} pins {action}@v{major} and {where} v{want}. Dependabot moves an "
+                "action to one version in every workflow, so its update from "
+                f"v{major} can downgrade the files already past it. Pin v{want}"))
     return items
-
 
 def classify_remote(facts):
     items = []

@@ -520,3 +520,38 @@ def test_check_reports_an_older_pin_than_the_pieces(tmp_path):
     install(tmp_path, ".github/workflows/docs.yml", steps("actions/checkout@v4"))
     assert ("callers", "docs.yml", "outdated") in {
         (i.section, i.name, i.state) for i in check.run(tmp_path, CONFORMING)}
+
+
+def own_pins(tmp_path, files):
+    root = tmp_path / "repo"
+    for name, text in files.items():
+        install(root, f".github/workflows/{name}", text)
+    items = check.action_pin_items(root, load_pieces(pin_store(tmp_path)))
+    return [(i.name, i.detail) for i in items]
+
+
+def test_a_workflow_pinning_an_older_major_than_another_workflow_is_reported(tmp_path):
+    assert own_pins(tmp_path, {"docs.yml": steps("actions/cache@v4"),
+                               "build.yml": steps("actions/cache@v6")}) == [(
+        "docs.yml",
+        "docs.yml pins actions/cache@v4 and build.yml pins v6. Dependabot moves an "
+        "action to one version in every workflow, so its update from v4 can downgrade "
+        "the files already past it. Pin v6")]
+
+
+def test_workflows_pinning_the_same_major_are_not_reported(tmp_path):
+    assert own_pins(tmp_path, {"docs.yml": steps("actions/cache@v6.1"),
+                               "build.yml": steps("actions/cache@v6")}) == []
+
+
+def test_a_workflow_newer_than_the_pieces_raises_the_floor_for_the_others(tmp_path):
+    found = own_pins(tmp_path, {"docs.yml": steps("actions/upload-artifact@v7"),
+                                "build.yml": steps("actions/upload-artifact@v8")})
+    assert [(name, detail.split(". ")[0]) for name, detail in found] == [
+        ("docs.yml", "docs.yml pins actions/upload-artifact@v7 and build.yml pins v8")]
+
+
+def test_a_sha_pin_does_not_raise_the_floor(tmp_path):
+    assert own_pins(tmp_path, {
+        "docs.yml": steps("actions/cache@v4"),
+        "build.yml": steps("actions/cache@0123456789abcdef0123456789abcdef01234567")}) == []
