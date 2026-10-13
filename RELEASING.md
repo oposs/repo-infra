@@ -26,8 +26,9 @@ publish workflow, which tags the commit that was built and publishes the draft.
 cannot be given a bypass: the bypass list accepts users, teams and GitHub Apps,
 and the Actions token is none of those. Landing the release through a pull
 request needs no stored credential and works with the protection rather than
-around it. Tagging is unaffected: the ruleset targets branches, and tags live in
-a separate ref namespace.
+around it. Tagging is unaffected: the branch ruleset covers `main`, and the
+tag ruleset on `v*` (see below) refuses moving or deleting a tag, not creating
+one.
 
 ## Why the release pull request merges without an approval
 
@@ -80,7 +81,7 @@ the re-run does exactly what the original attempt would have done.
   no tag` while the last release has no tag. If its publish run failed for
   another reason than the tree comparison, **Re-run failed jobs** on it. For
   a release that is already out under another tag, push `vX.Y.Z` by hand (the
-  ruleset covers the branch, not tags). To abandon it, merge a pull request
+  tag ruleset refuses moving or deleting a tag, not creating one). To abandon it, merge a pull request
   that moves its entries back under `[Unreleased]`.
 - Publish fails with `main at <sha> does not match the release built from
   <head>` only when the up-to-date rule was off at the merge. It tags

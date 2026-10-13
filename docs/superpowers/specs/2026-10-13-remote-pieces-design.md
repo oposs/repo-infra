@@ -120,13 +120,15 @@ into pieces:
   because the bot-opened release pull request is the run where the verdict
   decides. The inline `ci-passed` keeps `if: always()`, lists the verdict job
   and every other job in `needs:`, and fails when the verdict job did not
-  succeed, when `mode` is `release` and `ok` is false, or when `mode` is not
-  `release` and a needed job failed or was cancelled.
+  succeed, when `mode` is `release` and `ok` is false, when `mode` is neither
+  `release` nor `ordinary`, or when `mode` is `ordinary` and a needed job
+  failed or was cancelled.
 - `ri-changelog` checks `CHANGES.md` and returns its verdict as an output. The
   inline `changelog-updated` keeps today's label condition in its `if:`, joined
-  with `!cancelled()`, needs the `ri-changelog` job, and fails unless that job
+  with `always()`, needs the `ri-changelog` job, and fails unless that job
   succeeded. A required job skipped because a needed job failed would report
-  success; `!cancelled()` prevents that without turning a cancelled run red.
+  success; `always()` prevents that, and a cancelled `ri-changelog` job turns
+  `changelog-updated` red.
   The `ri-changelog` job carries the same label condition, so the
   `no-changelog` label skips both.
 - repo-infra's `changelog.yml` calls `ri-changelog` and its `ci.yml` calls
