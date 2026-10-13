@@ -1041,18 +1041,18 @@ def test_this_repositorys_ci_yml_skips_on_every_job_but_the_closing_two():
     assert guarded == set(callers.jobs(doc)) - {"ci-passed", "release-verdict"}
 
 
-@pytest.mark.xfail(strict=True, reason="the mtuspy example calls copies of the pieces "
-                                      "(v1 layout); the v2 example arrives in Task 11")
-@pytest.mark.parametrize("name", ["ci.yml", "release-build.yml", "release-publish.yml"])
+MTUSPY_CALLERS = ["ci.yml", "release-build.yml", "release-publish.yml", "changelog.yml",
+                  "release-pr.yml"]
+
+
+@pytest.mark.parametrize("name", MTUSPY_CALLERS)
 def test_the_mtuspy_example_callers_have_no_problem(tmp_path, name):
-    # mtuspy calls pieces repo-infra does not install, so its callers are read
-    # beside the shipped workflow pieces instead of this repository's own.
+    # The callers are read as a v2 consumer holds them: alone, calling
+    # repo-infra's pieces remotely.
     example = REPO / "skills/repo-infra/references/examples/mtuspy"
     folder = tmp_path / ".github/workflows"
     folder.mkdir(parents=True)
-    for path in (REPO / ".github/workflows").glob("ri-*.yml"):
-        (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    for caller in ("ci.yml", "release-build.yml", "release-publish.yml"):
+    for caller in MTUSPY_CALLERS:
         (folder / caller).write_text((example / caller).read_text(encoding="utf-8"),
                                      encoding="utf-8")
     docs = callers.read_workflows(tmp_path)

@@ -31,6 +31,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `/repo-infra:apply` migrates a repository with the v1 layout in one commit on `repo-infra/apply`: it removes the copied workflows and `.github/workflows/lib/`, points every call at `@v2`, adds `release-verdict` and the new `ci-passed` to `ci.yml`, and writes the new `changelog.yml` and `release-pr.yml` over the old pieces. Each `secrets: inherit` on such a call becomes the secrets the workflow requires plus the optional ones the old workflows read, for example `GITEA_PACKAGE_TOKEN`.
 - When the migration removes a copied workflow or library file that differs from every version repo-infra published, a file of the repository's own in `.github/workflows/lib/`, or a job of an old `release-pr.yml` or `changelog.yml` that the new one lacks, `/repo-infra:apply` names each under "The migration removed these local changes", in its output and in the commit message.
 - `/repo-infra:apply` installs build files and never copies a workflow; `--item` with a workflow's name refuses with "is called, not installed" and the `uses:` line to add.
+- The mtuspy example under `references/examples/mtuspy/` shows the v2 callers: `ci.yml`, `release-build.yml`, `release-publish.yml`, `changelog.yml` and `release-pr.yml`. `source.json` names the mtuspy release repo-infra's release gate builds.
 
 ### Fixed
 

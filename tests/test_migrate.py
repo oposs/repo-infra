@@ -303,6 +303,18 @@ def test_migrating_twice_changes_nothing(tmp_path):
     assert workflows(repo) == before
 
 
+def test_migrating_the_v1_example_gives_the_v2_example(tmp_path):
+    """The v2 example is hand-written; the migration of its v1 form must
+    arrive at the same five callers, byte for byte."""
+    repo = v1_repo(tmp_path)
+    migrate.migrate(repo, PIECES, ASSETS)
+    example = ROOT / "skills/repo-infra/references/examples/mtuspy"
+    for name in ("ci.yml", "release-build.yml", "release-publish.yml", "changelog.yml",
+                 "release-pr.yml"):
+        assert (repo / ".github/workflows" / name).read_text(encoding="utf-8") == (
+            example / name).read_text(encoding="utf-8"), name
+
+
 def test_a_v2_caller_without_a_marker_is_not_overwritten(tmp_path):
     """release-pr.yml is a caller in v2 and may carry jobs of its own."""
     repo = v1_repo(tmp_path)
