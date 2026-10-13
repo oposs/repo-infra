@@ -127,6 +127,39 @@ def _library_jobs(piece):
             if ".github/workflows/lib" in str(job.get("steps", ""))}
 
 
+# ri-release-pr-current marks the caller's own release pull requests; it is
+# never pointed at another repository.
+SOURCE = [p for p in REMOTE if p.group in ("ci", "release-build")
+          and p.name != "ri-release-pr-current"]
+
+
+@pytest.mark.parametrize("piece", SOURCE, ids=ids)
+def test_a_source_piece_takes_repository_with_the_caller_as_default(piece):
+    face = workflow.interface(doc_of(piece))
+    assert face.inputs["repository"] == {
+        "description": "The repository to check out; the calling repository unless set (D33).",
+        "type": "string", "required": False, "default": "${{ github.repository }}"}
+
+
+@pytest.mark.parametrize("piece", SOURCE, ids=ids)
+def test_every_source_checkout_passes_repository_and_ref(piece):
+    for job_id, job in doc_of(piece)["jobs"].items():
+        for step in job.get("steps", []):
+            if (str(step.get("uses", "")).startswith("actions/checkout@")
+                    and step != LIB_CHECKOUT):
+                assert step["with"]["repository"] == "${{ inputs.repository }}", job_id
+                assert step["with"]["ref"] == "${{ inputs.ref }}", job_id
+
+
+@pytest.mark.parametrize("piece", SOURCE, ids=ids)
+def test_a_source_piece_names_no_repository_of_its_own(piece):
+    text = piece.files[piece.target]
+    code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    assert "GITHUB_REPOSITORY" not in code
+    assert "github.repository" not in code.replace("default: ${{ github.repository }}", "")
+    assert "context.repo" not in code
+
+
 @pytest.mark.parametrize("piece", REMOTE, ids=ids)
 def test_a_piece_requires_the_library_only_from_its_own_commit(piece):
     text = piece.files[piece.target]

@@ -13,6 +13,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
+- Every CI and release build workflow takes a `repository` input, the repository to check out; it defaults to the calling repository. The Homebrew bottle and formula URLs name that repository. repo-infra's release gate uses it to build mtuspy.
+
 ### Changed
 
 - The reusable workflows (`ri-*.yml`) live once, in `.github/workflows/` of repo-infra. The catalogue shows each one with the line consumers call it by, `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`. `ri-ci-lib` is no longer in the catalogue.

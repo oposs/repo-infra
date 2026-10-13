@@ -27,6 +27,11 @@ on:
         description: The release branch commit to build, from release-build.yml (D28).
         type: string
         required: true
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
       bin:
         description: The binary; the formula is Formula/<bin>.rb and the archives are named after it.
         type: string
@@ -62,9 +67,11 @@ jobs:
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       BIN: ${{ inputs.bin }}
       VERSION: ${{ inputs.version }}
+      REPOSITORY: ${{ inputs.repository }}
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       # The library of the commit this piece was loaded from (D33): repo-infra
@@ -118,7 +125,7 @@ jobs:
           set -euo pipefail
           brew install --build-bottle "local/$BIN/$BIN"
           brew bottle --json --no-rebuild \
-            --root-url="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION" \
+            --root-url="https://github.com/$REPOSITORY/releases/download/v$VERSION" \
             "local/$BIN/$BIN"
 
       # `brew bottle` writes name--version.tag.bottle.tar.gz; the release
@@ -154,6 +161,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       # The library of the commit this piece was loaded from (D33): repo-infra
@@ -185,6 +193,7 @@ jobs:
         env:
           BIN: ${{ inputs.bin }}
           VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ inputs.repository }}
         with:
           script: |
             const { rewriteFormula } = require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/homebrew.js`);

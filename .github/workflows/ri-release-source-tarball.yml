@@ -27,6 +27,11 @@ on:
         description: The release branch commit to build, from release-build.yml (D28).
         type: string
         required: true
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
 
 permissions:
   contents: read
@@ -39,6 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       # `make dist` is a container call in a repository that converted to the

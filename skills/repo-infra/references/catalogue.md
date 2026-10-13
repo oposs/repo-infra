@@ -24,6 +24,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-checkmk-plugin.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -47,6 +48,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-claude-plugin.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -70,6 +72,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-github-action.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -103,6 +106,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-go.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -128,6 +132,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-man.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -151,6 +156,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-node-bun.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -174,6 +180,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-node-pnpm.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -197,6 +204,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-perl-autotools.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -220,6 +228,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-perl-mkpl.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -243,6 +252,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-python.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -266,6 +276,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-repo-infra-selftest.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -289,6 +300,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-rust.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -312,6 +324,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-rust-musl.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 
@@ -369,6 +382,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-homebrew.yml@v2`.
 |---|---|---|---|---|
 | `version` | string | yes |  | The version the release builds, from release-build.yml. |
 | `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 | `bin` | string | yes |  | The binary; the formula is Formula/<bin>.rb and the archives are named after it. |
 
 **Permissions it needs:** contents: read
@@ -401,6 +415,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-nfpm.yml@v2`.
 |---|---|---|---|---|
 | `version` | string | yes |  | The version the release builds, from release-build.yml. |
 | `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 | `config` | string | yes |  | Path of the nfpm configuration in the repository, for example nfpm.yaml. |
 | `packagers` | string | yes |  | JSON object with one key per packager, deb or rpm, each value an object of further variable names and their values for that packager. |
 | `archives` | string | yes |  | Space-separated targets whose release-asset-<target> archive is unpacked and packaged, for example x86_64-unknown-linux-musl aarch64-unknown-linux-musl. |
@@ -437,6 +452,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-rust-binaries.yml@v2`.
 |---|---|---|---|---|
 | `version` | string | yes |  | The version the release builds, from release-build.yml. |
 | `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 | `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
 
 **Permissions it needs:** contents: read
@@ -466,6 +482,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-source-tarball.yml@v2`.
 |---|---|---|---|---|
 | `version` | string | yes |  | The version the release builds, from release-build.yml. |
 | `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 
 **Permissions it needs:** contents: read
 

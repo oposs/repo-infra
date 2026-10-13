@@ -19,6 +19,11 @@ on:
         type: string
         required: false
         default: ''
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       # go-version-file rather than a literal: the toolchain directive in go.mod
@@ -50,6 +56,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       - uses: actions/setup-go@v7

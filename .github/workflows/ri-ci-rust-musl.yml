@@ -19,6 +19,11 @@ on:
         type: string
         required: false
         default: ''
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
 
 permissions:
   contents: read
@@ -41,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       # No `targets:` on purpose. cross compiles inside its own image, which

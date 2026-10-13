@@ -20,6 +20,11 @@ on:
         type: string
         required: false
         default: ''
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
 
 permissions:
   contents: read
@@ -41,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       # The library of the commit this piece was loaded from (D33): repo-infra
@@ -95,6 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
@@ -137,6 +144,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
