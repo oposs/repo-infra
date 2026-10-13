@@ -105,7 +105,8 @@ def test_no_piece_calls_through_dot_slash(piece):
 def test_every_ri_workflow_of_repo_infra_is_a_piece_or_home_only():
     root = ASSETS.parents[2]
     files = {p.name for p in (root / ".github/workflows").glob("ri-*.yml")}
-    assert files == {f"{p.name}.yml" for p in REMOTE} | {"ri-ci-lib.yml"}
+    assert files == {f"{p.name}.yml" for p in REMOTE} | {"ri-ci-lib.yml",
+                                                          "ri-ci-repo-infra-selftest.yml"}
 
 
 @pytest.mark.parametrize("piece", [p for p in CALLED

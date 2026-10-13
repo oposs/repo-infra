@@ -18,8 +18,18 @@ def piece_text(name):
     return (ROOT / ".github/workflows" / (name + ".yml")).read_text(encoding="utf-8")
 
 
+# repo-infra's own CI workflows that are not pieces (D33, plan P5).
+HOME_ONLY = ("ri-ci-lib", "ri-ci-repo-infra-selftest")
+
+
 def ci_pieces():
     return sorted(name for name in load_pieces() if name.startswith("ri-ci-"))
+
+
+def ci_workflows():
+    """The ci pieces and repo-infra's home-only CI workflows: both run behind
+    the required ci-passed."""
+    return ci_pieces() + list(HOME_ONLY)
 
 
 def test_the_ci_piece_set_is_not_empty():
@@ -29,7 +39,7 @@ def test_the_ci_piece_set_is_not_empty():
     assert len(names) >= 10
 
 
-@pytest.mark.parametrize("name", ci_pieces())
+@pytest.mark.parametrize("name", ci_workflows())
 def test_no_ci_piece_filters_on_paths(name):
     # D13: a workflow skipped by paths filtering stays Pending forever and
     # blocks the pull request. A job skipped by a job-level `if:` reports
@@ -81,6 +91,17 @@ def test_the_autotools_piece_no_longer_documents_a_bare_configure_limit():
     assert "enable-pkgonly" not in text
 
 
+def test_the_home_only_workflows_are_not_pieces():
+    # A piece freezes its interface for every v2 consumer; these two serve
+    # repo-infra alone, so they carry no marker and stay out of the catalogue.
+    pieces = load_pieces()
+    catalogue = (ASSETS.parent / "references/catalogue.md").read_text(encoding="utf-8")
+    for name in HOME_ONLY:
+        assert name not in pieces
+        assert not piece_text(name).startswith("# repo-infra:")
+        assert name not in catalogue
+
+
 def test_the_selftest_piece_declares_exactly_its_two_jobs():
     doc = workflow.load(piece_text("ri-ci-repo-infra-selftest"))
     assert list(doc["jobs"]) == ["repo-infra-selftest", "repo-infra-man"]
@@ -113,7 +134,7 @@ def test_the_three_pieces_install_a_byte_identical_host_toolchain():
         assert lines[0] == expected_line, f"{name}: expected {expected_line!r}, got {lines[0]!r}"
 
 
-@pytest.mark.parametrize("piece", ci_pieces())
+@pytest.mark.parametrize("piece", ci_workflows())
 def test_a_piece_that_runs_pytest_installs_the_declared_test_dependencies(piece):
     """`-m <marker>` filters selection, not collection.
 
@@ -134,7 +155,7 @@ def test_a_piece_that_runs_pytest_installs_the_declared_test_dependencies(piece)
 def test_the_pytest_pieces_are_among_those_checked():
     # The check above returns early for a piece without pytest; make sure it
     # still has pieces that do run it.
-    running = [p for p in ci_pieces() if "python3 -m pytest" in piece_text(p)]
+    running = [p for p in ci_workflows() if "python3 -m pytest" in piece_text(p)]
     assert "ri-ci-repo-infra-selftest" in running
 
 

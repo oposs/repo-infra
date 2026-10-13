@@ -966,6 +966,18 @@ def test_the_home_only_library_tests_are_not_a_piece_to_call(tmp_path):
     assert own_validated(tmp_path, text) == []
 
 
+def test_the_home_only_selftest_is_not_a_piece_to_call(tmp_path):
+    """ri-ci-repo-infra-selftest.yml left the manifest like ri-ci-lib.yml:
+    repo-infra calls it through ./ and nothing asks a repository for it."""
+    job = "  selftest:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/" \
+          "ri-ci-repo-infra-selftest.yml\n    with:\n      ref: ${{ inputs.ref }}\n\n"
+    assert job in own("ci.yml")
+    assert own_validated(tmp_path / "with", own("ci.yml")) == []
+    text = own("ci.yml").replace(job, "").replace(", selftest", "")
+    assert "selftest" not in text
+    assert own_validated(tmp_path / "without", text) == []
+
+
 def test_ci_without_release_pr_current_is_one_item(tmp_path):
     job = ("  release-pr-current:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
            "    permissions:\n      contents: read\n      pull-requests: read\n"

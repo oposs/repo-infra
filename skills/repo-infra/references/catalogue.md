@@ -263,30 +263,6 @@ python:
     ref: ${{ inputs.ref }}
 ```
 
-### ri-ci-repo-infra-selftest
-
-Called as `oposs/repo-infra/.github/workflows/ri-ci-repo-infra-selftest.yml@v2`.
-
-**Purpose:** Run the container and pandoc tests of the pytest suite.
-
-**Choose it when:** Only in repo-infra itself.
-
-**The repository supplies:** The pytest suite with the container and pandoc markers.
-
-| Input | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
-| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
-
-**Permissions it needs:** contents: read
-
-```yaml
-selftest:
-  uses: oposs/repo-infra/.github/workflows/ri-ci-repo-infra-selftest.yml@v2
-  with:
-    ref: ${{ inputs.ref }}
-```
-
 ### ri-ci-rust
 
 Called as `oposs/repo-infra/.github/workflows/ri-ci-rust.yml@v2`.

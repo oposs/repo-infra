@@ -1,13 +1,6 @@
-# repo-infra: ri-ci-repo-infra-selftest v2
-#
-# Purpose: Run the container and pandoc tests of the pytest suite.
-# Choose: Only in repo-infra itself.
-# Supplies: The pytest suite with the container and pandoc markers.
-# Call:
-#   selftest:
-#     uses: oposs/repo-infra/.github/workflows/ri-ci-repo-infra-selftest.yml@v2
-#     with:
-#       ref: ${{ inputs.ref }}
+# The container and pandoc tests of repo-infra's own pytest suite, run by
+# repo-infra's own ci.yml. Not a piece since D33, like ri-ci-lib.yml: no other
+# repository has these tests, and a piece would freeze its interface until v3.
 
 name: repo-infra self-test
 

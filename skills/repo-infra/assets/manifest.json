@@ -69,10 +69,6 @@
       "kind": "remote",
       "group": "ci"
     },
-    "ri-ci-repo-infra-selftest": {
-      "kind": "remote",
-      "group": "ci"
-    },
     "ri-release-pr-current": {
       "kind": "remote",
       "group": "ci",
