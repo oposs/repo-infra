@@ -7,7 +7,6 @@ import subprocess
 
 import pytest
 import v2compat
-from v2compat import problems
 
 from repo_infra import workflow
 from repo_infra.pieces import load_pieces
@@ -43,7 +42,7 @@ jobs:
 
 
 def cmp(new, old=BASE):
-    return problems({"ri-x": workflow.load(old)}, {"ri-x": workflow.load(new)})
+    return v2compat.problems({"ri-x": workflow.load(old)}, {"ri-x": workflow.load(new)})
 
 
 def test_the_same_piece_has_no_problem():
@@ -51,7 +50,7 @@ def test_the_same_piece_has_no_problem():
 
 
 def test_a_removed_piece_is_a_problem():
-    assert problems({"ri-x": workflow.load(BASE)}, {}) == ["ri-x: removed within v2"]
+    assert v2compat.problems({"ri-x": workflow.load(BASE)}, {}) == ["ri-x: removed within v2"]
 
 
 @pytest.mark.parametrize("edit, problem", [
@@ -111,11 +110,12 @@ def test_a_change_v2_allows_is_fine(edit):
 
 def _repo(path, tags):
     def run(*args):
-        subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+                        "-c", "commit.gpgsign=false", "-c", "tag.gpgSign=false", *args],
+                       cwd=path, check=True, capture_output=True)
 
     run("init", "-q")
-    run("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q",
-        "--allow-empty", "-m", "x")
+    run("commit", "-q", "--allow-empty", "-m", "x")
     for tag in tags:
         run("tag", tag)
     return path
@@ -136,6 +136,34 @@ def test_what_the_comparison_does_in_a_checkout(tmp_path, tags, required, action
     if action == "compare":
         assert detail == subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
                                         capture_output=True, text=True).stdout.strip()
+
+
+def test_a_git_failure_is_not_a_skip(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    with pytest.raises(RuntimeError):
+        v2compat.v2_source(tmp_path, True)
+
+
+UNION = """on:
+  workflow_call:
+permissions:
+  contents: write
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - run: 'true'
+"""
+
+
+def test_the_whole_piece_asking_for_more_is_a_problem():
+    # Job a drops its own block and so inherits the workflow-level write:
+    # no block exceeds its old grant, only the union grows.
+    new = UNION.replace("    permissions:\n      contents: read\n", "")
+    assert cmp(new, UNION) == [
+        "ri-x: the piece as a whole asks for contents: write, above what it asked for in v2"]
 
 
 @pytest.fixture
@@ -160,4 +188,4 @@ def test_the_pieces_keep_what_v2_consumers_call(v2):
             old[name] = workflow.load(_git("show", f"{v2}:.github/workflows/{name}.yml").stdout)
     new = {name: workflow.load(p.files[p.target]) for name, p in load_pieces().items()
            if p.remote}
-    assert problems(old, new) == []
+    assert v2compat.problems(old, new) == []

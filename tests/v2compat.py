@@ -22,14 +22,22 @@ def git(repo, *args):
     return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
 
 
+def _git_ok(repo, *args):
+    done = git(repo, *args)
+    if done.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed: {done.stderr.strip()}")
+    return done.stdout
+
+
 def v2_source(repo, required):
     """What the comparison does in a checkout: ("compare", commit) when the tag
     v2 exists, ("fail", why) when a 2.x release exists but v2 was not moved and
     the job requires the comparison, else ("skip", why)."""
-    found = git(repo, "rev-parse", "--verify", "--quiet", "refs/tags/v2^{commit}")
-    if found.returncode == 0:
-        return "compare", found.stdout.strip()
-    tags = git(repo, "tag", "--list", "v2.*").stdout.split()
+    # Listing first: it fails for a real git problem (not a repository, a
+    # safe.directory refusal), which must not read as "no tag v2".
+    tags = _git_ok(repo, "tag", "--list", "v2", "v2.*").split()
+    if "v2" in tags:
+        return "compare", _git_ok(repo, "rev-parse", "--verify", "refs/tags/v2^{commit}").strip()
     if required and any(_RELEASE.fullmatch(t) for t in tags):
         return "fail", ("this checkout has a 2.x release tag but no tag v2; "
                         "the release did not move v2, or the job did not fetch tags")
