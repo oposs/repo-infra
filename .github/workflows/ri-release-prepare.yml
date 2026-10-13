@@ -241,10 +241,11 @@ jobs:
             core.setOutput('date', date);
             core.notice(`Preparing ${latest} -> v${version} (${date}).`);
 
-      # A lockfile that only its own tool can rewrite gets that tool as a step
-      # here, between the rewrite and the commit; repo-infra has none. The
-      # commit below takes exactly CHANGES.md and the version_files paths, so
-      # such a step only lands if its file is listed there. Rust needs no step:
+      # The commit below takes exactly CHANGES.md and the version_files paths.
+      # A lockfile that only its own tool can rewrite is rewritten by the
+      # repository's release-build.yml on the release branch and returned in
+      # the release-files artifact; list it in release_files and finish commits
+      # it. repo-infra has none. Rust needs no step:
       # a Rust repository lists Cargo.lock in version_files, with one regex per crate.
 
       - name: Commit the release branch

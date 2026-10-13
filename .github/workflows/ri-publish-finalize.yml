@@ -55,7 +55,7 @@ jobs:
       # D28: deleting the parked pull_request runs of the release branch.
       actions: write
     steps:
-      # For .github/workflows/lib/assets.js, below.
+      # For release_assets in .github/repo-infra.json, below.
       # The tagged head: a re-run reads release_assets the same way.
       - uses: actions/checkout@v7
         with:

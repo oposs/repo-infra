@@ -393,6 +393,7 @@ def action_pin_items(repo_root, pieces):
                 f"v{major} can downgrade the files already past it. Pin v{want}"))
     return items
 
+
 def classify_remote(facts):
     items = []
 
