@@ -18,7 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The reusable workflows (`ri-*.yml`) live once, in `.github/workflows/` of repo-infra. The catalogue shows each one with the line consumers call it by, `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`. `ri-ci-lib` is no longer in the catalogue.
 - The reusable workflows load the workflow library from the repo-infra commit they were called from. A repository that calls them needs no `.github/workflows/lib/` of its own.
 - `ci-passed` reads its release-mode verdict from a new job, `release-verdict`, which calls `ri-release-verdict`. Copy both jobs from `assets/callers/ci-passed.yml`; `/repo-infra:check` reports a `ci.yml` without `release-verdict`, and `release-verdict` carries no release pull request skip.
-- `changelog.yml` is a short caller: its job `changelog` calls `ri-changelog`, and `changelog-updated` turns red when that job fails or is skipped by an error. Copy it from `assets/callers/changelog.yml`; `/repo-infra:check` reports any difference, and the `changelog` piece is no longer in the catalogue.
+- `changelog.yml` is a short caller: its job `changelog` calls `ri-changelog`, and `changelog-updated` turns red when that job fails or is cancelled. Copy it from `assets/callers/changelog.yml`; `/repo-infra:check` reports any difference and a repository without `changelog.yml`, and the `changelog` piece is no longer in the catalogue.
 
 ### Fixed
 

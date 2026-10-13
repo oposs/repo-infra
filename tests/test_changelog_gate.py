@@ -105,7 +105,7 @@ def test_changelog_updated_runs_unless_cancelled_and_reads_the_result():
     label = ("startsWith(github.head_ref, 'release/') || "
              "!contains(github.event.pull_request.labels.*.name, 'no-changelog')")
     assert " ".join(jobs["changelog"]["if"].split()) == label
-    assert " ".join(jobs["changelog-updated"]["if"].split()) == f"!cancelled() && ({label})"
+    assert " ".join(jobs["changelog-updated"]["if"].split()) == f"always() && ({label})"
     assert jobs["changelog-updated"]["needs"] == "changelog"
 
 

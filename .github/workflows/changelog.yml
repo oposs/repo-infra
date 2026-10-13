@@ -34,12 +34,13 @@ jobs:
   # No `name:`: the check context is the job id, `changelog-updated`, which is
   # what the ruleset requires. Renaming this job silently un-requires the check.
   #
-  # The same label condition, joined with !cancelled(). Without it this job
-  # is skipped when `changelog` fails, and a skipped required check counts as
-  # passed. always() would also run it in a cancelled run and turn that red.
+  # The same label condition, joined with always(). Without it this job is
+  # skipped when `changelog` fails, and a skipped required check counts as
+  # passed. !cancelled() is not enough: in a cancelled run it skips this job
+  # too. always() runs it there, and the step fails on a cancelled changelog.
   changelog-updated:
     if: >-
-      !cancelled() && (startsWith(github.head_ref, 'release/') ||
+      always() && (startsWith(github.head_ref, 'release/') ||
       !contains(github.event.pull_request.labels.*.name, 'no-changelog'))
     needs: changelog
     runs-on: ubuntu-latest

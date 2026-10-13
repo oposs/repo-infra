@@ -4,7 +4,7 @@ import pathlib
 import re
 
 import pytest
-from piecekit import CI_PASSED, SKIP_IF, install, make_assets, workflow_piece
+from piecekit import CHANGELOG, CI_PASSED, SKIP_IF, install, make_assets, workflow_piece
 
 from repo_infra import callers, workflow
 from repo_infra.pieces import load_pieces
@@ -111,7 +111,8 @@ jobs:
 
 
 def problems(tmp_path, store, **files):
-    base = {"ci.yml": CI, "release-build.yml": BUILD, "release-publish.yml": PUBLISH}
+    base = {"ci.yml": CI, "release-build.yml": BUILD, "release-publish.yml": PUBLISH,
+            "changelog.yml": CHANGELOG}
     base.update({k.replace("_", "-") + ".yml": v for k, v in files.items()})
     docs = callers.read_workflows(repo(tmp_path, store, base))
     return [(i.name, i.state, i.detail) for i in
@@ -123,7 +124,8 @@ def test_a_conforming_set_of_callers_has_no_problem(tmp_path, store):
 
 
 def test_a_missing_core_caller_is_named(tmp_path, store):
-    root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD})
+    root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
+                                  "changelog.yml": CHANGELOG})
     found = callers.validate(callers.read_workflows(root), load_pieces(store), store)
     assert [(i.name, i.state) for i in found] == [("release-publish.yml", "missing")]
 
@@ -259,13 +261,24 @@ def test_the_verdict_job_needs_no_skip():
     assert callers.release_skip_problems({"ci.yml": doc}) == []
 
 
-def test_a_changelog_yml_with_a_dropped_not_cancelled_is_a_problem(tmp_path):
+@pytest.mark.parametrize("guard", ["(", "!cancelled() && (", "success() && ("])
+def test_a_changelog_yml_without_always_is_a_problem(guard):
+    # Without always() a failed or cancelled changelog job skips
+    # changelog-updated, and a skipped required check counts as passed.
     pattern = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
-    broken = pattern.replace("!cancelled() && (", "(")
+    broken = pattern.replace("always() && (", guard)
+    assert broken != pattern
     docs = {"changelog.yml": workflow.load(broken)}
     assert callers.changelog_problems(docs) == [(
         "changelog.yml", "changelog-updated differs from the pattern "
         "(assets/callers/changelog.yml in the repo-infra skill); copy it word for word")]
+
+
+def test_a_repository_without_changelog_yml_is_missing_it(tmp_path, store):
+    root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
+                                  "release-publish.yml": PUBLISH})
+    found = callers.validate(callers.read_workflows(root), load_pieces(store), store)
+    assert [(i.name, i.state) for i in found] == [("changelog.yml", "missing")]
 
 
 def test_this_repositorys_changelog_yml_matches_the_pattern():
@@ -828,7 +841,7 @@ def test_a_call_in_a_comment_of_an_unreadable_file_does_not_count(tmp_path, stor
 
 def with_bytes(tmp_path, store, name, data):
     root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
-                                  "release-publish.yml": PUBLISH})
+                                  "release-publish.yml": PUBLISH, "changelog.yml": CHANGELOG})
     (root / ".github/workflows" / name).write_bytes(data)
     docs = callers.read_workflows(root)
     return [(i.name, i.state, i.detail) for i in

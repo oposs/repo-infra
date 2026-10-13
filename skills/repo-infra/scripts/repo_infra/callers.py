@@ -20,6 +20,8 @@ from .report import Item
 
 WORKFLOWS = ".github/workflows"
 CORE_CALLERS = {
+    "changelog.yml": "the ruleset requires its changelog-updated check; without it every "
+                     "pull request waits for that check",
     "ci.yml": "the ruleset requires its ci-passed check, and Create release PR runs it",
     "release-build.yml": "Create release PR calls it to build the release",
     "release-publish.yml": "it tags and publishes a release once its pull request merges",
