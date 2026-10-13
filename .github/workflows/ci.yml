@@ -53,6 +53,31 @@ jobs:
     with:
       ref: ${{ inputs.ref }}
 
+  # D33: within v2 a piece keeps its interface and its permissions. The tag
+  # v2 is only in a full clone, so this job fetches the history and tags; the
+  # pytest job's shallow clone skips the test. Once a 2.x release tag exists
+  # and v2 does not, RI_V2_COMPAT=required turns the skip into a failure.
+  v2-compat:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    name: Interfaces stay within v2
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - run: pip install pytest -r requirements-dev.txt
+
+      - run: python3 -m pytest -q tests/test_v2_compat.py
+        env:
+          RI_V2_COMPAT: required
+
   # D28 release mode, decided by repo-infra (D33). It runs on every event and
   # carries no D31 skip: on the release pull request Create release PR opened,
   # this verdict is what ci-passed decides on.
@@ -80,7 +105,7 @@ jobs:
   # PR tested exactly the head that carries the release-built status.
   ci-passed:
     if: always()
-    needs: [lib, plugin, python, selftest, release-pr-current, release-verdict]
+    needs: [lib, plugin, python, selftest, release-pr-current, v2-compat, release-verdict]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
