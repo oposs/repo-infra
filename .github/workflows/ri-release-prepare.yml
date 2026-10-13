@@ -1,0 +1,278 @@
+# repo-infra: ri-release-prepare v2
+#
+# Purpose: Prepare the release branch: guard, refusals, stale drafts and parked runs, roll CHANGES.md, set the version files (D28, D33).
+# Choose: Always; release-pr.yml calls it.
+# Supplies: version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section.
+# Produces: The outputs version, date, head (the release branch head) and base (the dispatched main commit).
+# Call:
+#   prepare:
+#     uses: oposs/repo-infra/.github/workflows/ri-release-prepare.yml@v2
+#     permissions:
+#       contents: write
+#       pull-requests: read
+#       checks: read
+#       actions: write
+#     with:
+#       release_type: ${{ inputs.release_type }}
+
+name: Prepare the release branch
+
+on:
+  workflow_call:
+    inputs:
+      release_type:
+        description: bugfix, feature or major.
+        type: string
+        required: true
+    outputs:
+      version:
+        description: The version being released, without the v.
+        value: ${{ jobs.prepare.outputs.version }}
+      date:
+        description: The release date written into CHANGES.md.
+        value: ${{ jobs.prepare.outputs.date }}
+      head:
+        description: The head of the release branch.
+        value: ${{ jobs.prepare.outputs.head }}
+      base:
+        description: The main commit the release was dispatched on.
+        value: ${{ jobs.prepare.outputs.base }}
+
+permissions:
+  contents: write
+  pull-requests: read
+  # The guard reads the check runs on the dispatched commit, and the job
+  # ids of the caller's runs on it: this run, so the guard can exclude
+  # itself, and every earlier attempt, whose failed build and test jobs
+  # sit on the same commit.
+  checks: read
+  # Also deleting the parked runs of abandoned release branches.
+  actions: write
+
+jobs:
+  prepare:
+    name: Prepare the release branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      date: ${{ steps.prepare.outputs.date }}
+      head: ${{ steps.commit.outputs.head }}
+      base: ${{ steps.commit.outputs.base }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Guard (right branch, no failed check)
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const lib = `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib`;
+            const checks = require(`${lib}/checks.js`);
+
+            const def = context.payload.repository.default_branch;
+            if (context.ref !== `refs/heads/${def}`) {
+              core.setFailed(
+                `Releases run from ${def} only. This run is on ${context.ref}.`
+              );
+              return;
+            }
+
+            // The guard does not wait (D28): the test job runs the same
+            // ci.yml on this commit plus the release changes, and finish
+            // opens no pull request unless it is green. A check that already
+            // failed here is refused by name. This workflow's own jobs, and
+            // the build and test jobs of every earlier attempt, are check
+            // runs on this same commit; checks.js:guardIgnoreIds drops them
+            // all, or one failed attempt would block every retry.
+            const ignoreCheckRunIds = await checks.guardIgnoreIds(github, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              workflowRef: process.env.GITHUB_WORKFLOW_REF,
+              runId: context.runId,
+            });
+            const state = await checks.checkState(github, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            }, { ignoreCheckRunIds });
+            const refusal = checks.guardVerdict(state);
+            if (refusal) {
+              core.setFailed(refusal);
+              return;
+            }
+            core.notice(`No failed check on ${context.sha}.`);
+
+      - name: Refuse an open or unpublished release; delete stale drafts and parked runs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const ws = process.env.GITHUB_WORKSPACE;
+            const lib = `${ws}/.repo-infra/.github/workflows/lib`;
+            const releaseLib = require(`${lib}/release.js`);
+            const changesLib = require(`${lib}/changes.js`);
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // A second dispatch would force-move the open pull request's branch
+            // under its reviewers.
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'open', per_page: 100,
+            });
+            const blocking = releaseLib.blockingReleasePr(prs, `${owner}/${repo}`);
+            if (blocking) {
+              core.setFailed(
+                `Release pull request #${blocking.number} (${blocking.head.ref}) is `
+                + 'still open. Merge or close it before dispatching again.'
+              );
+              return;
+            }
+
+            // Without this, a dispatch while publish is running or has failed
+            // computes the same version again and roll writes a second heading.
+            const refs = await github.paginate(github.rest.git.listMatchingRefs, {
+              owner, repo, ref: 'tags/v', per_page: 100,
+            });
+            const tags = refs.map((r) => r.ref.replace('refs/tags/', ''));
+            const latest = changesLib.latestRelease(
+              fs.readFileSync(`${ws}/CHANGES.md`, 'utf8'),
+            );
+            const untagged = releaseLib.untaggedRelease(latest, tags);
+            if (untagged) {
+              core.setFailed(releaseLib.untaggedMessage(untagged));
+              return;
+            }
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner, repo, per_page: 100,
+            });
+            const stale = releaseLib.staleDrafts(releases, {
+              tags, latestVersion: latest && latest.version,
+            });
+            for (const draft of stale) {
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: draft.id });
+              core.notice(`Deleted the stale draft release ${draft.tag_name}.`);
+            }
+
+            // The parked pull_request runs of abandoned release branches. No
+            // release pull request is open at this point (refused above), so
+            // every parked release run belongs to a closed one. A failure here
+            // is a warning: the runs are clutter, not state. One failed
+            // deletion does not keep the others.
+            let parked = [];
+            try {
+              parked = await releaseLib.fetchParkedRuns(github, { owner, repo });
+            } catch (error) {
+              core.warning(`Could not list the parked runs of closed release branches: ${error.message}`);
+            }
+            for (const run of parked) {
+              try {
+                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                core.notice(`Deleted the parked run ${run.id} of ${run.head_branch}.`);
+              } catch (error) {
+                core.warning(`Could not delete the parked run ${run.id} of ${run.head_branch}: ${error.message}`);
+              }
+            }
+
+      - name: Compute the version and rewrite the files
+        id: prepare
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const ws = process.env.GITHUB_WORKSPACE;
+            const lib = `${ws}/.repo-infra/.github/workflows/lib`;
+            const versionLib = require(`${lib}/version.js`);
+            const changesLib = require(`${lib}/changes.js`);
+            const bumpLib = require(`${lib}/bump.js`);
+
+            const config = JSON.parse(
+              fs.readFileSync(`${ws}/.github/repo-infra.json`, 'utf8')
+            );
+
+            const refs = await github.paginate(github.rest.git.listMatchingRefs, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: 'tags/v',
+              per_page: 100,
+            });
+            const tags = refs.map((r) => r.ref.replace('refs/tags/', ''));
+            const latest = versionLib.latest(tags);
+            if (!['bugfix', 'feature', 'major'].includes(process.env.RELEASE_TYPE)) {
+              core.setFailed(`release_type is ${process.env.RELEASE_TYPE}; it takes bugfix, feature or major.`);
+              return;
+            }
+            const version = versionLib.next(latest, process.env.RELEASE_TYPE);
+
+            if (tags.includes(`v${version}`)) {
+              core.setFailed(`v${version} is already tagged.`);
+              return;
+            }
+
+            const fileIO = {
+              read: (p) => fs.readFileSync(path.join(ws, p), 'utf8'),
+              write: (p, c) => fs.writeFileSync(path.join(ws, p), c, 'utf8'),
+            };
+
+            const date = new Date().toISOString().slice(0, 10);
+            // roll throws when [Unreleased] is empty, which is the hard backstop
+            // behind the required changelog gate.
+            fileIO.write('CHANGES.md', changesLib.roll(fileIO.read('CHANGES.md'), version, date));
+            bumpLib.bumpAll(config.version_files, version, fileIO);
+
+            core.setOutput('version', version);
+            core.setOutput('date', date);
+            core.notice(`Preparing ${latest} -> v${version} (${date}).`);
+
+      # The commit below takes exactly CHANGES.md and the version_files paths.
+      # A lockfile that only its own tool can rewrite is rewritten by the
+      # repository's release-build.yml on the release branch and returned in
+      # the release-files artifact; list it in release_files and finish commits
+      # it. repo-infra has none. Rust needs no step:
+      # a Rust repository lists Cargo.lock in version_files, with one regex per crate.
+
+      - name: Commit the release branch
+        id: commit
+        uses: actions/github-script@v9
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const ws = process.env.GITHUB_WORKSPACE;
+            const commitLib = require(`${ws}/.repo-infra/.github/workflows/lib/commit.js`);
+            const config = JSON.parse(
+              fs.readFileSync(`${ws}/.github/repo-infra.json`, 'utf8')
+            );
+            const version = process.env.VERSION;
+            const paths = ['CHANGES.md', ...config.version_files.map((f) => f.path)];
+            const head = await commitLib.commitFiles(github, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: `release/v${version}`,
+              baseSha: context.sha,
+              message: `Release v${version}`,
+              files: paths.map((p) => ({
+                path: p, content: fs.readFileSync(path.join(ws, p), 'utf8'),
+              })),
+            });
+            core.setOutput('head', head);
+            core.setOutput('base', context.sha);

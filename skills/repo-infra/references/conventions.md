@@ -63,7 +63,8 @@ current on the day of the pin, which is the opposite of what this line is for.
 
 ## The workflow library is CommonJS, not ESM
 
-`.github/workflows/lib/*.js` uses `require()` and `module.exports`, because
+`.github/workflows/lib/*.js` in repo-infra, which the workflows load from the
+repo-infra commit they were called from, uses `require()` and `module.exports`, because
 that is what `actions/github-script` provides to a `script:` block, and there is
 no way to `import` an ES module into one. An editor with type-aware completion
 will suggest `import`/`export` the moment it sees a `.js` file; the suggestion
@@ -236,14 +237,39 @@ when:
 
 Without the key, a workspace whose default members equal its members runs
 the workspace-wide commands as before. A repository whose default members
-differ from its members must set the key. `ci-rust` v2 fails on the upgrade
-pull request, with a message naming the members and the key, until it does.
+differ from its members must set the key. `ri-ci-rust` fails on the
+pull request that adopts it, with a message naming the members and the key, until it does.
 
-## Markers and bytes (D30)
+## Secrets of called workflows (D33)
 
-Every piece carries a marker on its first comment line: `# repo-infra: <piece>
-vN` (`// repo-infra:` in the JS library, `dnl repo-infra:` in m4, `-- repo-infra:`
-in the Lua filter). The marker says which version the file claims to be. The
+A call of a repo-infra workflow passes each secret by name:
+
+```yaml
+    secrets:
+      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+```
+
+`secrets: inherit` on such a call delivers empty secrets, because the called
+workflow belongs to another organisation. The run starts and a publish fails late,
+so `check` reports the call. `secrets: inherit` is for calls of the repository's own
+`release-build.yml`, `ci.yml` and `action-test.yml`.
+
+The example is repo-infra's own call of `ri-publish-tag`: the repository secret
+`RELEASE_APP_CLIENT_ID` holds the Client ID of its GitHub App (not the numeric App
+ID). A consumer passes both secrets only to move a major tag past a tag ruleset.
+
+## Markers and bytes (D30, D33)
+
+A workflow piece called at `@v2` carries the marker `# repo-infra: <piece> v2` on
+its first line. The tag is the version: within `v2` the interface of a piece only
+grows, and `v3` changes every marker. Pieces have no version of their own and no
+bytes to compare, because a repository never holds a copy.
+
+The rest of this section is about the pieces a repository holds: the build files
+and `dependabot.yml`. Each carries a marker on its first comment line: `# repo-infra: <piece>
+vN` (`dnl repo-infra:` in m4, `-- repo-infra:` in the Lua filter). The marker says
+which version the file claims to be. The
 bytes say whether it is that version: `check` hashes the file and compares it
 with every published version of the piece in `assets/generations.json`, so a
 copy is `current`, `outdated` (an older published version) or `edited` (no
@@ -254,8 +280,8 @@ to change one.
 This supersedes two earlier rules. D11 ("markers, never content hashes") held
 while the standard assembled `ci.yml` from blocks and a project name, an extra
 matrix target or a publish job was a legitimate local edit that a hash could not
-tell from an upgrade. Pieces are copied 1:1 and the repository's own text lives
-in callers, so the hash now has one meaning. D29 (a hash suffix on the first
+tell from an upgrade. The repository's own text lives in callers, so the hash now
+has one meaning. D29 (a hash suffix on the first
 marker line, written by `apply` so it could tell its own output from an edit)
 goes for the same reason: the published hashes answer that question without
 writing anything into the file. A file still carrying a stamp from v0.3.1 reads

@@ -1,9 +1,10 @@
-// repo-infra: workflow-lib v9
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { publishDecision, recordHeadWarning, validateBuildRecord } = require('./publish.js');
+const {
+  publishDecision, recordHeadWarning, validateBuildRecord, majorTag, moveMajorTag,
+} = require('./publish.js');
 
 const TAG = 'v1.2.0';
 const HEAD = 'a'.repeat(40);
@@ -110,4 +111,55 @@ test('recordHeadWarning: silent when the tag is at the built commit, else names 
   const other = 'b'.repeat(40);
   const w = recordHeadWarning(TAG, HEAD, other);
   assert.ok(w.includes(HEAD) && w.includes(other));
+});
+
+test('majorTag: the major of a version', () => {
+  assert.equal(majorTag('2.0.1'), 'v2');
+  assert.equal(majorTag('10.3.0'), 'v10');
+});
+
+test('moveMajorTag updates the major tag to a new annotated tag', async () => {
+  const calls = [];
+  const github = { rest: { git: {
+    createTag: async (a) => { calls.push(['createTag', a]); return { data: { sha: 't1' } }; },
+    updateRef: async (a) => { calls.push(['updateRef', a]); return { data: {} }; },
+    createRef: async () => { throw new Error('not expected'); },
+  } } };
+  const notice = await moveMajorTag(github, { owner: 'o', repo: 'r', version: '2.0.1', tag: 'v2.0.1', sha: 'c1' });
+  assert.equal(notice, 'Moved v2 to v2.0.1.');
+  assert.deepEqual(calls[0], ['createTag', { owner: 'o', repo: 'r', tag: 'v2',
+    message: 'Update v2 to v2.0.1', object: 'c1', type: 'commit' }]);
+  assert.deepEqual(calls[1], ['updateRef', { owner: 'o', repo: 'r', ref: 'tags/v2', sha: 't1', force: true }]);
+});
+
+test('moveMajorTag creates the major tag the first time', async () => {
+  const calls = [];
+  const github = { rest: { git: {
+    createTag: async () => ({ data: { sha: 't1' } }),
+    updateRef: async () => { const e = new Error('Reference does not exist'); e.status = 422; throw e; },
+    createRef: async (a) => { calls.push(a); return { data: {} }; },
+  } } };
+  await moveMajorTag(github, { owner: 'o', repo: 'r', version: '2.0.0', tag: 'v2.0.0', sha: 'c1' });
+  assert.deepEqual(calls, [{ owner: 'o', repo: 'r', ref: 'refs/tags/v2', sha: 't1' }]);
+});
+
+test('moveMajorTag names the ruleset when the move is refused', async () => {
+  const github = { rest: { git: {
+    createTag: async () => ({ data: { sha: 't1' } }),
+    updateRef: async () => { const e = new Error('Repository rule violations found'); e.status = 422; throw e; },
+    createRef: async () => { const e = new Error('Reference already exists'); e.status = 422; throw e; },
+  } } };
+  await assert.rejects(
+    moveMajorTag(github, { owner: 'o', repo: 'r', version: '2.0.1', tag: 'v2.0.1', sha: 'c1' }),
+    /v2 could not be moved to v2\.0\.1: Repository rule violations found\. A tag ruleset on v\* lets only its bypass list move it; pass RELEASE_APP_CLIENT_ID and RELEASE_APP_PRIVATE_KEY/);
+});
+
+test('moveMajorTag names the secrets when the ruleset answers 403', async () => {
+  const refuse = async () => { const e = new Error('Forbidden by rule'); e.status = 403; throw e; };
+  const github = { rest: { git: {
+    createTag: async () => ({ data: { sha: 't1' } }), updateRef: refuse, createRef: refuse,
+  } } };
+  await assert.rejects(
+    moveMajorTag(github, { owner: 'o', repo: 'r', version: '2.0.1', tag: 'v2.0.1', sha: 'c1' }),
+    /v2 could not be moved to v2\.0\.1: Forbidden by rule\..*pass RELEASE_APP_CLIENT_ID and RELEASE_APP_PRIVATE_KEY/);
 });

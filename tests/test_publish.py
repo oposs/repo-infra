@@ -8,6 +8,8 @@ import subprocess
 import pytest
 import yaml
 
+from repo_infra import workflow
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
 
@@ -20,7 +22,7 @@ ASSETS = ROOT / "skills/repo-infra/assets"
 
 
 def _crates_io_job():
-    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+    text = (ROOT / ".github/workflows/ri-publish-crates-io.yml").read_text(
         encoding="utf-8")
     return yaml.safe_load(text)["jobs"]["publish-crates-io"]
 
@@ -36,14 +38,14 @@ def _shell_code(run):
 
 
 def test_the_crates_io_piece_declares_exactly_the_job_it_contains():
-    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+    text = (ROOT / ".github/workflows/ri-publish-crates-io.yml").read_text(
         encoding="utf-8")
     assert list(yaml.safe_load(text)["jobs"]) == ["publish-crates-io"]
 
 
 def test_the_crates_io_call_snippet_waits_for_publish_and_honours_the_guard():
     # The caller carries needs and if, so the piece's header shows them.
-    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+    text = (ROOT / ".github/workflows/ri-publish-crates-io.yml").read_text(
         encoding="utf-8")
     assert "#     needs: [publish]\n" in text
     assert "#     if: needs.publish.outputs.release_id != ''\n" in text
@@ -116,7 +118,7 @@ DEB = {"job": "publish-deb-container", "assets": ["*.deb", "smtp-proxy-*-musl"]}
 
 
 def _piece_finalize():
-    piece = yaml.safe_load((ASSETS / "pieces/ri-publish-finalize/ri-publish-finalize.yml")
+    piece = yaml.safe_load((ROOT / ".github/workflows/ri-publish-finalize.yml")
                            .read_text(encoding="utf-8"))
     return piece["jobs"]["finalize"]
 
@@ -149,6 +151,15 @@ def _expand_inputs(script):
     return script
 
 
+def _root_workspace(tmp_path):
+    """This repository's configuration, with its library where a piece finds it."""
+    ws = tmp_path / "ws-root"
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib")
+    (ws / ".github").mkdir(exist_ok=True)
+    shutil.copy(ROOT / ".github/repo-infra.json", ws / ".github/repo-infra.json")
+    return ws
+
+
 def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT, expected=None):
     """Run the script of the ri-publish-finalize piece under node against a
     fake release.
@@ -156,12 +167,14 @@ def _run_finalize(tmp_path, attached, local=(DEB,), workspace=ROOT, expected=Non
     Substring assertions cannot answer the question that matters -- does this
     job publish a release that is missing its .deb? -- so this runs the
     piece's real code. `assets.js` is required from this repository's own
-    installed copy of workflow-lib, which test_self_check.py keeps current.
+    copy of the workflow library.
     """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
 
+    if workspace == ROOT:
+        workspace = _root_workspace(tmp_path)
     script = _expand_inputs(_piece_scripts()[0])
     if expected is None:
         # The caller passes the files its publish jobs attach as `expected`.
@@ -255,7 +268,8 @@ def test_an_expected_input_that_is_no_list_of_name_patterns_fails_the_job(tmp_pa
 
 def _build_workspace(tmp_path, release_assets):
     ws = tmp_path / "ws"
-    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib")
+    (ws / ".github").mkdir(exist_ok=True)
     (ws / ".github/repo-infra.json").write_text(json.dumps(
         {"version_files": [], "release_assets": release_assets}))
     return ws
@@ -389,7 +403,7 @@ def _run_parked(tmp_path, runs, fail_list=False, fail_delete=()):
     if node is None:
         pytest.skip("node is not installed")
     script = _expand_inputs(_parked_step()["with"]["script"])
-    # The helper under test is the installed copy of lib/release.js, driven
+    # The helper under test is lib/release.js of this repository, driven
     # through a fake github: only the listing and the deletion are faked.
     harness = """
 const runs = %s; const failList = %s; const failDelete = %s;
@@ -420,7 +434,7 @@ const context = { repo: { owner: 'o', repo: 'r' } };
     path = tmp_path / "parked.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ROOT,
-                          env={"GITHUB_WORKSPACE": str(ROOT), "PATH": os.environ["PATH"]})
+                          env={"GITHUB_WORKSPACE": str(_root_workspace(tmp_path)), "PATH": os.environ["PATH"]})
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
 
@@ -463,3 +477,37 @@ def test_finalize_asserts_release_assets_for_every_repository(tmp_path):
     ws = _build_workspace(tmp_path, ["*.tar.gz"])
     out = _run_finalize(tmp_path, ["x.deb"], local=(), workspace=ws)
     assert out["published"] == 0 and "*.tar.gz" in out["failures"][0]
+
+
+TAG_PIECE = ROOT / ".github/workflows/ri-publish-tag.yml"
+
+
+def tag_job():
+    return yaml.safe_load(TAG_PIECE.read_text(encoding="utf-8"))["jobs"]["publish"]
+
+
+def test_the_major_tag_moves_with_the_app_token_when_one_is_passed():
+    steps = tag_job()["steps"]
+    names = [s.get("name") or s.get("id") or s.get("uses") for s in steps]
+    assert names.index("Tag and create the draft release") < names.index("app") \
+        < names.index("Move the major tag")
+    move = next(s for s in steps if s.get("name") == "Move the major tag")
+    assert move["with"]["github-token"] == "${{ steps.app.outputs.token || github.token }}"
+    assert tag_job()["env"] == {
+        "HAS_APP": "${{ secrets.RELEASE_APP_CLIENT_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}"}
+
+
+def test_the_app_secrets_are_optional():
+    face = workflow.interface(workflow.load(TAG_PIECE.read_text(encoding="utf-8")))
+    assert {k: v["required"] for k, v in face.secrets.items()} == {
+        "RELEASE_APP_CLIENT_ID": False, "RELEASE_APP_PRIVATE_KEY": False}
+
+
+def test_repo_infra_moves_v2_with_its_app():
+    publish = yaml.safe_load((ROOT / ".github/workflows/release-publish.yml")
+                             .read_text(encoding="utf-8"))["jobs"]["publish"]
+    assert publish["secrets"] == {
+        "RELEASE_APP_CLIENT_ID": "${{ secrets.RELEASE_APP_CLIENT_ID }}",
+        "RELEASE_APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}
+    config = json.loads((ROOT / ".github/repo-infra.json").read_text(encoding="utf-8"))
+    assert config["moving_major_tag"] is True

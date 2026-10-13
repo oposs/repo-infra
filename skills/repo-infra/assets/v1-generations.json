@@ -1,0 +1,230 @@
+{
+ "_comment": "Frozen: the sha256 of every published version of the files the v1 layout copied into a repository, from generations.json at 3755d33, the last commit before D33. Read only by migrate.py, to name what the migration removes or overwrites that carried local edits.",
+ ".github/workflows/changelog.yml": [
+  "0b3c07fd59dd4255052b2b3a3b45e1ccdf5ad790eb26e6db85a7c79465ade79c",
+  "5ea90ca9f346315acd9d02e8064d033c4291c3ad704cb669e8823ac923741a5f",
+  "7a39212a08e458728e210f8c93421a455e6cff4fb0ce4282cb117f5dc147d11a",
+  "a2c72c89531d5030a4ce53351cdb8d40c0730bf084bf1fcc128c0558b7c8d6a6",
+  "e73e8364bc3501e7aa075594f6a3af5026a9ddad9cf7d2fd537a28267665e318"
+ ],
+ ".github/workflows/lib/assets.js": [
+  "713c6053ffe1adec0f083596cfa84f32405ecf1397d1fc031748a62d328b09fe",
+  "8d45d7aedacddb4128098a06abac7262cc6713c596ee22d0939a306bbb11e865",
+  "d48fb2a0fed392729b50322c4335e9bd67fa32e770666fee96f6607f9e7fa784",
+  "d7d91bfa2810f6191eb4c3e399ba716e46fae791bcbda613e28301579089392b",
+  "dad330962988bf07890d792172cf8db456c2a0fdd931473fa17880012c5408f0"
+ ],
+ ".github/workflows/lib/assets.test.js": [
+  "19e2d1be99e6209216fba0728c5a8bc5b6f1c785c07fc555a8313f21289181eb",
+  "1bf4d6558ad727950a28b43f3178e7a2200bbbbd21dfdebc8f54f60f90b0df91",
+  "4b244e5b5e0c00f1e06dc27fa390abe88c3f031e2e7074212d79685620dceb10",
+  "63c0015184d570bc7c11d65a6cccd456dace424c463321f4cbb3633f186e6193",
+  "9a3920049ca714c7fb5ca8df73221243bff6931a73666217e3934a512fe4fc38"
+ ],
+ ".github/workflows/lib/bump.js": [
+  "36768811ff17c11e8af079fe4c7a68de37c55784be3b9a437e6f895f9538020f",
+  "838f710dbd6f501e6355720d40f4060a673ad94fdca8e2d196616509c2fb3576",
+  "9abdd5cd7049b89d3c18155ab2115ae39ae059fdcc780b2b659820b062267004",
+  "9efd32bcef360368c2af974a42115fe28e4e542a30ceac94a12f74da3e650875",
+  "e4d208f1b14b9bb4e4d1471149cd6dddb60eab4bd70a76dfda5330b958a2f012"
+ ],
+ ".github/workflows/lib/bump.test.js": [
+  "03c60e976c84962922f8f2f2d627cf349f42d759a7cb72b68fd054ee5895e546",
+  "5c3d9a3b103f37fd97e57a0cd11bc97d7e4aa82091343ffb0c5fdf923f93afaf",
+  "686f6fde3d7721f76c6b6d8ab43c9bf13cf29db62e59ff7920bc5d33b6dbbb3d",
+  "74b3f1b9acaec360be3c68a51c3ed9af0805d21c50c6e7e0dbabb3a3c80703a6",
+  "f7f094d3c0528ddfb205e2d35f7f329715b025b155cd5a3ad3172de9d51e095e"
+ ],
+ ".github/workflows/lib/changes.js": [
+  "2f796a4efc175106d229ca9b0181eefbb1387aa8d145354126fe47cbb80f7789",
+  "52a22b760790db3742ddc77fdbd98f427cf0a2dcd1d1209d95137bf8eec11ac1",
+  "5733959f28b50c2827c0ba07bb33c5bc676fc8ff0aeff83eca66544db32de945",
+  "865e64d651f9dadece216aa076c40d0ed6fa9f555a7b4df70aa4a788e809b5b6",
+  "8d38eff2204a342a48c872497d2ef3ebaafa2773fd3905a3c67d2934fb602cf2"
+ ],
+ ".github/workflows/lib/changes.test.js": [
+  "2bef2c2bf9668104ecacaf71c3361b945834487f49aca01080b1bcd9a3ecd5a8",
+  "487361c9ca97a26fef5f81607b6bdee3a2c23e9dc1aabc6ee32b57d0b5994f5c",
+  "5b2ee3f7a800f65b847faae7dd3301d1a49f5fcb40fcc434004fbf7aecad434e",
+  "6fd54788c1b11d3ee14971cbdf034049cdea197aca7bf2128a48a57b1e5fd442",
+  "75d0d0ac847313a336b47ca097a75256763b4f7ef9ac32500ffa54c91910f1f9"
+ ],
+ ".github/workflows/lib/checks.js": [
+  "45ec7f37f22df51c49849426e07ff2c4a4d9bb40ce06a587f94debea464f994e",
+  "4c06904c8d8d5598a1b8031335c4ed0bd10565072b683bcb1a28b0678f545812",
+  "d643651b1516b0722b5df7a78cb449e4e7fa987d530fa21934f7a42493b0dd91",
+  "e2248ee656beb2b57769a7acd00293d80f050629d5732a6c0bd375dfac176d26",
+  "e6080b46dfae0acde9ee0fe28f04a29f105f11a402dc6f437e71f7bd07d374b9"
+ ],
+ ".github/workflows/lib/checks.test.js": [
+  "a2e46d061a426c6ea56d27973f2475d604de7fa2d52156fb45ae2d039b5140de",
+  "cabd6adc19f404ec43fa0d30aa991b4e52237b25145e40465f6944ff362c02d1",
+  "ea725648a476e9fc64011cbeb3299f62dd53487e478232406314e8f9619a8cba",
+  "eec1b54772fda543e4732f4dab318396e3a5027a4aa18a832b4b2dea461f09a6",
+  "fea382d398446db7f7ed339f9715a12f34092fde701c5282e38e1ddcc5d4d1e1"
+ ],
+ ".github/workflows/lib/commit.js": [
+  "09f6e3fda38904ac639edea7f4b640b1ad6dfda8c6c8655e60fa2fdf9cd32237",
+  "235a583dd0fe8703e7db249131789f64ed7297d56170df64d672c7d7549b6eca",
+  "8a421788f80b53d1a1354de143c71986d7c7f5d033fd7983cb3534d600f99ad1",
+  "b65ae50347d1ac28ed1b29aadcd94dbc9f2bc3cd8253d738507f03495cf61fa1",
+  "e42df05bbc79b0b23a54c9fefafbd76df409b6728bb32e67178d26daba382431"
+ ],
+ ".github/workflows/lib/commit.test.js": [
+  "57f152bef685414749573d3db10947de84243bdf3004e75c3bc7204644bb0854",
+  "a12586e62a8649d5a0293f2b791021382dbe677d9b3d789b3650b039c29b1230",
+  "ac619c9708871072610a2a7c59ccdab65e691a1a2a515059af7c160ee4cd9ac2",
+  "ac786a5296096a1e81fec72708543dca543438da870a57d96173b42660bc87a3",
+  "c540201550e6b254bd9ece791360d7e580adf535979516a12d648e270b2e9c73"
+ ],
+ ".github/workflows/lib/gitea.js": [
+  "0a7a24e2dd1af20bfd3636985dfb68556bad47753f0ad06176b8341322aad324",
+  "23921d9678a41ff540a8b8bad9b2236efee2e8f4e3b995a6525ebfb290bc107c",
+  "618be996cfd2fd68680f68d9f65319fd26a976ae0cdf6bcb06cb7f5110a40078",
+  "bbc5e0426a646ee355ee5b541551d9120568d2a7bfc250c5d6922105858a1975"
+ ],
+ ".github/workflows/lib/gitea.test.js": [
+  "445d4ad7dc72d1e3f8028dc77a27a39119c4493d60a608b01dc7b6be8ef23d56",
+  "5a2f68820e32c3c9037e2776ba907fb50544e69622682d4f21a90ae451af9633",
+  "c6518b21909d9db8e2e61a4d4b20fb3a6091f4b0396de41320e7cc245b10e467",
+  "ed807eb047b26d700df69694681d197a2ec1b3fe9b0abf0c418ca8f26981d7d5"
+ ],
+ ".github/workflows/lib/homebrew.js": [
+  "b2e0e78e90b08bf05d5b685cedff7ae921db6778132319fa10a2559234997d19"
+ ],
+ ".github/workflows/lib/homebrew.test.js": [
+  "364df87997872aaa5563df3a777b39f2712b362deff40e8229aecf3e676df7a8"
+ ],
+ ".github/workflows/lib/nfpm.js": [
+  "bb41df4da6e18e04bbc27fe9da949942a3ee4f815e963c51aa0273280a43914e"
+ ],
+ ".github/workflows/lib/nfpm.test.js": [
+  "b6f43d9f6f1f1eaa2704f2420301e53f133a3cb52e425b861482238464744a44"
+ ],
+ ".github/workflows/lib/publish.js": [
+  "4171fd3b6a93256be2cd20321bb7fffc4dec8a8422730125ac689c105cd62523",
+  "4dc77b86fefdb24890aef3b3ffce2e1649285d31361ed04a7b32810ab75603fb",
+  "54f8c4daff6a2b6133f172d9160955015f96673131125dc2a17215dfa2a043ae",
+  "640bc6d21daee0585cc00c95aee7a9b50b19ce1176aca98f7123af6817193206"
+ ],
+ ".github/workflows/lib/publish.test.js": [
+  "486f523de01e6c39fcddc1d1b0a4fceec38c79f56ffb72fb1c8d30aef94563cd",
+  "732368444863274d9c98a7c75309ddbe103428d0c919095b022a97520ee13cd5",
+  "755273e21152e3eefb0f9156675f6e9f3869872aa27bb2dee1980bdd3bcc5684",
+  "97c41752e42701baa72e6e0f227e86a2565cd5374c69d0a1c512170d6c697226"
+ ],
+ ".github/workflows/lib/release.js": [
+  "847bddccb922e27e458fe0845c768cca6dcc7113bb49ce548ab0a5a9e8024dfd",
+  "8c3f43c40a92a7de9a2bfd1f22537574ec7c37bc21f2cef58e1288af498d569b",
+  "9a11807e13bd3e677c562b7851832d8f0df23768ccfbebb655ecac14efc011d1",
+  "d540436974a1777aa3433ddf204bde469cd9c0d93d32170f57c393a67c5dbf0f"
+ ],
+ ".github/workflows/lib/release.test.js": [
+  "2f94c6d8b07cf410016b49d2e53b684a200763153ebd90def1df6907696ed517",
+  "422f9d864905466d1ec7507d465b201707b4910daa34c132535144f113316689",
+  "48a2a3111c497cb21de828faa861ea2ed47613d30e3de40eb5375bcdf5e8261a",
+  "d73588372cf9ee8566a2757da15cad047de55fbc12fb3609fbda56124fe04d7f"
+ ],
+ ".github/workflows/lib/rust-plan.js": [
+  "2259ec23cd9127ddf4f60e28f63018ba3ab57accfdb16f81cb79ecf9edb818f6",
+  "91fa922cd7a8a7508ca51a68bcc17b4659959949ae0fa6ccfb7a0a25a4c2f8ff",
+  "ae7f357461528b4ae902b54817a7dd23c813f17a1acc9460c1ef88901f09f33f",
+  "e8440aad1fbc7c770cef6d11a65f273dfbc14457c9aa759290cf681598d3260f"
+ ],
+ ".github/workflows/lib/rust-plan.test.js": [
+  "0e5583eab25a24a3f3a5e107818ef96c756e3fff6d7bd1d85ebb9b03a89f4caa",
+  "484d097d702ff5cb29fd737adcb7182c4bb10f38756a9bc93e39edba0d7967c3",
+  "af8f64f6be8d880f49e251fef8cf6017a223dc73e919581750c4e85ebe7c9cf4",
+  "f771fa60cc43f81f5cb5eed1602c0178b0781f20808df07a16765512d1d1af0f"
+ ],
+ ".github/workflows/lib/version.js": [
+  "0e1e9a9592065390450ca65acaaa2641f142adcac323f6aaf28fd87702ec58b0",
+  "124a4b316e12651549e0186743d265784337e719f7ba4aeb9e420ec00eefcaba",
+  "12922579dd41b5df2aa984a1b450865f8beeb1a6342c19bdb531827098c298f6",
+  "1fd60027c7fa5a2feba41b855c8915eea0865087eedb1cda39c93523a59f32e4",
+  "738f66d6551dfd2af52de08ff1cd4bd789261dea76e8ce8d03efc6fc0340d8a6"
+ ],
+ ".github/workflows/lib/version.test.js": [
+  "2d5eb975e2460c2bd4370febf50ba1a0de215fe72b47e0eecea89a29dae53f53",
+  "3c461015edf4af07d8a412a46b7b877a2701e1d915b16463a3fd806c1a594f5f",
+  "51d594ab6a303206bae06acce26cbda61f4956889ab85762faf893e67453028c",
+  "c5db4a69ef8a2a61a6d2de8de2a9465a5805343557ba31389db8bb9f09f33166",
+  "fa046aba3e38cccad56d62b7cea47ccc0c83d64b191563832fbd439c32f74bf5"
+ ],
+ ".github/workflows/release-pr.yml": [
+  "02b11b7c843a7d452f7131234378e34c63314e772420fdb4707259f5b19bc1e2",
+  "35dff452943a13bbb1bc43cbdbcb3d21b5999fccd1e62536c61d424ecc6be259",
+  "5f367cbe5a65a43a1bfc2768cf5dc478ee59120343e7910b14d5ee651a834852",
+  "79d676a877350d757b5e004ddefe0312672d6e317111f2a5dca411a9e181967a"
+ ],
+ ".github/workflows/ri-ci-checkmk-plugin.yml": [
+  "fb5b99b87ca00fbaf457dc7eb0a74150de47a44c619ae65a1ccea36de67152aa"
+ ],
+ ".github/workflows/ri-ci-claude-plugin.yml": [
+  "64ff6b446bd3c30290b294ed5a32286ed302a8ca9defebca2ba85e6faecf9bc7"
+ ],
+ ".github/workflows/ri-ci-github-action.yml": [
+  "f7ef87b8af59e3c5cf7d52d509a16882cf25cd3069972b108b2da5888ddff23c"
+ ],
+ ".github/workflows/ri-ci-go.yml": [
+  "376b1bdf7192ed7d2adeecad788ee221ad8367df25b65504c3fa58c1d2bb07e6"
+ ],
+ ".github/workflows/ri-ci-lib.yml": [
+  "853c34d55ff0b9e8311fba6847f8a48a23f03e0592593f60091966073cc7e375"
+ ],
+ ".github/workflows/ri-ci-man.yml": [
+  "0213825a02a9356abbd80c492d43a4c384c7830be767c9b0cf2e0df346d62905"
+ ],
+ ".github/workflows/ri-ci-node-bun.yml": [
+  "5e1415601a8f7f9046d1927b07edd2ddc910a25c6938d75a75321ebeb39f0855"
+ ],
+ ".github/workflows/ri-ci-node-pnpm.yml": [
+  "6fdc85daba4c40c10d4884b4d0d55b89b60b351e8ef8ae92b9ddbdeb97a67875"
+ ],
+ ".github/workflows/ri-ci-perl-autotools.yml": [
+  "c1f1495d01ca58ae84aca2a17acdabb13ba6da3b666dd432a96dbe8ada095d8d"
+ ],
+ ".github/workflows/ri-ci-perl-mkpl.yml": [
+  "a8e3119bf1c3762c66782a51db8736a7fd403870339ccd118e61f5949fb12233"
+ ],
+ ".github/workflows/ri-ci-python.yml": [
+  "8b478e85140d56a61842faee83dbfe48a66df176c87a64857b697cc0c9b49ea5"
+ ],
+ ".github/workflows/ri-ci-repo-infra-selftest.yml": [
+  "0980d68d404bf1aeff0de01ad1aa23a089886f02f960ec5494e0b18ff00b1ead"
+ ],
+ ".github/workflows/ri-ci-rust-musl.yml": [
+  "e5e03089ce24416d597d4fd0002d55c97d5daf2b5f9deeb5bca5415bc1856de1"
+ ],
+ ".github/workflows/ri-ci-rust.yml": [
+  "bc048855fa2f0f9f15ec07d3c66f60a440535448cf8347032deaf07259b27ebb"
+ ],
+ ".github/workflows/ri-publish-crates-io.yml": [
+  "7063d9b1213ff431fb37bb1d4b6069c7aea8f406c2f15577621db41ee515a355"
+ ],
+ ".github/workflows/ri-publish-finalize.yml": [
+  "2d5f190d6f3dcc1c609452358280aee0f9257ac087067ab28fd5136c3398f745"
+ ],
+ ".github/workflows/ri-publish-gitea.yml": [
+  "d90827f669e61332e51db2c82e65c8518823e8710ffc9f5c899ef30efc11e755"
+ ],
+ ".github/workflows/ri-publish-tag.yml": [
+  "e53112b4c3db77c02e81588934e1c6719d2663154839ec09d645484a571a9340"
+ ],
+ ".github/workflows/ri-release-homebrew.yml": [
+  "3b105406930720a8a87a3747600edd8873a733876094901650b5963bd9d8e461"
+ ],
+ ".github/workflows/ri-release-nfpm.yml": [
+  "4b005f7aea5a2fbf2813e0688c1062a20a056ea5398178840958a5485dedf261"
+ ],
+ ".github/workflows/ri-release-pr-current.yml": [
+  "5ae40fc450e7f0534657805e2335401759c740be69a8554fffcd51d658d81397"
+ ],
+ ".github/workflows/ri-release-rust-binaries.yml": [
+  "2c5597d3706e03f2a137872fe86837d2690c5a701e3e1d4b12ea84574e9caf52"
+ ],
+ ".github/workflows/ri-release-source-tarball.yml": [
+  "5765579a65aa4d17fea152517819872603ce41943fe971248a0ed7ca90652f14",
+  "83530e226671f4abe714edf7d9fbdaa453506a0624e7c851ee058d11daf8e14a"
+ ]
+}

@@ -1,0 +1,121 @@
+# repo-infra: ri-changelog v2
+#
+# Purpose: Judge a pull request's CHANGES.md for the inline changelog-updated job (D2, D6, D33).
+# Choose: Always; changelog.yml calls it and changelog-updated reads its result.
+# Supplies: CHANGES.md with an Unreleased section; the no-changelog label.
+# Produces: The output message; the job fails when the changelog is refused.
+# Call:
+#   changelog:
+#     if: >-
+#       startsWith(github.head_ref, 'release/') ||
+#       !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+#     uses: oposs/repo-infra/.github/workflows/ri-changelog.yml@v2
+#     permissions:
+#       contents: read
+#       pull-requests: read
+#       statuses: read
+#
+# A release pull request is opened by GITHUB_TOKEN, so its runs park until
+# someone approves them. Nobody needs to (D28): Create release PR writes the
+# changelog-updated check itself. This job exists for the case where someone
+# approves them anyway, or presses Update branch, and then agrees with Create
+# release PR.
+
+name: Changelog
+
+on:
+  workflow_call:
+    outputs:
+      message:
+        description: The verdict on CHANGES.md, or why a release pull request passes or fails.
+        value: ${{ jobs.changelog.outputs.message }}
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: read
+
+jobs:
+  changelog:
+    name: Changelog verdict
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      message: ${{ steps.verdict.outputs.message }}
+    steps:
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - id: verdict
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const lib = `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib`;
+            const changes = require(`${lib}/changes.js`);
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+
+            if (pr.head.ref.startsWith('release/')) {
+              const releaseLib = require(`${lib}/release.js`);
+              const verdict = await releaseLib.releaseModeVerdict(github, { owner, repo, pr });
+              if (verdict !== null) {
+                if (!verdict.ok) {
+                  core.setOutput('message', verdict.message);
+                  core.setFailed(verdict.message);
+                  return;
+                }
+                core.setOutput('message', verdict.message);
+                core.notice(verdict.message);
+                return;
+              }
+              // Anyone else's release/* branch: the ordinary rules, label included.
+            }
+
+            // The labels as they are now, not as the event saw them. `gh pr create
+            // --label` opens the pull request and labels it in a second call, so
+            // the opened run's payload has no label; its failure could finish
+            // after the skipped labeled run and stay the check's result.
+            const { data: current } = await github.rest.pulls.get({
+              owner, repo, pull_number: pr.number,
+            });
+            if (current.labels.some((label) => label.name === 'no-changelog')) {
+              core.setOutput('message', "Labelled 'no-changelog'.");
+              core.notice("Labelled 'no-changelog'.");
+              return;
+            }
+
+            // Both sides come from the API rather than from the checkout. On a
+            // pull_request event the checkout is the merge commit, and comparing
+            // against a base that is not in a shallow clone needs fetch-depth: 0.
+            const readOptional = async (path, ref) => {
+              try {
+                const { data } = await github.rest.repos.getContent({ owner, repo, path, ref });
+                return Buffer.from(data.content, 'base64').toString('utf8');
+              } catch (error) {
+                if (error.status === 404) return null;
+                throw error;
+              }
+            };
+
+            const verdict = changes.gateVerdict(
+              await readOptional('CHANGES.md', pr.base.sha),
+              await readOptional('CHANGES.md', pr.head.sha),
+            );
+            if (!verdict.ok) {
+              core.setOutput('message', verdict.message);
+              core.setFailed(verdict.message);
+              return;
+            }
+
+            core.setOutput('message', verdict.message);
+            core.notice(verdict.message);

@@ -283,10 +283,24 @@ def commit_piece(repo_root, name, version, paths, merged=False):
     file's log, and an Install commit there means "no local edits"."""
     subject = (f"Merge {name} v{version} from the repo-infra standard with local edits"
                if merged else f"Install {name} v{version} from the repo-infra standard")
+    return commit_paths(repo_root, paths, subject)
+
+
+def commit_paths(repo_root, paths, message):
+    """Commit `paths`, removed ones included (`add --all` stages a deletion),
+    and nothing else: whatever the user had staged is not part of it."""
     git(repo_root, "add", "--all", "--", *paths)
-    # Only the piece's paths: whatever the user had staged is not part of it.
-    git(repo_root, "commit", "-m", f"{subject}\n\n{TRAILER}", "--", *paths)
+    git(repo_root, "commit", "-m", f"{message}\n\n{TRAILER}", "--", *paths)
     return git(repo_root, "rev-parse", "HEAD").strip()
+
+
+# The one commit that brings a consumer from the v1 layout to v2 (D33).
+MIGRATE_SUBJECT = "Migrate to the repo-infra v2 layout"
+MIGRATE_BODY = ("Pieces are called at oposs/repo-infra/.github/workflows/<piece>.yml@v2 "
+                "instead of copied (D33): the copies and .github/workflows/lib/ go, every "
+                "call names the piece remotely and passes its secrets by name, ci.yml gets "
+                "release-verdict and the v2 ci-passed, and changelog.yml and release-pr.yml "
+                "are the v2 callers.")
 
 
 _RELEASE = re.compile(r"^## (\d+\.\d+\.\d+) - \d{4}-\d{2}-\d{2}\s*$")

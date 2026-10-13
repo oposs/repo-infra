@@ -1,13 +1,16 @@
 import json
+import pathlib
 from types import SimpleNamespace
 
 import pytest
 from piecekit import digest, install, lib_file, make_assets, workflow_piece
 
 from repo_infra import callers, check
+from repo_infra.check import layout_items
 from repo_infra.pieces import load_pieces, load_published
 from repo_infra.remote import Facts
 
+ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 OLD = workflow_piece("ri-x", 1, body="old")
 NEW = workflow_piece("ri-x", 2, body="new")
 LIB1 = {"a.js": lib_file("lib-x", 1, "a1"), "b.js": lib_file("lib-x", 1, "b1")}
@@ -359,3 +362,196 @@ def test_skip_is_told_to_become_exceptions(tmp_path):
                       "skip is now exceptions (D32): rename the key, and rewrite each of "
                       "its keys as a rule id of references/project-shape.md with the reason "
                       "the rule does not apply")]
+
+
+def remote_store(tmp_path):
+    return make_assets(tmp_path / "assets", {}, core=("ri-r",),
+                       remote={"ri-r": workflow_piece("ri-r", 2)})
+
+
+def test_a_remote_piece_is_not_a_copy_to_compare(tmp_path):
+    store = remote_store(tmp_path)
+    assert rows(tmp_path / "repo", store) == []
+
+
+def test_a_core_remote_piece_nobody_calls_is_missing(tmp_path):
+    pieces = load_pieces(remote_store(tmp_path))
+    (item,) = check.core_call_items({}, pieces)
+    assert (item.name, item.state) == ("ri-r", "missing")
+    assert "oposs/repo-infra/.github/workflows/ri-r.yml@v2" in item.detail
+
+
+def test_a_core_remote_piece_that_a_workflow_calls_is_not_reported(tmp_path):
+    pieces = load_pieces(remote_store(tmp_path))
+    docs = {"ci.yml": {"jobs": {"r": {"uses": "./.github/workflows/ri-r.yml"}}}}
+    assert check.core_call_items(docs, pieces) == []
+
+
+def test_home_is_the_checkout_that_holds_the_manifest(tmp_path):
+    assert not check.is_home(tmp_path)
+    install(tmp_path, "skills/repo-infra/assets/manifest.json", "{}")
+    assert check.is_home(tmp_path)
+
+
+def test_a_core_remote_piece_called_at_v2_is_not_reported(tmp_path):
+    pieces = load_pieces(remote_store(tmp_path))
+    docs = {"ci.yml": {"jobs": {"r": {
+        "uses": "oposs/repo-infra/.github/workflows/ri-r.yml@v2"}}}}
+    assert check.core_call_items(docs, pieces) == []
+
+
+# --- the v1 layout (D33) ------------------------------------------------------
+
+def test_a_copied_piece_and_the_library_are_the_v1_layout(tmp_path):
+    install(tmp_path, ".github/workflows/ri-ci-rust.yml", "# repo-infra: ri-ci-rust v1\n")
+    install(tmp_path, ".github/workflows/lib/release.js", "// repo-infra: workflow-lib v9\n")
+    install(tmp_path, ".github/workflows/changelog.yml", "name: Changelog\n# repo-infra: changelog v6\n")
+    install(tmp_path, ".github/workflows/release-pr.yml", "name: Create release PR\n# repo-infra: release-pr v6\n")
+    install(tmp_path, ".github/workflows/ri-ci-lib.yml", "# repo-infra: ri-ci-lib v3\n")
+    found = {(i.name, i.state): i.detail for i in layout_items(tmp_path, load_pieces())}
+    assert found[("ri-ci-rust", "outdated")] == (
+        ".github/workflows/ri-ci-rust.yml is a copy (v1 layout); repositories call "
+        "oposs/repo-infra/.github/workflows/ri-ci-rust.yml@v2. Run apply to migrate (D33)")
+    assert found[("workflow-lib", "outdated")] == (
+        ".github/workflows/lib/ is a copy of the library (v1 layout); the pieces load it "
+        "from repo-infra. Run apply to migrate (D33)")
+    assert found[("changelog", "outdated")] == (
+        ".github/workflows/changelog.yml is the v1 changelog piece; it is a caller now. "
+        "Run apply to migrate (D33)")
+    assert found[("release-pr", "outdated")] == (
+        ".github/workflows/release-pr.yml is the v1 release-pr piece; it is a caller now. "
+        "Run apply to migrate (D33)")
+    assert found[("ri-ci-lib", "outdated")] == (
+        ".github/workflows/ri-ci-lib.yml is the v1 ri-ci-lib piece; repositories no longer "
+        "test a library of their own. Run apply to migrate (D33)")
+    assert len(found) == 5
+
+
+def test_a_v2_changelog_caller_is_not_the_v1_layout(tmp_path):
+    install(tmp_path, ".github/workflows/changelog.yml",
+            (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8"))
+    install(tmp_path, ".github/workflows/release-pr.yml",
+            (ASSETS / "callers/release-pr.yml").read_text(encoding="utf-8"))
+    assert layout_items(tmp_path, load_pieces()) == []
+
+
+def test_repo_infra_itself_has_no_v1_layout():
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert check.is_home(root)
+    assert [i for i in check.run(root, CONFORMING) if "v1 layout" in i.detail
+            or "v1 " in i.detail] == []
+
+
+def test_check_reports_the_v1_layout_of_a_consumer(tmp_path):
+    install(tmp_path, ".github/workflows/lib/release.js", "// repo-infra: workflow-lib v9\n")
+    assert ("pieces", "workflow-lib", "outdated") in {
+        (i.section, i.name, i.state) for i in check.run(tmp_path, CONFORMING)}
+
+
+def test_the_retired_markers_are_not_reported_as_unknown(tmp_path):
+    install(tmp_path, ".github/workflows/release-pr.yml",
+            "name: Create release PR\n# repo-infra: release-pr v6\n")
+    install(tmp_path, ".github/workflows/lib/release.js", "// repo-infra: workflow-lib v9\n")
+    install(tmp_path, ".github/workflows/ri-ci-lib.yml", "# repo-infra: ri-ci-lib v3\n")
+    assert [i for i in check.unknown_items(tmp_path, load_pieces())] == []
+
+
+# --- action pins older than the pieces' (#59) ---------------------------------
+
+UPLOAD = "      - uses: actions/upload-artifact@v7\n"
+
+
+def pin_store(tmp_path):
+    return make_assets(tmp_path / "assets", {}, remote={
+        "ri-up": workflow_piece("ri-up", 2) + UPLOAD})
+
+
+def pins(tmp_path, text, name="docs.yml"):
+    root = tmp_path / "repo"
+    install(root, f".github/workflows/{name}", text)
+    items = check.action_pin_items(root, load_pieces(pin_store(tmp_path)))
+    return [(i.section, i.name, i.state, i.detail) for i in items]
+
+
+def steps(*uses):
+    return ("name: Docs\non: push\njobs:\n  docs:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n" + "".join(f"      - uses: {u}\n" for u in uses))
+
+
+def test_a_workflow_pinning_an_older_major_than_the_pieces_is_reported(tmp_path):
+    assert pins(tmp_path, steps("actions/upload-artifact@v4")) == [(
+        "callers", "docs.yml", "outdated",
+        "docs.yml pins actions/upload-artifact@v4 and repo-infra's workflows pin v7. "
+        "Dependabot moves an action to one version in every workflow, so its update "
+        "from v4 can downgrade the files already past it. Pin v7")]
+
+
+def test_each_action_older_than_the_pieces_is_its_own_row(tmp_path):
+    found = pins(tmp_path, steps("actions/checkout@v4.2.1", "actions/upload-artifact@v6",
+                                 "actions/upload-artifact@v7"))
+    assert [(name, detail.split(" and ")[0]) for _, name, _, detail in found] == [
+        ("docs.yml", "docs.yml pins actions/checkout@v4"),
+        ("docs.yml", "docs.yml pins actions/upload-artifact@v6")]
+
+
+@pytest.mark.parametrize("uses", [
+    "actions/upload-artifact@v7", "actions/upload-artifact@v8",
+    "actions/upload-artifact@v7.1.0", "actions/checkout@v7",
+    "actions/upload-artifact@0123456789abcdef0123456789abcdef01234567",
+    "actions/upload-artifact@main", "actions/cache@v1",
+    "./.github/actions/local", "docker://alpine:3",
+    "actions/upload-artifact/.github/workflows/build.yml@v1",
+])
+def test_a_pin_as_new_as_the_pieces_or_not_a_major_is_not_reported(tmp_path, uses):
+    assert pins(tmp_path, steps(uses)) == []
+
+
+def test_a_commented_out_pin_is_not_reported(tmp_path):
+    assert pins(tmp_path, steps("actions/checkout@v7")
+                + "      # - uses: actions/upload-artifact@v4\n") == []
+
+
+def test_a_copy_of_a_piece_is_not_a_repository_owned_workflow(tmp_path):
+    copy = workflow_piece("ri-up", 2) + "      - uses: actions/upload-artifact@v4\n"
+    assert pins(tmp_path, copy, name="ri-up.yml") == []
+
+
+def test_check_reports_an_older_pin_than_the_pieces(tmp_path):
+    install(tmp_path, ".github/workflows/docs.yml", steps("actions/checkout@v4"))
+    assert ("callers", "docs.yml", "outdated") in {
+        (i.section, i.name, i.state) for i in check.run(tmp_path, CONFORMING)}
+
+
+def own_pins(tmp_path, files):
+    root = tmp_path / "repo"
+    for name, text in files.items():
+        install(root, f".github/workflows/{name}", text)
+    items = check.action_pin_items(root, load_pieces(pin_store(tmp_path)))
+    return [(i.name, i.detail) for i in items]
+
+
+def test_a_workflow_pinning_an_older_major_than_another_workflow_is_reported(tmp_path):
+    assert own_pins(tmp_path, {"docs.yml": steps("actions/cache@v4"),
+                               "build.yml": steps("actions/cache@v6")}) == [(
+        "docs.yml",
+        "docs.yml pins actions/cache@v4 and build.yml pins v6. Dependabot moves an "
+        "action to one version in every workflow, so its update from v4 can downgrade "
+        "the files already past it. Pin v6")]
+
+
+def test_workflows_pinning_the_same_major_are_not_reported(tmp_path):
+    assert own_pins(tmp_path, {"docs.yml": steps("actions/cache@v6.1"),
+                               "build.yml": steps("actions/cache@v6")}) == []
+
+
+def test_a_workflow_newer_than_the_pieces_raises_the_floor_for_the_others(tmp_path):
+    found = own_pins(tmp_path, {"docs.yml": steps("actions/upload-artifact@v7"),
+                                "build.yml": steps("actions/upload-artifact@v8")})
+    assert [(name, detail.split(". ")[0]) for name, detail in found] == [
+        ("docs.yml", "docs.yml pins actions/upload-artifact@v7 and build.yml pins v8")]
+
+
+def test_a_sha_pin_does_not_raise_the_floor(tmp_path):
+    assert own_pins(tmp_path, {
+        "docs.yml": steps("actions/cache@v4"),
+        "build.yml": steps("actions/cache@0123456789abcdef0123456789abcdef01234567")}) == []

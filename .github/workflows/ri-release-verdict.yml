@@ -1,0 +1,79 @@
+# repo-infra: ri-release-verdict v2
+#
+# Purpose: Judge a release pull request for the inline ci-passed job (D28, D33).
+# Choose: Always; ci.yml calls it and ci-passed reads its outputs.
+# Supplies: The ci-passed job of assets/callers/ci-passed.yml, which needs this job.
+# Produces: The outputs mode (release or ordinary), ok (true or false) and message.
+# Call:
+#   release-verdict:
+#     uses: oposs/repo-infra/.github/workflows/ri-release-verdict.yml@v2
+#     permissions:
+#       contents: read
+#       pull-requests: read
+#       statuses: read
+#
+# It runs on every event and carries no D31 skip: on the release pull request
+# that Create release PR opened, this verdict is what ci-passed decides on.
+# On a pull request from a release/* branch that github-actions[bot] opened
+# in this repository, mode is release and ok says whether the head is the
+# built commit and not behind main. Everywhere else mode is ordinary. The
+# library comes from repo-infra's commit, which a pull request in the
+# calling repository cannot change.
+
+name: Release verdict
+
+on:
+  workflow_call:
+    outputs:
+      mode:
+        description: release on a release pull request, otherwise ordinary.
+        value: ${{ jobs.verdict.outputs.mode }}
+      ok:
+        description: true unless a release pull request's build does not stand.
+        value: ${{ jobs.verdict.outputs.ok }}
+      message:
+        description: Why a release pull request passes or fails; empty when ordinary.
+        value: ${{ jobs.verdict.outputs.message }}
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: read
+
+jobs:
+  verdict:
+    name: Release verdict
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.verdict.outputs.mode }}
+      ok: ${{ steps.verdict.outputs.ok }}
+      message: ${{ steps.verdict.outputs.message }}
+    steps:
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - id: verdict
+        name: Release mode
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const releaseLib = require(
+              `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/release.js`);
+            const { owner, repo } = context.repo;
+            const out = await releaseLib.verdictOutputs(github, {
+              eventName: context.eventName, owner, repo,
+              pr: context.payload.pull_request || null,
+            });
+            for (const [key, value] of Object.entries(out)) core.setOutput(key, value);
+            if (out.mode === 'release') core.notice(out.message);

@@ -1,14 +1,13 @@
-# repo-infra: ri-publish-finalize v1
+# repo-infra: ri-publish-finalize v2
 #
 # Purpose: Check the release carries every file, then publish it.
 # Choose: Always; release-publish.yml calls it last.
 # Supplies: release_assets in .github/repo-infra.json.
-# Pieces: workflow-lib
 # Call:
 #   finalize:
 #     needs: [publish]
 #     if: needs.publish.outputs.release_id != ''
-#     uses: ./.github/workflows/ri-publish-finalize.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-publish-finalize.yml@v2
 #     permissions:
 #       contents: write
 #       actions: write
@@ -56,11 +55,20 @@ jobs:
       # D28: deleting the parked pull_request runs of the release branch.
       actions: write
     steps:
-      # For .github/workflows/lib/assets.js, below.
+      # For release_assets in .github/repo-infra.json, below.
       # The tagged head: a re-run reads release_assets the same way.
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.head }}
+
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
 
       - uses: actions/setup-node@v7
         with:
@@ -71,7 +79,7 @@ jobs:
           EXPECTED: ${{ inputs.expected }}
         with:
           script: |
-            const lib = `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib`;
+            const lib = `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib`;
             const assetsLib = require(`${lib}/assets.js`);
             const fs = require('fs');
             const releaseLib = require(`${lib}/release.js`);
@@ -170,7 +178,7 @@ jobs:
             let parked;
             try {
               const releaseLib = require(
-                `${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/release.js`);
+                `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/release.js`);
               parked = await releaseLib.fetchParkedRuns(github, { owner, repo, branch });
             } catch (error) {
               core.warning(`Could not list the parked runs of the release branch: ${error.message}`);

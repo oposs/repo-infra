@@ -1,9 +1,9 @@
-// repo-infra: workflow-lib v9
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const r = require('./release.js');
+const { verdictOutputs, BOT } = r;
 
 const REPO = 'oetiker/mdmost';
 const pr = (ref, { repo = REPO, login = r.BOT } = {}) => ({
@@ -346,8 +346,73 @@ test('fetchParkedRuns for one branch lists that branch only', async () => {
     ['release/v1.2.0', 'release/v1.2.0']);
 });
 
+test('fetchParkedRuns for one head commit lists and keeps that commit only', async () => {
+  const github = runsGithub([
+    { ...run(1, 'release/v1.2.0'), head_sha: 'aaa' },
+    { ...run(2, 'release/v1.2.0'), head_sha: 'bbb' },
+  ]);
+  const parked = await r.fetchParkedRuns(github, {
+    owner: 'oetiker', repo: 'mdmost', branch: 'release/v1.2.0', headSha: 'aaa',
+  });
+  assert.deepEqual(parked.map((x) => x.id), [1]);
+  assert.deepEqual(github.calls.listed.map((x) => x.head_sha), ['aaa', 'aaa']);
+});
+
 test('fetchParkedRuns does not write the job count into the listed runs', async () => {
   const runs = [run(1, 'release/v1.2.0', { conclusion: 'failure' })];
   await r.fetchParkedRuns(runsGithub(runs), { owner: 'oetiker', repo: 'mdmost' });
   assert.equal('jobCount' in runs[0], false);
+});
+
+test('verdictOutputs: ordinary on every event but a pull request from release/*', async () => {
+  const never = { paginate: async () => { throw new Error('no API call expected'); } };
+  for (const eventName of ['push', 'workflow_dispatch', 'workflow_call']) {
+    assert.deepEqual(await verdictOutputs(never, { eventName, owner: 'o', repo: 'r', pr: null }),
+      { mode: 'ordinary', ok: 'true', message: '' });
+  }
+  const pr = { head: { ref: 'fix/x', sha: 'h', repo: { full_name: 'o/r' } },
+    user: { login: BOT }, base: { ref: 'main' } };
+  assert.deepEqual(await verdictOutputs(never, { eventName: 'pull_request', owner: 'o', repo: 'r', pr }),
+    { mode: 'ordinary', ok: 'true', message: '' });
+});
+
+test('verdictOutputs: a release pull request reports its verdict without throwing', async () => {
+  const pr = { number: 7, head: { ref: 'release/v1.2.0', sha: 'h', repo: { full_name: 'o/r' } },
+    user: { login: BOT }, base: { ref: 'main' } };
+  const github = {
+    paginate: async () => [{ context: 'release-built', state: 'success', creator: { login: BOT } }],
+    rest: { repos: { listCommitStatusesForRef: 'statuses',
+      compareCommitsWithBasehead: async () => ({ data: { behind_by: 2 } }) } },
+  };
+  const out = await verdictOutputs(github, { eventName: 'pull_request', owner: 'o', repo: 'r', pr });
+  assert.equal(out.mode, 'release');
+  assert.equal(out.ok, 'false');
+  assert.match(out.message, /^main moved after v1\.2\.0 was built/);
+});
+
+test('verdictOutputs: someone else\'s release/x is ordinary', async () => {
+  const pr = { head: { ref: 'release/x', sha: 'h', repo: { full_name: 'fork/r' } },
+    user: { login: 'someone' }, base: { ref: 'main' } };
+  const out = await verdictOutputs({}, { eventName: 'pull_request', owner: 'o', repo: 'r', pr });
+  assert.deepEqual(out, { mode: 'ordinary', ok: 'true', message: '' });
+});
+
+test('releaseTitle names the repository, not the owner, then the tag', () => {
+  assert.equal(r.releaseTitle('edaptor', 'v1.8.0'), 'edaptor v1.8.0');
+  assert.equal(r.releaseTitle('repo-infra', 'v2.0.0'), 'repo-infra v2.0.0');
+});
+
+test('the draft release is created with releaseTitle, and nothing renames it later', () => {
+  const fs = require('node:fs');
+  const dir = `${__dirname}/..`;
+  const finish = fs.readFileSync(`${dir}/ri-release-finish.yml`, 'utf8');
+  assert.match(finish, /name: releaseLib\.releaseTitle\(repo, tag\)/);
+  assert.doesNotMatch(finish, /^\s+name: tag,/m);
+  // The publish pieces update the release by id and leave its title alone.
+  for (const f of ['ri-publish-tag.yml', 'ri-publish-finalize.yml']) {
+    const text = fs.readFileSync(`${dir}/${f}`, 'utf8');
+    for (const m of text.matchAll(/updateRelease\(\{([^}]*)\}\)/g)) {
+      assert.doesNotMatch(m[1], /\bname:/, f);
+    }
+  }
 });

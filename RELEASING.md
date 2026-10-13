@@ -26,8 +26,9 @@ publish workflow, which tags the commit that was built and publishes the draft.
 cannot be given a bypass: the bypass list accepts users, teams and GitHub Apps,
 and the Actions token is none of those. Landing the release through a pull
 request needs no stored credential and works with the protection rather than
-around it. Tagging is unaffected: the ruleset targets branches, and tags live in
-a separate ref namespace.
+around it. Tagging is unaffected: the branch ruleset covers `main`, and the
+tag ruleset on `v*` (see below) refuses moving or deleting a tag, not creating
+one.
 
 ## Why the release pull request merges without an approval
 
@@ -80,10 +81,44 @@ the re-run does exactly what the original attempt would have done.
   no tag` while the last release has no tag. If its publish run failed for
   another reason than the tree comparison, **Re-run failed jobs** on it. For
   a release that is already out under another tag, push `vX.Y.Z` by hand (the
-  ruleset covers the branch, not tags). To abandon it, merge a pull request
+  tag ruleset refuses moving or deleting a tag, not creating one). To abandon it, merge a pull request
   that moves its entries back under `[Unreleased]`.
 - Publish fails with `main at <sha> does not match the release built from
   <head>` only when the up-to-date rule was off at the merge. It tags
   nothing. Abandon the release as above, then dispatch again.
 - A tag pushed by hand for the newest released version, without a GitHub
   release, makes every publish run fail until the next release creates one.
+
+## The moving major tag v2
+
+Repositories call repo-infra's workflows at `@v2`. Every release moves `v2`
+to the release it publishes, with the token of the GitHub App in the
+secrets `RELEASE_APP_CLIENT_ID` (the App's Client ID, not its numeric App
+ID) and `RELEASE_APP_PRIVATE_KEY`. A tag ruleset on
+`v*` refuses every other update and every deletion; its bypass list holds
+that App and the Repository admin role.
+
+Before `v2` moves, Create release PR dispatches `gate-mtuspy.yml` on the
+release branch, which builds mtuspy with the release's own workflows. The
+release pull request does not open unless it succeeds.
+
+### Rolling back a release
+
+When a release breaks repositories that call it:
+
+1. As a repository admin, point `v2` at the commit of the previous release
+   tag:
+
+   ```sh
+   git fetch --tags origin
+   git tag -f -a v2 -m "Roll v2 back to vX.Y.Z" vX.Y.Z^{commit}
+   git push --force origin refs/tags/v2
+   ```
+
+2. Revert the defect on `main` and release again. The release moves `v2`
+   forward to the fixed version.
+
+Within `v2` a workflow may add an input with a default, an optional secret
+or an output. Removing or renaming an input, secret, output or workflow,
+changing an input's type, making an input or secret required, or asking
+for more permissions waits for `v3`; `tests/test_v2_compat.py` refuses it.

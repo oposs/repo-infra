@@ -8,9 +8,11 @@ Run the script first and show the user the report:
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" check
 ```
 
-If a piece reads `edited`, ask the user before acting on it. If the repository
+If `check` reports the v1 layout, a bare `apply` migrates it first (below). If a
+build file reads `edited`, ask the user before acting on it. If the repository
 has no pieces yet, it is an onboarding: follow `references/onboarding.md` in the
-skill, where `apply --item <piece>` copies each piece and the shape review runs
+skill, where the callers are written to call the workflows at `@v2`,
+`apply --item <piece>` installs the build files and the shape review runs
 once. An update runs no shape review; `/repo-infra:check` does.
 
 Before applying, read the repository's own build, test and release setup and
@@ -20,9 +22,10 @@ reason to edit the repository around it. It is a gap in the standard, and
 
 `apply` writes two different ways, and they need different handling:
 
-- **Pieces** (every row of the `pieces` section of `check`) are written to the
-  working tree of the local `repo-infra/apply` branch, one commit per piece.
-  Nothing leaves the machine until you push.
+- **Files** (every row of the `pieces` section of `check`) are written to the
+  working tree of the local `repo-infra/apply` branch: the migration as one
+  commit, every build file as one commit. A workflow piece is called, never
+  written. Nothing leaves the machine until you push.
 - **Administration items** (`default-branch`, `branch-protection` /
   `required-checks`, `no-changelog-label`, `actions-open-pr`) write straight to
   the live repository through the GitHub API, with no commit, no branch and no
@@ -36,31 +39,55 @@ reason to edit the repository around it. It is a gap in the standard, and
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply
 ```
 
-Bare `apply` installs and replaces pieces, prints what it did and stops. It
-never edits a caller or the config. In order:
+Bare `apply` migrates a v1 layout, installs and replaces build files, prints
+what it did and stops. It edits no caller beyond the migration and never the
+config. In order:
 
 1. It refuses while a release is in progress (`release-in-progress`): an open
    release pull request, or a latest released version in `CHANGES.md` that has
-   no tag yet (checked when GitHub's tag list could be read). This
-   blocks the install of every piece, not only the release-flow pieces, because
-   the pieces call each other and a new copy cannot finish a release the old
-   one started. Let the release pull request merge and publish, or close it,
-   then run `apply` again.
-2. It installs every pending piece that has no local edit: each outdated piece,
+   no tag yet (checked when GitHub's tag list could be read). The migration
+   rewrites `release-pr.yml` and `ci.yml`, which that release is running, so
+   the migration and every install wait. Let the release pull request merge and
+   publish, or close it, then run `apply` again.
+2. When the repository has the v1 layout, it migrates it in one commit named
+   `Migrate to the repo-infra v2 layout` (below).
+3. It installs every pending build file that has no local edit: each outdated piece,
    each core piece that is missing, and each piece an installed piece needs.
    Each is one commit named `Install <piece> vN from the repo-infra standard`.
-3. Merges run last. When a piece has an edited file, `apply` installs all the
+4. Merges run last. When a piece has an edited file, `apply` installs all the
    other pending pieces first and then stops with the merge hand-back for the
    first edited piece (see below).
-4. It prints the upgrade notes of every version it crossed, so a piece that went
+5. It prints the upgrade notes of every version it crossed, so a piece that went
    from v2 to v4 prints the notes of v3 and v4. They say what a caller or the
    config must change.
-5. It prints the findings: what `check` now reports about the callers and the
+6. It prints the findings: what `check` now reports about the callers and the
    config, and the edited files a piece no longer ships. When `apply` stops for a
    merge it prints the notes but not the findings; run `check` after the merge.
 
 Then you change the callers and the config from the notes and findings, and run
 the script until it exits 0.
+
+### The migration from the v1 layout
+
+On a repository that still copies repo-infra's workflows, a bare `apply` writes
+one commit named `Migrate to the repo-infra v2 layout`. It removes the copied
+`ri-*.yml` files, `ri-ci-lib.yml` and `.github/workflows/lib/`; points every
+`uses: ./.github/workflows/ri-...` at
+`oposs/repo-infra/.github/workflows/<piece>.yml@v2`, with the secrets passed by
+name instead of `secrets: inherit`; adds the job `release-verdict` to `ci.yml`
+and replaces `ci-passed` with the v2 form, keeping every other line; and writes
+`changelog.yml` and `release-pr.yml` as the v2 callers, when they are absent or
+still carry the v1 marker. It names what it removed
+that repo-infra never shipped: a copy with local edits, a file of the
+repository's own in `lib/`, a job of the old `changelog.yml` or `release-pr.yml`
+the new caller lacks. Git keeps them. Port each to a caller or drop it, then run
+the script until it exits 0. It stops with `release-in-progress` like any install.
+
+GitHub refuses every run that calls a piece, `ci-passed` included, unless the
+organisation's Actions policy (Settings, Actions, General, "Policies") allows
+the reusable workflows of `oposs/repo-infra`: all actions and reusable
+workflows, or `oposs/repo-infra/.github/workflows/*` listed under "Allow
+specified actions and reusable workflows".
 
 ### What it does with each file
 
@@ -81,15 +108,17 @@ removed when their bytes are a published version. A dropped file with local edit
 is left where it is and named in the findings; remove it by hand if nothing
 uses it.
 
-## One piece with `--item`
+## One build file with `--item`
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item ri-ci-python
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item man
 ```
 
-`apply --item <piece>` does the same for one piece, and installs it when it is
-not there yet. That is how a repository copies the pieces it chooses from the
-catalogue. The release check of step 1 applies to it as well.
+`apply --item <piece>` does the same for one build file (`man`, `man-lua`,
+`container`, `container-m4`, `dependabot`), and installs it when it is not there
+yet. It installs build files only: a workflow piece is called from a caller, and
+`apply --item ri-ci-python` refuses with "is called, not installed". It does not
+migrate. The release check of step 1 applies to it as well.
 
 ## Administration items, push, merge
 
@@ -112,7 +141,7 @@ The order is one sequence, the same as in `references/onboarding.md`:
    gh pr create --fill --base main --label no-changelog
    ```
 
-   When the upgrade installs `release-pr` v5 or later, write the body with
+   When the upgrade migrates the v1 layout, write the body with
    `--body` instead of `--fill`, and include this sentence: "From this change on,
    the release build and the CI run inside Create release PR see every repository
    secret; no secret may carry write access to this repository." Label at

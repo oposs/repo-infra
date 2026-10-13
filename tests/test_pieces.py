@@ -5,6 +5,7 @@ store, so a piece added later is checked the day it lands."""
 import json
 import pathlib
 import re
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,8 +14,8 @@ from repo_infra.pieces import ASSETS, load_pieces
 
 PIECES = load_pieces()
 WORKFLOW_PIECES = sorted((p for p in PIECES.values() if p.workflow), key=lambda p: p.name)
-# changelog and release-pr start runs of their own; every other workflow piece is called.
-CALLED = [p for p in WORKFLOW_PIECES if p.group != "release"]
+# Every workflow piece is one a caller calls.
+CALLED = WORKFLOW_PIECES
 ALL = sorted(PIECES.values(), key=lambda p: p.name)
 ACTIONS = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))["actions"]
 GROUPS = {"ci", "release-build", "publish", "release", "build"}
@@ -35,12 +36,33 @@ def test_a_piece_names_a_known_group_and_existing_pieces(piece):
     assert [n for n in piece.needs if n not in PIECES] == []
 
 
-@pytest.mark.parametrize("piece", ALL, ids=ids)
+BYTE = [p for p in ALL if not p.remote]
+REMOTE = [p for p in ALL if p.remote]
+
+
+def _home_only(name):
+    target = f".github/workflows/{name}.yml"
+    text = (ASSETS.parents[2] / target).read_text(encoding="utf-8")
+    return SimpleNamespace(name=name, group="ci", target=target, files={target: text})
+
+
+# repo-infra's own CI workflows that left the manifest (D33, plan P5). They are
+# not pieces, but they run behind ci-passed and hold to the same hygiene.
+HOME_ONLY = [_home_only("ri-ci-lib"), _home_only("ri-ci-repo-infra-selftest")]
+SELFTEST = [p for p in HOME_ONLY if p.name == "ri-ci-repo-infra-selftest"]
+
+
+@pytest.mark.parametrize("piece", BYTE, ids=ids)
 def test_changes_has_a_section_for_the_current_version(piece):
     text = (ASSETS / "pieces" / piece.name / "CHANGES.md").read_text(encoding="utf-8")
     versions = [int(v) for v in re.findall(r"^## v(\d+)\s*$", text, re.MULTILINE)]
     assert piece.version in versions
     assert max(versions) == piece.version
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_a_remote_piece_has_no_copy_and_no_upgrade_notes(piece):
+    assert not (ASSETS / "pieces" / piece.name).exists()
 
 
 @pytest.mark.parametrize("piece", CALLED, ids=ids)
@@ -55,14 +77,14 @@ def test_a_workflow_piece_is_a_described_reusable_workflow(piece):
     assert set(doc["on"]) == {"workflow_call"}, "a piece is only ever called"
 
 
-@pytest.mark.parametrize("piece", WORKFLOW_PIECES, ids=ids)
+@pytest.mark.parametrize("piece", WORKFLOW_PIECES + HOME_ONLY, ids=ids)
 def test_every_inline_job_has_a_timeout(piece):
     jobs = doc_of(piece)["jobs"]
     assert [j for j, job in jobs.items() if "uses" not in job
             and "timeout-minutes" not in job] == []
 
 
-@pytest.mark.parametrize("piece", WORKFLOW_PIECES, ids=ids)
+@pytest.mark.parametrize("piece", WORKFLOW_PIECES + HOME_ONLY, ids=ids)
 def test_actions_are_pinned_to_the_manifest(piece):
     wrong = []
     for job in doc_of(piece)["jobs"].values():
@@ -78,12 +100,120 @@ def test_the_call_snippet_calls_this_piece_correctly(piece):
     snippet = workflow.load(piece.header["Call"])
     assert len(snippet) == 1, "Call: holds exactly one job"
     (job_id, job), = snippet.items()
+    assert job["uses"] == piece.uses
     file = pathlib.PurePosixPath(piece.target).name
-    assert job["uses"] == f"./.github/workflows/{file}"
-    assert callers.call_problems(job_id, job, {file: doc_of(piece)}) == []
+    local = dict(job, uses=f"./.github/workflows/{file}")
+    assert callers.call_problems(job_id, local, file, doc_of(piece)) == []
+    assert callers.call_problems(job_id, job, file, doc_of(piece), remote=True) == []
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_no_piece_calls_through_dot_slash(piece):
+    """Inside a workflow called from another repository, `./` names a file of
+    repo-infra, never of the caller (D33)."""
+    assert [job_id for job_id, job in doc_of(piece)["jobs"].items()
+            if str(job.get("uses", "")).startswith("./")] == []
+
+
+def test_every_ri_workflow_of_repo_infra_is_a_piece_or_home_only():
+    root = ASSETS.parents[2]
+    files = {p.name for p in (root / ".github/workflows").glob("ri-*.yml")}
+    assert files == {f"{p.name}.yml" for p in REMOTE + HOME_ONLY}
 
 
 @pytest.mark.parametrize("piece", [p for p in CALLED
-                                   if p.group in ("ci", "release-build")], ids=ids)
+                                   if p.group in ("ci", "release-build")] + HOME_ONLY, ids=ids)
 def test_a_ci_or_build_piece_keeps_the_ref_contract(piece):
     assert callers.ref_problems(doc_of(piece), reserved=piece.group == "ci") == []
+
+
+LIB_CHECKOUT = {
+    "uses": "actions/checkout@v7",
+    "with": {"repository": "${{ job.workflow_repository }}",
+             "ref": "${{ job.workflow_sha }}",
+             "path": ".repo-infra",
+             "sparse-checkout": ".github/workflows/lib"}}
+LIB_PATH = ".repo-infra/.github/workflows/lib"
+
+
+def _library_jobs(piece):
+    return {job_id: job for job_id, job in doc_of(piece)["jobs"].items()
+            if ".github/workflows/lib" in str(job.get("steps", ""))}
+
+
+# ri-release-pr-current marks the caller's own release pull requests; it is
+# never pointed at another repository.
+SOURCE = [p for p in REMOTE if p.group in ("ci", "release-build")
+          and p.name != "ri-release-pr-current"]
+
+
+@pytest.mark.parametrize("piece", SOURCE, ids=ids)
+def test_a_source_piece_takes_repository_with_the_caller_as_default(piece):
+    face = workflow.interface(doc_of(piece))
+    assert face.inputs["repository"] == {
+        "description": "The repository to check out; the calling repository unless set (D33).",
+        "type": "string", "required": False, "default": "${{ github.repository }}"}
+
+
+@pytest.mark.parametrize("piece", SOURCE, ids=ids)
+def test_every_source_checkout_passes_repository_and_ref(piece):
+    for job_id, job in doc_of(piece)["jobs"].items():
+        for step in job.get("steps", []):
+            if (str(step.get("uses", "")).startswith("actions/checkout@")
+                    and step != LIB_CHECKOUT):
+                assert step["with"]["repository"] == "${{ inputs.repository }}", job_id
+                assert step["with"]["ref"] == "${{ inputs.ref }}", job_id
+
+
+@pytest.mark.parametrize("piece", SOURCE, ids=ids)
+def test_a_source_piece_names_no_repository_of_its_own(piece):
+    text = piece.files[piece.target]
+    code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+    assert "GITHUB_REPOSITORY" not in code
+    assert "github.repository" not in code.replace("default: ${{ github.repository }}", "")
+    assert "context.repo" not in code
+
+
+@pytest.mark.parametrize("piece", REMOTE + SELFTEST, ids=ids)
+def test_a_piece_requires_the_library_only_from_its_own_commit(piece):
+    text = piece.files[piece.target]
+    for line in text.splitlines():
+        if ".github/workflows/lib" in line and not line.lstrip().startswith("#"):
+            assert (LIB_PATH in line or "sparse-checkout: .github/workflows/lib" in line), line
+
+
+@pytest.mark.parametrize("piece", REMOTE + SELFTEST, ids=ids)
+def test_the_library_checkout_follows_every_source_checkout(piece):
+    """actions/checkout cleans the workspace, so a source checkout after the
+    library checkout would delete .repo-infra (D33)."""
+    for job_id, job in _library_jobs(piece).items():
+        steps = job["steps"]
+        libs = [i for i, s in enumerate(steps) if s == LIB_CHECKOUT]
+        assert len(libs) == 1, f"{job_id}: one library checkout"
+        sources = [i for i, s in enumerate(steps)
+                   if str(s.get("uses", "")).startswith("actions/checkout@") and s != LIB_CHECKOUT]
+        scripts = [i for i, s in enumerate(steps)
+                   if str(s.get("uses", "")).startswith("actions/github-script@")]
+        assert all(i < libs[0] for i in sources), f"{job_id}: source checkout after the library"
+        assert all(libs[0] < i for i in scripts), f"{job_id}: script before the library"
+
+
+def test_the_library_tests_test_the_library_under_test():
+    """ri-ci-lib runs the library tests of the commit it checked out; the
+    library checkout of the pieces would test repo-infra's other commit."""
+    (lib,) = [p for p in HOME_ONLY if p.name == "ri-ci-lib"]
+    text = lib.files[lib.target]
+    assert ".repo-infra" not in text
+    assert "node --test .github/workflows/lib/*.test.js" in text
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_a_remote_piece_needs_no_workflow_lib_piece(piece):
+    assert "workflow-lib" not in piece.needs
+
+
+def test_the_library_is_one_copy_and_no_piece():
+    root = ASSETS.parents[2]
+    assert not (ASSETS / "pieces/workflow-lib").exists()
+    for path in (root / ".github/workflows/lib").glob("*.js"):
+        assert "repo-infra: workflow-lib" not in path.read_text(encoding="utf-8"), path.name

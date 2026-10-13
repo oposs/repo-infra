@@ -1,4 +1,3 @@
-// repo-infra: workflow-lib v9
 'use strict';
 
 // What `finalize` checks before it flips a release from draft to public.

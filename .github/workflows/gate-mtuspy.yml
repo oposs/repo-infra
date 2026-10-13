@@ -1,0 +1,86 @@
+name: Gate (mtuspy)
+
+# The release gate (D33). Create release PR dispatches it on the release
+# branch and waits for it; the release pull request does not open unless it
+# succeeds. It runs mtuspy's CI and release-build jobs through ./, so the
+# pieces and the library of the dispatched commit build the mtuspy release
+# recorded in references/examples/mtuspy/source.json. Its artifacts stay in
+# this run and never reach the release. It runs no publish piece and needs
+# no secret. tests/test_gate.py holds its jobs equal to the example's.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Read the source record
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      repository: ${{ steps.read.outputs.repository }}
+      ref: ${{ steps.read.outputs.ref }}
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: skills/repo-infra/references/examples/mtuspy
+
+      - id: read
+        run: |
+          f=skills/repo-infra/references/examples/mtuspy/source.json
+          for key in repository ref version; do
+            value=$(jq -er ".$key" "$f")
+            echo "$key=$value" >> "$GITHUB_OUTPUT"
+          done
+
+  rust:
+    needs: source
+    uses: ./.github/workflows/ri-ci-rust.yml
+    with:
+      repository: ${{ needs.source.outputs.repository }}
+      ref: ${{ needs.source.outputs.ref }}
+
+  rust-musl:
+    needs: source
+    uses: ./.github/workflows/ri-ci-rust-musl.yml
+    with:
+      repository: ${{ needs.source.outputs.repository }}
+      ref: ${{ needs.source.outputs.ref }}
+
+  man:
+    needs: source
+    uses: ./.github/workflows/ri-ci-man.yml
+    with:
+      repository: ${{ needs.source.outputs.repository }}
+      ref: ${{ needs.source.outputs.ref }}
+
+  binaries:
+    needs: source
+    uses: ./.github/workflows/ri-release-rust-binaries.yml
+    with:
+      version: ${{ needs.source.outputs.version }}
+      repository: ${{ needs.source.outputs.repository }}
+      ref: ${{ needs.source.outputs.ref }}
+      bin: mtuspy
+
+  packages:
+    needs: [source, binaries]
+    uses: ./.github/workflows/ri-release-nfpm.yml
+    with:
+      version: ${{ needs.source.outputs.version }}
+      repository: ${{ needs.source.outputs.repository }}
+      ref: ${{ needs.source.outputs.ref }}
+      config: nfpm.yaml
+      packagers: '{"deb": {}, "rpm": {}}'
+      archives: x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+
+  homebrew:
+    needs: [source, binaries]
+    uses: ./.github/workflows/ri-release-homebrew.yml
+    with:
+      version: ${{ needs.source.outputs.version }}
+      repository: ${{ needs.source.outputs.repository }}
+      ref: ${{ needs.source.outputs.ref }}
+      bin: mtuspy

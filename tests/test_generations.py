@@ -110,11 +110,11 @@ def test_a_release_maps_old_asset_paths_to_the_piece_paths():
     if "v0.2.0" not in _tags():
         pytest.skip("this checkout lacks the v0.2.0 tag")
     found = generations.released("v0.2.0")
-    assert found["pieces/changelog/changelog.yml"][0] == 2
-    assert found["pieces/release-pr/release-pr.yml"][0] == 3
     assert found["pieces/container/container.mk"][0] == 1
-    assert found["pieces/workflow-lib/lib/bump.js"][0] == 4
-    assert found["pieces/workflow-lib/lib/bump.test.js"][0] == 4
+    # release-pr and workflow-lib left the store (D33): their versions are no
+    # piece's any more.
+    assert not [path for path in found
+                if path.startswith(("pieces/release-pr/", "pieces/workflow-lib/"))]
 
 
 def test_a_released_version_is_added_and_a_conflicting_one_refused():
@@ -185,13 +185,14 @@ def test_a_file_of_a_piece_the_manifest_no_longer_names_is_still_reported(tmp_pa
 
 def test_the_shipped_store_survives_a_dropped_file_twice():
     """The repro of the follow-up review on the real store: drop one file of
-    workflow-lib from the scan and run the update twice."""
+    a piece from the scan and run the update twice. It used a file of
+    workflow-lib, which left the store (D33)."""
     record = json.loads(RECORD.read_text(encoding="utf-8"))
     scanned = generations.scan(ASSETS)
-    scanned.pop("pieces/workflow-lib/lib/bump.test.js")
+    scanned.pop("pieces/container/container.mk")
     shipped = generations.piece_sources(ASSETS)
     once = generations.updated(record, scanned, shipped)
-    assert "pieces/workflow-lib/lib/bump.test.js" in once
+    assert "pieces/container/container.mk" in once
     assert generations.updated(once, scanned, shipped) == once
 
 
@@ -203,7 +204,7 @@ def test_v0_1_0_counts_with_the_piece_files_it_carried_as_its_own():
     if "v0.1.0" not in _tags():
         pytest.skip("this checkout lacks the v0.1.0 tag")
     found = generations.released("v0.1.0")
+    # changelog and release-pr left the store (D33): their v1 is no piece's
+    # any more.
     assert {path: version for path, (version, _) in found.items()} == {
-        "pieces/changelog/changelog.yml": 1,
-        "pieces/dependabot/dependabot.yml": 1,
-        "pieces/release-pr/release-pr.yml": 1}
+        "pieces/dependabot/dependabot.yml": 1}

@@ -178,3 +178,34 @@ def test_a_directory_piece_whose_header_file_is_missing_is_a_piece_error(tmp_pat
     _write_manifest(assets, manifest)
     with pytest.raises(pieces.PieceError, match="lib-x: the header file nothere.js"):
         pieces.load_pieces(assets)
+
+
+def test_a_remote_piece_is_read_from_the_plugin_roots_workflows(tmp_path):
+    text = workflow_piece("ri-r", 2)
+    assets = make_assets(tmp_path, {}, remote={"ri-r": text})
+    piece = pieces.load_pieces(assets)["ri-r"]
+    assert piece.kind == "remote" and piece.remote and piece.workflow
+    assert piece.target == ".github/workflows/ri-r.yml"
+    assert piece.files == {".github/workflows/ri-r.yml": text}
+    assert piece.version == 2
+    assert piece.uses == "oposs/repo-infra/.github/workflows/ri-r.yml@v2"
+
+
+def test_a_remote_piece_must_carry_the_major_tag(tmp_path):
+    assets = make_assets(tmp_path, {}, remote={"ri-r": workflow_piece("ri-r", 1)})
+    with pytest.raises(pieces.PieceError,
+                       match=r"\.github/workflows/ri-r\.yml: a remote piece is v2"):
+        pieces.load_pieces(assets)
+
+
+def test_a_missing_remote_piece_names_its_path(tmp_path):
+    assets = make_assets(tmp_path, {}, remote={"ri-r": workflow_piece("ri-r", 2)})
+    (tmp_path / ".github/workflows/ri-r.yml").unlink()
+    with pytest.raises(pieces.PieceError,
+                       match=r"ri-r: \.github/workflows/ri-r\.yml is missing from the plugin"):
+        pieces.load_pieces(assets)
+
+
+def test_remote_pieces_have_no_published_bytes(tmp_path):
+    assets = make_assets(tmp_path, {}, remote={"ri-r": workflow_piece("ri-r", 2)})
+    assert pieces.load_published(assets) == {"ri-r": {}}

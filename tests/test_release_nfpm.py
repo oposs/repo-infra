@@ -15,8 +15,8 @@ import yaml
 from nfpm_facts import facts_diff
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PIECE = ROOT / "skills/repo-infra/assets/pieces/ri-release-nfpm/ri-release-nfpm.yml"
-LIB = ROOT / "skills/repo-infra/assets/pieces/workflow-lib/lib"
+PIECE = ROOT / ".github/workflows/ri-release-nfpm.yml"
+LIB = ROOT / ".github/workflows/lib"
 FIXTURE = ROOT / "tests/fixtures/nfpm"
 TARGETS = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
 BOTH = '{"deb": {}, "rpm": {}}'
@@ -59,7 +59,7 @@ def test_the_build_step_runs_the_library_and_fails_with_its_message():
     step = build_step()
     assert step["uses"] == "actions/github-script@v9"
     script = step["with"]["script"]
-    assert "require(`${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/nfpm.js`)" in script
+    assert "require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/nfpm.js`)" in script
     assert "run(process.env)" in script
     assert "core.setFailed(error.message)" in script
 
@@ -74,7 +74,7 @@ def test_the_inputs_reach_the_library_through_env():
 
 def test_the_piece_names_the_library_it_runs():
     header = PIECE.read_text(encoding="utf-8").split("\n\n", 1)[0]
-    assert "# Pieces: ri-release-rust-binaries, workflow-lib" in header
+    assert "# Pieces: ri-release-rust-binaries" in header
     assert (LIB / "nfpm.js").is_file() and (LIB / "nfpm.test.js").is_file()
 
 

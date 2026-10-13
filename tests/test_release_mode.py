@@ -30,15 +30,73 @@ def ci_passed_job():
     return pattern["jobs"]["ci-passed"]
 
 
+def verdict_job():
+    pattern = yaml.safe_load((ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8"))
+    return pattern["jobs"]["release-verdict"]
+
+
+def verdict_piece():
+    return yaml.safe_load((ROOT / ".github/workflows/ri-release-verdict.yml")
+                          .read_text(encoding="utf-8"))
+
+
 def release_pr_current_job():
-    piece = yaml.safe_load((ASSETS / "pieces/ri-release-pr-current/ri-release-pr-current.yml")
+    piece = yaml.safe_load((ROOT / ".github/workflows/ri-release-pr-current.yml")
                            .read_text(encoding="utf-8"))
     return piece["jobs"]["release-pr-current"]
 
 
-def test_ci_passed_raises_only_what_release_mode_reads():
-    assert ci_passed_job()["permissions"] == {
+def test_the_verdict_job_grants_what_the_piece_reads():
+    assert verdict_job()["permissions"] == {
         "contents": "read", "pull-requests": "read", "statuses": "read"}
+    assert verdict_job()["uses"] == "oposs/repo-infra/.github/workflows/ri-release-verdict.yml@v2"
+    assert "if" not in verdict_job()
+
+
+def test_ci_passed_needs_the_verdict_and_reads_nothing_else():
+    job = ci_passed_job()
+    assert job["if"] == "always()"
+    assert job["needs"] == ["release-verdict"]
+    assert job["permissions"] == {"contents": "read"}
+
+
+def _judge(tmp_path, **env):
+    step = ci_passed_job()["steps"][0]
+    script = tmp_path / "judge.sh"
+    script.write_text(step["run"], encoding="utf-8")
+    full = {"PATH": os.environ["PATH"], "VERDICT": "success", "MODE": "ordinary", "OK": "true",
+            "MESSAGE": "", "FAILED": "false", **env}
+    return subprocess.run(["bash", "-e", str(script)], env=full, capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("env, passes", [
+    ({}, True),
+    ({"FAILED": "true"}, False),
+    ({"VERDICT": "failure"}, False),
+    ({"VERDICT": "skipped"}, False),
+    ({"VERDICT": "cancelled"}, False),
+    ({"MODE": "release", "OK": "true", "MESSAGE": "v1.2.0 built and current"}, True),
+    ({"MODE": "release", "OK": "true", "FAILED": "true"}, True),
+    ({"MODE": "release", "OK": "false", "MESSAGE": STALE}, False),
+    ({"MODE": "release", "OK": ""}, False),
+    # An empty or unknown mode is no verdict. On the release pull request
+    # every other job is skipped, so falling through to the ordinary rules
+    # would go green without reading ok.
+    ({"MODE": ""}, False),
+    ({"MODE": "", "OK": "false"}, False),
+    ({"MODE": "Release"}, False),
+    ({"MODE": "Release", "OK": "false"}, False),
+    ({"MODE": "Ordinary"}, False),
+    ({"MODE": "garbage"}, False),
+    ({"MODE": "garbage", "OK": "false"}, False),
+])
+def test_ci_passed_step_table(tmp_path, env, passes):
+    proc = _judge(tmp_path, **env)
+    assert (proc.returncode == 0) is passes, proc.stdout
+    if env.get("OK") == "false" and env.get("MODE") == "release":
+        assert f"::error::{STALE}" in proc.stdout
+    if env.get("MODE", "ordinary") not in ("ordinary", "release"):
+        assert "::error::release-verdict gave an unknown mode" in proc.stdout
 
 
 def test_release_pr_current_runs_on_push_only_and_may_write_checks():
@@ -46,27 +104,6 @@ def test_release_pr_current_runs_on_push_only_and_may_write_checks():
     assert job["if"] == "github.event_name == 'push'"
     assert job["permissions"] == {
         "contents": "read", "pull-requests": "read", "checks": "write"}
-
-
-def test_release_mode_loads_the_library_from_the_base_commit():
-    steps = ci_passed_job()["steps"]
-    checkout = next(s for s in steps if str(s.get("uses", "")).startswith("actions/checkout@"))
-    assert checkout["with"] == {"ref": "${{ github.event.pull_request.base.sha }}",
-                                "path": "repo-infra-base"}
-    script = next(s for s in steps if s.get("id") == "release")["with"]["script"]
-    assert "repo-infra-base/.github/workflows/lib" in script
-
-
-def test_the_release_mode_steps_run_on_pull_requests_from_release_branches():
-    # The harness never evaluates these expressions, so only an exact
-    # comparison notices a dropped condition.
-    job = ci_passed_job()
-    assert job["env"] == {"RELEASE_BRANCH_PR": "${{ github.event_name == 'pull_request' && "
-                                               "startsWith(github.head_ref, 'release/') }}"}
-    release_steps = [s for s in job["steps"] if "run" not in s]
-    assert len(release_steps) == 3
-    for step in release_steps:
-        assert step["if"] == "env.RELEASE_BRANCH_PR == 'true'"
 
 
 SKIP_PATH = ASSETS / "callers/release-pr-skip.yml"
@@ -86,7 +123,7 @@ def test_the_release_pr_skip_is_exactly_the_release_pull_request():
 def test_each_term_of_the_skip_is_a_test_of_is_release_pr():
     """The skip and lib/release.js:isReleasePr name the same pull request:
     head ref, head repository and author, field by field."""
-    source = (ASSETS / "pieces/workflow-lib/lib/release.js").read_text(encoding="utf-8")
+    source = (ROOT / ".github/workflows/lib/release.js").read_text(encoding="utf-8")
     assert f"const BOT = '{BOT}';" in source
     body = source.split("function isReleasePr(pr, fullName) {", 1)[1].split("\n}\n", 1)[0]
     assert " ".join(body.split()) == (
@@ -98,22 +135,6 @@ def test_each_term_of_the_skip_is_a_test_of_is_release_pr():
         assert term in SKIP_IF
 
 
-def test_an_api_error_in_release_mode_fails_the_step(tmp_path):
-    # The exception fails the step and with it the job; the failure step
-    # after it is skipped (no always()), so ci-passed cannot turn green.
-    out = ci_passed(tmp_path, statuses=BUILT, fail_compare=True)
-    assert out["thrown"] == "Server Error"
-    assert "always()" not in ci_passed_job()["steps"][-1]["if"]
-
-
-def test_the_failure_step_is_skipped_in_release_mode():
-    last = ci_passed_job()["steps"][-1]
-    assert last["run"] == "exit 1"
-    assert last["if"] == ("steps.release.outputs.mode != 'release' && "
-                          "(contains(needs.*.result, 'failure') || "
-                          "contains(needs.*.result, 'cancelled'))")
-
-
 def _node():
     node = shutil.which("node")
     if node is None:
@@ -121,12 +142,10 @@ def _node():
     return node
 
 
-def _workspace(tmp_path, base_too=True):
+def _workspace(tmp_path):
     ws = tmp_path / "ws"
-    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".github/workflows/lib")
-    if base_too:
-        shutil.copytree(ROOT / ".github/workflows/lib",
-                        ws / "repo-infra-base/.github/workflows/lib")
+    # A piece reads the library from .repo-infra, repo-infra's own commit (D33).
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib")
     return ws
 
 
@@ -153,13 +172,12 @@ const core = { setFailed: (m) => failures.push(m), setOutput: (k, v) => { output
 
 
 def ci_passed(tmp_path, *, head_ref="release/v1.2.0", login=BOT, head_repo="o/r",
-              statuses=(), behind=0, sabotage_merge_lib=False, fail_compare=False):
-    """Run ci-passed's release step against a fake API; the D28 verdict table."""
-    script = next(s for s in ci_passed_job()["steps"]
-                  if s.get("id") == "release")["with"]["script"]
+              statuses=(), behind=0, fail_compare=False):
+    """Run ri-release-verdict's step, which ci-passed reads, against a fake
+    API; the D28 verdict table."""
+    script = next(s for s in verdict_piece()["jobs"]["verdict"]["steps"]
+                  if s.get("id") == "verdict")["with"]["script"]
     ws = _workspace(tmp_path)
-    if sabotage_merge_lib:
-        (ws / ".github/workflows/lib/release.js").write_text("module.exports = {};\n")
     pr = {"number": 7, "user": {"login": login},
           "head": {"ref": head_ref, "sha": "h",
                    "repo": {"full_name": head_repo} if head_repo else None},
@@ -174,40 +192,48 @@ const github = {
       if (basehead !== 'main...h') throw new Error(`basehead ${basehead}`);
       return { data: { behind_by: %d } }; } } },
 };
-const context = { repo: { owner: 'o', repo: 'r' }, payload: { pull_request: %s } };
+const context = { repo: { owner: 'o', repo: 'r' }, eventName: 'pull_request',
+  payload: { pull_request: %s } };
 """ % (json.dumps(list(statuses)), "true" if fail_compare else "false", behind, json.dumps(pr))
     return _run(tmp_path, ws, script, prelude)
 
 
 def test_a_built_current_release_pull_request_passes_ci_passed(tmp_path):
     out = ci_passed(tmp_path, statuses=BUILT)
-    assert out["failures"] == [] and out["outputs"] == {"mode": "release"}
+    assert out["failures"] == [] and out["thrown"] is None
+    assert out["outputs"]["mode"] == "release" and out["outputs"]["ok"] == "true"
+    assert out["notices"] == [out["outputs"]["message"]]
 
 
 def test_a_stale_release_pull_request_fails_ci_passed(tmp_path):
-    assert ci_passed(tmp_path, statuses=BUILT, behind=2)["failures"] == [STALE]
+    # The verdict step never fails: ci-passed reads ok and fails itself.
+    out = ci_passed(tmp_path, statuses=BUILT, behind=2)
+    assert out["failures"] == [] and out["thrown"] is None
+    assert out["outputs"] == {"mode": "release", "ok": "false", "message": STALE}
 
 
 def test_an_unbuilt_release_head_fails_ci_passed(tmp_path):
-    assert ci_passed(tmp_path)["failures"] == [BLURB]
+    out = ci_passed(tmp_path)
+    assert out["failures"] == [] and out["thrown"] is None
+    assert out["outputs"] == {"mode": "release", "ok": "false", "message": BLURB}
 
 
 @pytest.mark.parametrize("case", [{"login": "oetiker"}, {"head_repo": "fork/r"},
                                   {"head_repo": None}])
 def test_someone_elses_release_branch_gets_the_ordinary_rules(tmp_path, case):
     out = ci_passed(tmp_path, head_ref="release/x", **case)
-    assert out["failures"] == [] and out["outputs"] == {"mode": "ordinary"}
+    assert out["failures"] == [] and out["thrown"] is None
+    assert out["outputs"] == {"mode": "ordinary", "ok": "true", "message": ""}
 
 
-def test_ci_passed_reads_the_library_of_the_base_commit(tmp_path):
-    # A release branch that broke its own release.js still gets the base's verdict.
-    assert ci_passed(tmp_path, statuses=BUILT, behind=1,
-                     sabotage_merge_lib=True)["failures"] == [STALE]
+def test_an_api_error_fails_the_verdict_step(tmp_path):
+    out = ci_passed(tmp_path, statuses=BUILT, fail_compare=True)
+    assert out["thrown"] == "Server Error"
 
 
 def release_pr_current(tmp_path, prs, behind, fail_compare=(), fail_list=False):
     script = release_pr_current_job()["steps"][-1]["with"]["script"]
-    ws = _workspace(tmp_path, base_too=False)
+    ws = _workspace(tmp_path)
     prelude = PRELUDE + """
 const prs = %s; const behind = %s; const failCompare = %s; const failList = %s;
 const github = {

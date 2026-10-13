@@ -1,9 +1,3 @@
-// repo-infra: workflow-lib v9
-//
-// Purpose: The JavaScript the release flow, the publish pieces and the release build pieces run (D8, D32).
-// Choose: Always.
-// Supplies: Nothing.
-
 'use strict';
 
 // Decisions of the release flow that builds and tests a release before its
@@ -36,6 +30,10 @@ function untaggedRelease(latest, tags) {
   if (!latest) return null;
   return tags.includes(`v${latest.version}`) ? null : latest.version;
 }
+
+// One shape in every repository: the repository name (not the owner), a space,
+// the tag. The draft is created with it; no later step renames the release.
+const releaseTitle = (repo, tag) => `${repo} ${tag}`;
 
 const carriesRecord = (release) => release.assets.some((a) => a.name === BUILD_RECORD);
 
@@ -155,6 +153,20 @@ async function releaseModeVerdict(github, { owner, repo, pr }) {
   });
 }
 
+// D33: the outputs of ri-release-verdict, which the inline ci-passed reads.
+// Only a pull request from a release/* branch asks the API; every other event
+// is ordinary. An API error throws, which fails the verdict job, and ci-passed
+// fails when that job did not succeed.
+async function verdictOutputs(github, { eventName, owner, repo, pr }) {
+  const ordinary = { mode: 'ordinary', ok: 'true', message: '' };
+  if (eventName !== 'pull_request' || !pr || !pr.head.ref.startsWith('release/')) {
+    return ordinary;
+  }
+  const verdict = await releaseModeVerdict(github, { owner, repo, pr });
+  if (verdict === null) return ordinary;
+  return { mode: 'release', ok: verdict.ok ? 'true' : 'false', message: verdict.message };
+}
+
 // finish opens the pull request first and judges it afterwards, so a release
 // that went stale while it built is visible and says why.
 function finishVerdict({ behindBy, tag }) {
@@ -245,13 +257,18 @@ function parkedRuns(runs, { fullName, branch = null, keep = [] }) {
 // pull_request run of a busy repository would never reach its old parked
 // runs. The listing asks for the bot's runs with one of the two conclusions a
 // parked run has, which leaves the runs of release pull requests only.
-async function fetchParkedRuns(github, { owner, repo, branch = null }) {
+// `headSha` narrows it to the runs of one commit: finish deletes the parked
+// runs of the release pull request it has just opened (#58).
+async function fetchParkedRuns(github, {
+  owner, repo, branch = null, headSha = null,
+}) {
   const listed = [];
   for (const status of ['action_required', 'failure']) {
-    listed.push(...await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+    listed.push(...(await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
       owner, repo, event: 'pull_request', actor: BOT, status,
-      ...(branch === null ? {} : { branch }), per_page: 100,
-    }));
+      ...(branch === null ? {} : { branch }),
+      ...(headSha === null ? {} : { head_sha: headSha }), per_page: 100,
+    })).filter((run) => headSha === null || run.head_sha === headSha));
   }
   const runs = [];
   for (const run of listed) {
@@ -274,5 +291,5 @@ module.exports = {
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
   staleReleasePr, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
-  fetchParkedRuns,
+  fetchParkedRuns, verdictOutputs, releaseTitle,
 };

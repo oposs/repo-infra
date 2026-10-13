@@ -33,6 +33,11 @@ OBSOLETE = ("ecosystems", "ci", "ci_local", "publish", "build", "publish_local",
 RENAMED = {"skip": "exceptions"}
 SCANNED = (".github", "build", "m4")
 REQUIRED_WORKFLOWS = ("ci.yml", "changelog.yml")
+# D33: pieces that left the store, and how a consumer's copy of each is found.
+RETIRED = {"changelog": ".github/workflows/changelog.yml",
+           "release-pr": ".github/workflows/release-pr.yml",
+           "ri-ci-lib": ".github/workflows/ri-ci-lib.yml"}
+LIBRARY = "workflow-lib"
 
 
 def _digest(data):
@@ -78,6 +83,13 @@ def piece_state(repo_root, piece, history):
     return PieceState("current" if current else "outdated", min(versions.values()), [])
 
 
+def is_home(repo_root):
+    """True in repo-infra itself, the repository that ships the pieces (D33):
+    its pieces are local and called through ./, and its library is the
+    library."""
+    return (pathlib.Path(repo_root) / "skills/repo-infra/assets/manifest.json").is_file()
+
+
 def missing_dependencies(pieces, states):
     found = {}
     for name, state in sorted(states.items()):
@@ -119,7 +131,9 @@ def unknown_items(repo_root, pieces):
                 markers = parse_markers(path.read_text(encoding="utf-8"))
             except (UnicodeDecodeError, OSError):
                 continue
-            if markers and markers[0].asset not in pieces:
+            # A retired piece is the v1 layout, layout_items' to report (D33).
+            if (markers and markers[0].asset not in pieces
+                    and markers[0].asset not in RETIRED and markers[0].asset != LIBRARY):
                 first = markers[0]
                 items.append(Item(
                     "pieces", first.asset, "unknown",
@@ -130,9 +144,51 @@ def unknown_items(repo_root, pieces):
     return items
 
 
+def layout_items(repo_root, pieces):
+    """The files of the v1 layout (D30) in a consumer (D33): copies of the
+    pieces it now calls, the library they load from repo-infra, and the
+    retired pieces."""
+    root = pathlib.Path(repo_root)
+    items = []
+    for name, piece in sorted(pieces.items()):
+        if piece.remote and (root / piece.target).is_file():
+            items.append(Item("pieces", name, "outdated",
+                              f"{piece.target} is a copy (v1 layout); repositories call "
+                              f"{piece.uses}. Run apply to migrate (D33)"))
+    if (root / ".github/workflows/lib").is_dir():
+        items.append(Item("pieces", LIBRARY, "outdated",
+                          ".github/workflows/lib/ is a copy of the library (v1 layout); the "
+                          "pieces load it from repo-infra. Run apply to migrate (D33)"))
+    for name, path in RETIRED.items():
+        target = root / path
+        if not target.is_file():
+            continue
+        markers = parse_markers(target.read_text(encoding="utf-8", errors="replace"))
+        # changelog.yml and release-pr.yml are callers in v2 and carry no
+        # marker; ri-ci-lib.yml has no v2 form at all.
+        if name == "ri-ci-lib" or (markers and markers[0].asset == name):
+            fate = ("repositories no longer test a library of their own"
+                    if name == "ri-ci-lib" else "it is a caller now")
+            items.append(Item("pieces", name, "outdated",
+                              f"{path} is the v1 {name} piece; {fate}. Run apply to "
+                              "migrate (D33)"))
+    return items
+
+
+def core_call_items(docs, pieces):
+    """A core remote piece is used by calling it (D33). Before D33 an absent
+    core piece read missing and apply installed it."""
+    return [Item("pieces", name, "missing",
+                 f"no workflow calls it; every repository calls {piece.uses} "
+                 "(see its Call: in the catalogue)")
+            for name, piece in sorted(pieces.items())
+            if piece.remote and piece.core
+            and not callers.calls(docs, pathlib.PurePosixPath(piece.target).name)]
+
+
 def piece_items(repo_root, pieces, published):
     states = {name: piece_state(repo_root, piece, published.get(name, {}))
-              for name, piece in pieces.items()}
+              for name, piece in pieces.items() if not piece.remote}
     items = []
     for name, state in sorted(states.items()):
         piece = pieces[name]
@@ -274,6 +330,70 @@ def path_filter_items(docs):
     return items
 
 
+# A step's `uses:` on a line of its own; a commented-out line does not match.
+_ACTION = re.compile(r"^[ \t]*(?:-[ \t]+)?uses:[ \t]*['\"]?([^\s'\"#]+)", re.MULTILINE)
+# A major tag or version: v4, v4.2, v4.2.1. A SHA or a branch is no major.
+_MAJOR = re.compile(r"^v(\d+)(?:\.\d+){0,2}$")
+
+
+def action_pins(text):
+    """[(owner/repo in lower case, as written, major)] for each action the
+    workflow `text` pins at a major. Local actions, docker:// images and
+    reusable workflow calls are no action pins."""
+    found = []
+    for uses in _ACTION.findall(text):
+        name, at, ref = uses.rpartition("@")
+        major = _MAJOR.match(ref)
+        if (not at or not major or name.startswith(("./", "docker://"))
+                or "/.github/workflows/" in f"/{name}"):
+            continue
+        action = "/".join(name.split("/")[:2])
+        found.append((action.lower(), action, int(major[1])))
+    return found
+
+
+def action_pin_items(repo_root, pieces):
+    """A repository-owned workflow that pins an action at an older major than
+    the pieces or another workflow of the repository do (#59). Dependabot
+    updates one action to one version in every workflow, and the update it
+    opens for the old pin downgrades the files already past that version. In
+    v2 dependabot never sees the pieces, so the downgrade happens between the
+    repository's own files; the pieces' pins are a floor besides."""
+    piece_files = {path for piece in pieces.values() for path in piece.files}
+    # {action: (major, where)}; the pieces win a tie, then the first file.
+    newest = {}
+    for path, text in (item for piece in pieces.values() for item in piece.files.items()):
+        if path.startswith(f"{callers.WORKFLOWS}/") and path.endswith((".yml", ".yaml")):
+            for key, _, major in action_pins(text):
+                if major > newest.get(key, (0,))[0]:
+                    newest[key] = (major, "repo-infra's workflows pin")
+    folder = pathlib.Path(repo_root) / callers.WORKFLOWS
+    if not folder.is_dir():
+        return []
+    owned = [(path.name, action_pins(path.read_text(encoding="utf-8", errors="replace")))
+             for path in sorted(folder.iterdir())
+             if path.is_file() and path.suffix in (".yml", ".yaml")
+             and f"{callers.WORKFLOWS}/{path.name}" not in piece_files]
+    for name, found in owned:
+        for key, _, major in found:
+            if major > newest.get(key, (0,))[0]:
+                newest[key] = (major, f"{name} pins")
+    items = []
+    for name, found in owned:
+        oldest = {}
+        for key, action, major in found:
+            if major < newest[key][0] and major < oldest.get(key, (None, major + 1))[1]:
+                oldest[key] = (action, major)
+        for key, (action, major) in sorted(oldest.items()):
+            want, where = newest[key]
+            items.append(Item(
+                "callers", name, "outdated",
+                f"{name} pins {action}@v{major} and {where} v{want}. Dependabot moves an "
+                "action to one version in every workflow, so its update from "
+                f"v{major} can downgrade the files already past it. Pin v{want}"))
+    return items
+
+
 def classify_remote(facts):
     items = []
 
@@ -316,8 +436,12 @@ def classify_remote(facts):
 def run(repo_root, facts, assets=ASSETS):
     pieces = load_pieces(assets)
     docs = callers.read_workflows(repo_root)
+    home = is_home(repo_root)
     return (piece_items(repo_root, pieces, load_published(assets))
-            + callers.validate(docs, pieces, assets)
+            + ([] if home else layout_items(repo_root, pieces))
+            + core_call_items(docs, pieces)
+            + callers.validate(docs, pieces, assets, home=home)
             + config_items(repo_root, docs)
             + path_filter_items(docs)
+            + action_pin_items(repo_root, pieces)
             + classify_remote(facts))

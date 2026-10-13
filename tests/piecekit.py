@@ -13,19 +13,17 @@ ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets
 RELEASE_PR_SKIP = (ASSETS / "callers/release-pr-skip.yml").read_text(encoding="utf-8")
 SKIP_IF = next(line for line in RELEASE_PR_SKIP.splitlines() if line.startswith("if: "))
 
-CI_PASSED = """jobs:
-  ci-passed:
-    if: always()
-    needs: []
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: exit 1
-"""
+# The shipped release-verdict and ci-passed jobs (D33), copied into every
+# test store; a fixture's ci.yml carries them with its own needs: list.
+CI_PASSED = (ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8")
+CHANGELOG = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
+RELEASE_PR = (ASSETS / "callers/release-pr.yml").read_text(encoding="utf-8")
+# The pieces of repo-infra those callers call at @v2 (D33), from this plugin;
+# a store that validates the callers passes them as `remote`, so each call
+# finds a piece to be held to.
+SHIPPED_REMOTE = {name: (ASSETS.parents[2] / f".github/workflows/{name}.yml").read_text(
+    encoding="utf-8") for name in ("ri-changelog", "ri-release-verdict",
+                                   "ri-release-prepare", "ri-release-finish")}
 
 
 def digest(text):
@@ -79,14 +77,18 @@ def _version(text):
     return parse_markers(text)[0].version
 
 
-def make_assets(root, current, history=(), core=()):
-    """A piece store under `root`.
+def make_assets(root, current, history=(), core=(), remote=None):
+    """A fake plugin under `root`: the store at skills/repo-infra/assets, which
+    is returned, and the remote pieces in `remote` ({name: text}) at
+    .github/workflows/<name>.yml, where load_pieces looks for them (D33).
 
     `current` maps a piece name to its text (a file piece, installed at
     .github/workflows/<name>.yml) or to {file name: text} (a directory piece,
     installed at .github/workflows/<name>/). `history` lists
     (name, file name or None, text) published before the current ones."""
-    root = pathlib.Path(root)
+    plugin = pathlib.Path(root)
+    root = plugin / "skills/repo-infra/assets"
+    root.mkdir(parents=True)
     manifest = {"pieces": {}, "actions": {"actions/checkout": "v7"}, "gh": {}}
     record = {}
     versions = {}
@@ -120,10 +122,17 @@ def make_assets(root, current, history=(), core=()):
                            for v in sorted(found, reverse=True))
         (root / "pieces" / name / "CHANGES.md").write_text(f"# {name}\n\n{sections}",
                                                             encoding="utf-8")
+    for name, text in (remote or {}).items():
+        install(plugin, f".github/workflows/{name}.yml", text)
+        spec = {"kind": "remote", "group": "ci"}
+        if name in core:
+            spec["core"] = True
+        manifest["pieces"][name] = spec
     (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (root / "generations.json").write_text(json.dumps(record), encoding="utf-8")
     (root / "callers").mkdir()
     (root / "callers/ci-passed.yml").write_text(CI_PASSED, encoding="utf-8")
+    (root / "callers/changelog.yml").write_text(CHANGELOG, encoding="utf-8")
     (root / "callers/release-pr-skip.yml").write_text(RELEASE_PR_SKIP, encoding="utf-8")
     return root
 

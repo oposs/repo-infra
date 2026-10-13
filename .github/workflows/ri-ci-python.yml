@@ -1,4 +1,4 @@
-# repo-infra: ri-ci-python v1
+# repo-infra: ri-ci-python v2
 #
 # Purpose: Lint with ruff and run pytest.
 # Choose: The repository has pyproject.toml.
@@ -6,7 +6,7 @@
 #   for the test dependencies, when it exists.
 # Call:
 #   python:
-#     uses: ./.github/workflows/ri-ci-python.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-ci-python.yml@v2
 #     with:
 #       ref: ${{ inputs.ref }}
 
@@ -20,6 +20,11 @@ on:
         type: string
         required: false
         default: ''
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
 
 permissions:
   contents: read
@@ -32,6 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       - uses: actions/setup-python@v7
@@ -49,6 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
       - uses: actions/setup-python@v7

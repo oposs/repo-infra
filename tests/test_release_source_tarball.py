@@ -7,7 +7,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-PIECE = ASSETS / "pieces/ri-release-source-tarball/ri-release-source-tarball.yml"
+PIECE = ROOT / ".github/workflows/ri-release-source-tarball.yml"
 REF = "${{ inputs.ref }}"
 
 
@@ -18,7 +18,8 @@ def _job():
 def test_the_tarball_job_builds_at_ref_and_uploads_a_release_asset():
     job = _job()
     checkout = job["steps"][0]
-    assert checkout["uses"] == "actions/checkout@v7" and checkout["with"] == {"ref": REF}
+    assert checkout["uses"] == "actions/checkout@v7" and checkout["with"] == {
+        "repository": "${{ inputs.repository }}", "ref": REF}
     runs = [s.get("run", "") for s in job["steps"]]
     assert "./bootstrap" in runs and "./configure" in runs
     assert any("make dist" in r for r in runs)

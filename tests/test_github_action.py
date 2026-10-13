@@ -13,9 +13,11 @@ import subprocess
 import pytest
 import yaml
 
+from repo_infra import pieces, workflow
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-PIECE = ASSETS / "pieces/ri-ci-github-action/ri-ci-github-action.yml"
+PIECE = ROOT / ".github/workflows/ri-ci-github-action.yml"
 
 ACTION = """\
 name: Example
@@ -184,21 +186,25 @@ def piece_jobs():
     return yaml.safe_load(PIECE.read_text(encoding="utf-8"))["jobs"]
 
 
-def test_the_seam_names_the_one_path_the_contract_fixes():
-    """A fixed path is the point (D20): no substitution token, no entry in
-    .github/repo-infra.json, nothing for a repository to configure."""
-    assert piece_jobs()["action-test"] == {"uses": "./.github/workflows/action-test.yml",
-                                           "with": {"ref": "${{ inputs.ref }}"},
-                                           "secrets": "inherit"}
+def test_the_piece_calls_no_workflow_of_the_consumer():
+    jobs = piece_jobs()
+    assert "action-test" not in jobs
+    assert all("uses" not in job for job in jobs.values())
 
 
-def test_the_seam_job_carries_no_keys_a_uses_job_cannot_have():
-    """`runs-on`, `steps` and `timeout-minutes` are all rejected by GitHub on a
-    job that calls a reusable workflow -- which is why the contract makes the
-    timeout the project's business. `with` and `secrets` are the two keys a
-    calling job does carry: the ref and the inherited secrets."""
-    assert set(piece_jobs()["action-test"]) == {"uses", "with", "secrets"}
+def test_the_call_snippet_passes_no_secrets():
+    snippet = pieces.load_pieces()["ri-ci-github-action"].header["Call"]
+    (job,) = workflow.load(snippet).values()
+    assert "secrets" not in job
 
 
-def test_the_piece_declares_both_jobs():
-    assert list(piece_jobs()) == ["action-manifest", "action-test"]
+def test_the_piece_declares_the_manifest_job_only():
+    assert list(piece_jobs()) == ["action-manifest"]
+
+
+def test_the_catalogue_entry_shows_the_action_test_job():
+    from repo_infra import catalogue
+    entry = catalogue.entry(pieces.load_pieces()["ri-ci-github-action"])
+    assert "action-test:\n  uses: ./.github/workflows/action-test.yml" in entry
+    (job,) = workflow.load(pieces.load_pieces()["ri-ci-github-action"].header["Also"]).values()
+    assert job["secrets"] == "inherit"

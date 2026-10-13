@@ -12,12 +12,12 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PIECE = ROOT / "skills/repo-infra/assets/pieces/ri-release-homebrew/ri-release-homebrew.yml"
-LIB = ROOT / "skills/repo-infra/assets/pieces/workflow-lib/lib"
+PIECE = ROOT / ".github/workflows/ri-release-homebrew.yml"
+LIB = ROOT / ".github/workflows/lib"
 SHAPE = ROOT / "skills/repo-infra/references/project-shape.md"
 FILLED = {"<Class>": "Tool", "<one-line description>": "A tool", "<owner>": "owner",
           "<repo>": "tool", "<SPDX license>": "MIT", "<bin>": "tool"}
-LIBRARY = "require(`${process.env.GITHUB_WORKSPACE}/.github/workflows/lib/homebrew.js`)"
+LIBRARY = "require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/homebrew.js`)"
 
 
 def doc():
@@ -41,10 +41,10 @@ def test_brew_trust_runs_on_homebrew_6_and_a_failure_is_not_swallowed():
     assert '-ge 6 ]' in tap and "brew trust --formula" in tap and "|| true" not in tap
 
 
-def test_the_root_url_comes_from_the_repository_of_the_run():
+def test_the_root_url_comes_from_the_repository_input():
     text = PIECE.read_text(encoding="utf-8")
     lib = (LIB / "homebrew.js").read_text(encoding="utf-8")
-    assert '--root-url="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION"' in text
+    assert "env.REPOSITORY" in lib and "GITHUB_REPOSITORY" not in lib
     assert "https://github.com/${repository}/releases/download/v${version}" in lib
     assert "oetiker" not in text and "oetiker" not in lib
 
@@ -71,7 +71,7 @@ def test_no_formula_logic_is_left_in_shell():
 
 def test_the_piece_names_the_library_it_runs():
     header = PIECE.read_text(encoding="utf-8").split("\n\n", 1)[0]
-    assert "# Pieces: ri-release-rust-binaries, workflow-lib" in header
+    assert "# Pieces: ri-release-rust-binaries" in header
 
 
 def test_the_library_tests_use_the_template_of_the_shape_reference():
@@ -99,3 +99,9 @@ def test_the_recorded_bottle_json_has_the_keys_the_library_reads():
                 assert data.get("cellar") or bottle.get("cellar"), tag
                 tags.add(tag)
     assert tags == {"arm64_sonoma"}
+
+
+def test_the_bottle_root_url_names_the_repository_input():
+    text = PIECE.read_text(encoding="utf-8")
+    assert '--root-url="https://github.com/$REPOSITORY/releases/download/v$VERSION"' in text
+    assert "REPOSITORY: ${{ inputs.repository }}" in text

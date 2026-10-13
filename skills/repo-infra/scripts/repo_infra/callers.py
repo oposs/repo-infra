@@ -2,11 +2,13 @@
 """Validate the callers against what they call (D30).
 
 A caller is a workflow the repository owns: ci.yml, release-build.yml,
-release-publish.yml, ci-local.yml. It calls pieces with
-`uses: ./.github/workflows/<file>.yml`, and GitHub checks such a call only
-when the run starts, so a misspelt input or a missing secret surfaces as a
-red run on main. Everything here is read from the files as they are
-installed: the interface of the called file, never a list kept beside it.
+release-publish.yml, ci-local.yml. It calls the pieces of repo-infra with
+`uses: oposs/repo-infra/.github/workflows/<file>.yml@v2` (D33) and its own
+workflows with `uses: ./.github/workflows/<file>.yml`, and GitHub checks such
+a call only when the run starts, so a misspelt input or a missing secret
+surfaces as a red run on main. Everything here is read from the files: the
+interface of the called file, as installed or as the plugin ships the piece,
+never a list kept beside it.
 """
 
 import fnmatch
@@ -15,14 +17,17 @@ import re
 
 from . import workflow
 from .markers import parse_markers
-from .pieces import ASSETS
+from .pieces import ASSETS, HOME_REPO, MAJOR
 from .report import Item
 
 WORKFLOWS = ".github/workflows"
 CORE_CALLERS = {
+    "changelog.yml": "the ruleset requires its changelog-updated check; without it every "
+                     "pull request waits for that check",
     "ci.yml": "the ruleset requires its ci-passed check, and Create release PR runs it",
     "release-build.yml": "Create release PR calls it to build the release",
     "release-publish.yml": "it tags and publishes a release once its pull request merges",
+    "release-pr.yml": "Create release PR starts a release",
 }
 # The job that closes each file and what it does wrong when it does not wait
 # for a job. The needs: list used to be generated; now check verifies it.
@@ -30,7 +35,10 @@ CLOSING = {
     "ci.yml": ("ci-passed", "report green while that job fails"),
     "release-publish.yml": ("finalize", "publish the release before that job attached its files"),
 }
-_REMOTE = re.compile(r"^[\w.-]+/[\w.-]+/\.github/workflows/[^@]+@")
+# A call of a workflow of repo-infra (D33). GitHub finds a repository
+# whatever the case of its owner and name; the ref is matched exactly.
+_HOME_CALL = re.compile(r"^(?i:" + re.escape(HOME_REPO) + r")/\.github/workflows/([^@]+)"
+                        r"(?:@(.*))?$")
 # GitHub reads context names in an expression case-insensitively.
 _INPUT_REF = re.compile(r"\$\{\{\s*inputs\.ref\s*\}\}", re.IGNORECASE)
 _RESERVED = re.compile(r"^(release-asset-.*|release-files)$", re.IGNORECASE)
@@ -93,15 +101,44 @@ def needs(job):
     return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
 
 
+def home_call(uses):
+    """(file, ref) for a call to a workflow of repo-infra, else None. A call
+    without @ref is returned with ref None; GitHub refuses it."""
+    if not isinstance(uses, str):
+        return None
+    match = _HOME_CALL.match(uses.strip())
+    return (match[1], match[2]) if match else None
+
+
+def target_doc(uses, docs, remote_docs):
+    """The called file and its workflow: a local file, or a remote piece read
+    from the installed plugin (D33)."""
+    local = local_target(uses)
+    if local is not None:
+        return local, docs.get(local)
+    called = home_call(uses)
+    if called is not None:
+        return called[0], remote_docs.get(called[0])
+    return None, None
+
+
+def _docs_of(uses, docs, remote_docs):
+    """The files a called workflow's own calls resolve in: the caller's for
+    a local call, repo-infra's for a remote one."""
+    return docs if local_target(uses) is not None else remote_docs
+
+
 def calls(docs, target):
-    return any(local_target(job.get("uses")) == target
+    """True when a job of `docs` calls the file `target`, through ./ or as a
+    piece of repo-infra (D33)."""
+    return any(normal_uses(job.get("uses")) == target
                for doc in docs.values() for job in jobs(doc).values())
 
 
-def call_problems(job_id, job, docs):
-    """What GitHub would refuse about job `job_id` calling a local workflow."""
-    called = local_target(job.get("uses"))
-    target = docs.get(called)
+def call_problems(job_id, job, called, target, remote=False):
+    """What GitHub would refuse about job `job_id` calling the workflow
+    `target`, installed as `called`. A remote call is one to a piece of
+    repo-infra (D33)."""
     where = f"job {job_id} calls {called}"
     if target is None:
         return [f"{where}, which does not exist"]
@@ -116,19 +153,41 @@ def call_problems(job_id, job, docs):
     found += [f"{where} without its required input {key}"
               for key, spec in face.inputs.items() if spec["required"] and key not in given]
     secrets = job.get("secrets")
-    if secrets != "inherit":
-        passed = secrets if isinstance(secrets, dict) else {}
-        found += [f"{where} with the secret {key}, which {called} does not declare"
-                  for key in passed if key not in face.secrets]
-        found += [f"{where} without its required secret {key}; pass it, or write "
-                  "`secrets: inherit`"
-                  for key, spec in face.secrets.items()
-                  if spec["required"] and key not in passed]
+    if secrets == "inherit" and not remote:
+        return found
+    if secrets == "inherit":
+        # Across organisations GitHub starts the run and hands the piece empty
+        # secrets, so a publish fails late instead of at the start (D33).
+        found.append(f"job {job_id} passes secrets: inherit to {job.get('uses')}; GitHub "
+                     "does not pass inherited secrets to a workflow of another "
+                     "organisation. Pass each secret by name")
+    passed = secrets if isinstance(secrets, dict) else {}
+    found += [f"{where} with the secret {key}, which {called} does not declare"
+              for key in passed if key not in face.secrets]
+    found += [f"{where} without its required secret {key}; pass it"
+              + ("" if remote else ", or write `secrets: inherit`")
+              for key, spec in face.secrets.items()
+              if spec["required"] and key not in passed]
     return found
 
 
-def _without_needs(job):
-    return {key: value for key, value in job.items() if key != "needs"}
+VERDICT = "ri-release-verdict"
+
+
+def normal_uses(uses):
+    """The file of a call to a repo-infra piece in either form, so a pattern
+    written for consumers (@v2) matches repo-infra's own ./ callers (D33)."""
+    if not isinstance(uses, str):
+        return uses
+    called = home_call(uses)
+    if called is not None:
+        return called[0]
+    return local_target(uses) or uses
+
+
+def _normal_job(job):
+    return {key: (normal_uses(value) if key == "uses" else value)
+            for key, value in job.items() if key != "needs"}
 
 
 def closing_problems(docs, assets=ASSETS):
@@ -152,10 +211,92 @@ def closing_problems(docs, assets=ASSETS):
         if job.get("if") != "always()":
             found.append((name, "ci-passed lacks `if: always()`: a failed job would skip it, "
                                 "and a skipped required check counts as passed"))
-        elif _without_needs(job) != _without_needs(pattern["ci-passed"]):
+        elif _normal_job(job) != _normal_job(pattern["ci-passed"]):
             found.append((name, "ci-passed differs from the pattern (assets/callers/"
                                 "ci-passed.yml in the repo-infra skill); copy it word for "
                                 "word and keep only your needs: list"))
+        verdicts = [other for other in all_jobs.values()
+                    if normal_uses(other.get("uses")) == f"{VERDICT}.yml"]
+        if not verdicts:
+            found.append((name, f"ci.yml calls no {VERDICT}; ci-passed has no release verdict "
+                                "to read. Copy release-verdict from assets/callers/"
+                                "ci-passed.yml in the repo-infra skill"))
+        elif any(_normal_job(other) != _normal_job(pattern["release-verdict"])
+                 for other in verdicts):
+            found.append((name, "release-verdict differs from the pattern (assets/callers/"
+                                "ci-passed.yml in the repo-infra skill); copy it word for "
+                                "word"))
+    return found
+
+
+def changelog_problems(docs, assets=ASSETS):
+    """D33: changelog.yml is the pattern, word for word, apart from the form
+    of the `uses:` line."""
+    doc = docs.get("changelog.yml")
+    if not isinstance(doc, dict):
+        return []
+    pattern = workflow.load(
+        (pathlib.Path(assets) / "callers/changelog.yml").read_text(encoding="utf-8"))
+    mine, wanted = jobs(doc), jobs(pattern)
+    found = []
+    for job_id, job in wanted.items():
+        if job_id not in mine:
+            found.append(("changelog.yml", f"has no {job_id} job; copy "
+                                           "assets/callers/changelog.yml in the repo-infra "
+                                           "skill word for word"))
+        elif {**_normal_job(mine[job_id]), "needs": needs(mine[job_id])} != {
+                **_normal_job(job), "needs": needs(job)}:
+            found.append(("changelog.yml", f"{job_id} differs from the pattern "
+                                           "(assets/callers/changelog.yml in the repo-infra "
+                                           "skill); copy it word for word"))
+    if doc.get("on") != pattern.get("on"):
+        found.append(("changelog.yml", "its triggers differ from the pattern; the required "
+                                       "check would not report on every pull request"))
+    return found
+
+
+PREPARE, FINISH = "ri-release-prepare", "ri-release-finish"
+
+
+def release_pr_problems(docs, pieces):
+    """D33: release-pr.yml calls prepare and finish from repo-infra and the
+    repository's own release-build.yml and ci.yml between them; finish needs
+    every other job, so nothing a repository adds between them is skipped.
+    A missing file is CORE_CALLERS' finding."""
+    doc = docs.get("release-pr.yml")
+    if not isinstance(doc, dict):
+        return []
+    all_jobs = jobs(doc)
+    by_target = {}
+    for job_id, job in all_jobs.items():
+        by_target.setdefault(normal_uses(job.get("uses")), []).append(job_id)
+    found = []
+    for piece in (PREPARE, FINISH):
+        if f"{piece}.yml" not in by_target:
+            found.append(("release-pr.yml", f"calls no {piece}; copy "
+                                            "assets/callers/release-pr.yml in the repo-infra "
+                                            "skill"))
+    for own in ("release-build.yml", "ci.yml"):
+        if own not in by_target:
+            found.append(("release-pr.yml", f"does not call {own}; the release pull request "
+                                            "would open untested or unbuilt"))
+    if found:
+        return found
+    prepare = by_target[f"{PREPARE}.yml"][0]
+    finish = by_target[f"{FINISH}.yml"][0]
+    for own in ("release-build.yml", "ci.yml"):
+        for job_id in by_target[own]:
+            if prepare not in needs(all_jobs[job_id]):
+                found.append(("release-pr.yml", f"job {job_id} does not need {prepare}; it "
+                                                "would build or test before the release "
+                                                "branch exists"))
+    missing = [j for j in all_jobs if j != finish and j not in needs(all_jobs[finish])]
+    if missing:
+        found.append(("release-pr.yml", f"{finish} does not need {', '.join(missing)}; it "
+                                        "would open the pull request before they finished"))
+    if not callers_event(doc, "workflow_dispatch"):
+        found.append(("release-pr.yml", "has no workflow_dispatch trigger; nobody can start "
+                                        "a release"))
     return found
 
 
@@ -267,7 +408,9 @@ def release_skip_problems(docs, assets=ASSETS):
     the release pull request Create release PR opened. That run parks as
     action_required; approving it built and tested everything a second time
     (oetiker/mdmost run 37503956034), on a commit Create release PR had
-    tested and whose results ci-passed ignores in release mode."""
+    tested and whose results ci-passed ignores in release mode. D33 exempts
+    the job that calls ri-release-verdict: on that run it is what ci-passed
+    decides on."""
     doc = docs.get("ci.yml")
     if not isinstance(doc, dict):
         return []
@@ -281,7 +424,8 @@ def release_skip_problems(docs, assets=ASSETS):
                        "run on a release pull request would build and test everything a "
                        "second time (D31). Add it, or join it to the job's own `if:` with &&")
             for job_id, job in jobs(doc).items()
-            if job_id != "ci-passed" and wanted not in conjuncts(job.get("if", ""))]
+            if job_id != "ci-passed" and normal_uses(job.get("uses")) != f"{VERDICT}.yml"
+            and wanted not in conjuncts(job.get("if", ""))]
 
 
 def _names(value):
@@ -298,6 +442,11 @@ def _event(doc, event):
     if isinstance(on, dict) and event in on:
         return True, on[event] if isinstance(on[event], dict) else {}
     return False, {}
+
+
+def callers_event(doc, event):
+    """True when `doc` triggers on `event`."""
+    return _event(doc, event)[0]
 
 
 def _on_main(doc, event):
@@ -367,6 +516,15 @@ def frame_problems(docs, pieces):
     return found
 
 
+LIBRARY_CHECKOUT = {"repository": "${{ job.workflow_repository }}",
+                    "ref": "${{ job.workflow_sha }}", "path": ".repo-infra"}
+
+
+def _library_checkout(given):
+    return all(str(given.get(key, "")).strip() == value
+               for key, value in LIBRARY_CHECKOUT.items())
+
+
 def ref_problems(doc, reserved, skip=()):
     """D28: every checkout takes `ref`, and only the release build uploads
     release-asset-* or release-files."""
@@ -381,6 +539,12 @@ def ref_problems(doc, reserved, skip=()):
             uses = str(step.get("uses", "")).lower()
             given = step.get("with") if isinstance(step.get("with"), dict) else {}
             if uses.startswith("actions/checkout@"):
+                # The library checkout of a piece (D33) reads repo-infra itself
+                # at the commit the piece runs from. Only that shape is exempt:
+                # in a consumer's own workflow job.workflow_repository is the
+                # consumer, and a checkout of it without `ref` tests main.
+                if _library_checkout(given):
+                    continue
                 if not _INPUT_REF.fullmatch(str(given.get("ref", "")).strip()):
                     found.append(f"job {job_id} has an actions/checkout step without "
                                  "`ref: ${{ inputs.ref }}`; it would test main while the "
@@ -415,7 +579,7 @@ def ref_contract_problems(docs, piece_files):
     return list(dict.fromkeys(found))
 
 
-def ref_passing_problems(docs):
+def ref_passing_problems(docs, remote_docs=None):
     """D28: ci.yml and release-build.yml run on the release commit only when
     each workflow they call that declares `ref` is handed `${{ inputs.ref }}`.
     A call without it tests the commit that triggered the run, so the release
@@ -423,8 +587,7 @@ def ref_passing_problems(docs):
     found = []
     for name in ("ci.yml", "release-build.yml"):
         for job_id, job in jobs(docs.get(name)).items():
-            called = local_target(job.get("uses"))
-            target = docs.get(called)
+            called, target = target_doc(job.get("uses"), docs, remote_docs or {})
             face = workflow.interface(target) if isinstance(target, dict) else None
             if face is None or "ref" not in face.inputs:
                 continue
@@ -481,9 +644,10 @@ def invalid_grant(value):
     return None
 
 
-def needed(name, docs, seen=()):
+def needed(name, docs, seen=(), remote_docs=None):
     """The permissions the jobs of workflow `name` ask for (D30). A job that
-    declares none asks for what the workflows it calls ask for."""
+    declares none asks for what the workflows it calls ask for, a piece of
+    repo-infra included (D33)."""
     doc = docs.get(name)
     if not isinstance(doc, dict) or name in seen:
         return {}
@@ -491,8 +655,10 @@ def needed(name, docs, seen=()):
     for job in jobs(doc).values():
         want = _own(doc, job)
         if want is None:
-            called = local_target(job.get("uses"))
-            want = needed(called, docs, seen + (name,)) if called else {}
+            uses = job.get("uses")
+            called, _ = target_doc(uses, docs, remote_docs or {})
+            want = (needed(called, _docs_of(uses, docs, remote_docs or {}), seen + (name,),
+                           remote_docs) if called else {})
         for scope, level in want.items():
             total[scope] = max(total.get(scope, 0), level)
     return total
@@ -513,14 +679,16 @@ def _starts_runs(doc):
     return False
 
 
-def permission_problems(docs):
+def permission_problems(docs, remote_docs=None):
     found = []
     for name, doc in docs.items():
         for job_id, job in jobs(doc).items():
-            called = local_target(job.get("uses"))
-            if called is None or not isinstance(docs.get(called), dict):
+            uses = job.get("uses")
+            called, target = target_doc(uses, docs, remote_docs or {})
+            if called is None or not isinstance(target, dict):
                 continue
-            want = needed(called, docs)
+            want = needed(called, _docs_of(uses, docs, remote_docs or {}),
+                          remote_docs=remote_docs)
             value = _own_value(doc, job)
             invalid = invalid_grant(value)
             if invalid:
@@ -565,22 +733,58 @@ def unreadable_concerns(docs, pieces):
     return found
 
 
-def _callable(pieces, file):
-    """True when the workflow piece installed as `file` runs only when called:
-    its header carries a Call: snippet. changelog and release-pr start runs
-    of their own."""
-    return any(p.workflow and pathlib.PurePosixPath(p.target).name == file
-               and "Call" in p.header for p in pieces.values())
+def action_test_problems(docs):
+    """D33: a piece in oposs/repo-infra cannot call a workflow of the
+    repository that calls it, so ci.yml calls action-test.yml itself."""
+    ci = docs.get("ci.yml")
+    if not isinstance(ci, dict):
+        return []
+    targets = {normal_uses(job.get("uses")) for job in jobs(ci).values()}
+    if "ri-ci-github-action.yml" in targets and "action-test.yml" not in targets:
+        return [("ci.yml", "ci.yml calls ri-ci-github-action and not ./.github/workflows/"
+                           "action-test.yml; the action's own test never runs. Add the job "
+                           "`action-test` from the catalogue entry of ri-ci-github-action")]
+    return []
 
 
-def _core(pieces, file):
-    return any(p.core and pathlib.PurePosixPath(p.target).name == file
-               for p in pieces.values())
+def remote_call_problems(job_id, job, remote_docs, home):
+    """D33: a consumer calls a piece of repo-infra at @v2, the tag every
+    release moves; repo-infra calls its own pieces through ./. P9 of the
+    plan: workflows of other repositories are not reviewed."""
+    uses = job.get("uses")
+    file, ref = home_call(uses)
+    found = []
+    if home:
+        found.append(f"job {job_id} calls {uses}; repo-infra calls its own pieces through "
+                     "./ so a pull request runs the pieces it changes (D33)")
+    elif file not in remote_docs:
+        return [f"job {job_id} calls {uses}, which is not a piece of repo-infra"]
+    elif ref != MAJOR:
+        found.append(f"job {job_id} calls {uses}; call repo-infra's pieces at @{MAJOR}, "
+                     "the tag every release moves (D33)")
+    return found + call_problems(job_id, job, file, remote_docs.get(file), remote=True)
 
 
-def validate(docs, pieces, assets=ASSETS):
+def local_call_problems(job_id, job, docs, pieces, remote_docs, home):
+    """A local call; in a consumer a call of a copied remote piece is the v1
+    layout (D30), which apply migrates (D33)."""
+    uses = job.get("uses")
+    file = local_target(uses)
+    if not home and file in remote_docs:
+        piece = next(p for p in pieces.values()
+                     if p.remote and pathlib.PurePosixPath(p.target).name == file)
+        return [f"job {job_id} calls {uses}, a copy of the piece (v1 layout); call "
+                f"{piece.uses} and run apply to migrate (D33)"]
+    return call_problems(job_id, job, file, docs.get(file))
+
+
+def validate(docs, pieces, assets=ASSETS, home=False):
+    """Every finding about the callers in `docs`. `home` is true in repo-infra
+    itself, which calls its pieces through ./ (D33)."""
     piece_files = {pathlib.PurePosixPath(p.target).name
                    for p in pieces.values() if p.workflow}
+    remote_docs = {pathlib.PurePosixPath(p.target).name: workflow.load(p.files[p.target])
+                   for p in pieces.values() if p.remote}
     concerns = unreadable_concerns(docs, pieces)
     items = [Item("callers", name, "problem", f"cannot be read: {doc}")
              for name, doc in docs.items() if name in concerns]
@@ -589,32 +793,20 @@ def validate(docs, pieces, assets=ASSETS):
     for name, doc in docs.items():
         for job_id, job in jobs(doc).items():
             uses = job.get("uses")
-            if isinstance(uses, str) and _REMOTE.match(uses):
-                items.append(Item("callers", name, "problem",
-                                  f"job {job_id} calls {uses}, a workflow in another "
-                                  "repository; every workflow stays local (D30): copy the "
-                                  "piece"))
+            if home_call(uses) is not None:
+                said = remote_call_problems(job_id, job, remote_docs, home)
             elif local_target(uses):
-                items += [Item("callers", name, "problem", p)
-                          for p in call_problems(job_id, job, docs)]
-    called_by_text = {target for doc in docs.values()
-                      if isinstance(doc, workflow.ReadError)
-                      for target in getattr(doc, "calls", ())}
-    # frame_problems names a ci.yml without ri-release-pr-current already.
-    framed = {f"{RELEASE_PR_CURRENT}.yml"} if isinstance(docs.get("ci.yml"), dict) else set()
-    items += [Item("callers", file, "problem",
-                   f"{file} is installed and no workflow calls it, so it never runs. Add "
-                   "its Call: from the catalogue to a caller"
-                   # A removed core piece reads missing and bare apply reinstalls it.
-                   + ("; it is a core piece, so do not remove it" if _core(pieces, file)
-                      else ", or remove the file"))
-              for file in sorted(piece_files)
-              if file in docs and file not in framed and _callable(pieces, file)
-              and not calls(docs, file) and file not in called_by_text]
-    found = (closing_problems(docs, assets) + release_skip_problems(docs, assets)
+                said = local_call_problems(job_id, job, docs, pieces, remote_docs, home)
+            else:
+                continue
+            items += [Item("callers", name, "problem", p) for p in said]
+    found = (closing_problems(docs, assets) + changelog_problems(docs, assets)
+             + release_skip_problems(docs, assets)
+             + release_pr_problems(docs, pieces)
              + finalize_problems(docs, pieces)
              + frame_problems(docs, pieces)
              + ref_contract_problems(docs, piece_files)
-             + ref_passing_problems(docs)
-             + permission_problems(docs))
+             + ref_passing_problems(docs, remote_docs)
+             + action_test_problems(docs)
+             + permission_problems(docs, remote_docs))
     return items + [Item("callers", name, "problem", detail) for name, detail in found]

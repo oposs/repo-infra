@@ -1,5 +1,5 @@
 {
-  "moving_major_tag": false,
+  "moving_major_tag": true,
   "version_files": [
     {
       "path": ".claude-plugin/plugin.json",

@@ -11,7 +11,7 @@ ASSETS = ROOT / "skills/repo-infra/assets"
 BLOCK = "publish-gitea-packages"
 
 
-PIECE = ASSETS / "pieces/ri-publish-gitea/ri-publish-gitea.yml"
+PIECE = ROOT / ".github/workflows/ri-publish-gitea.yml"
 
 
 def workflow():

@@ -3,14 +3,30 @@ import json
 import pathlib
 import re
 
+import piecekit
 import pytest
-from piecekit import CI_PASSED, SKIP_IF, install, make_assets, workflow_piece
+from piecekit import (
+    CHANGELOG,
+    CI_PASSED,
+    RELEASE_PR,
+    SHIPPED_REMOTE,
+    SKIP_IF,
+    install,
+    workflow_piece,
+)
 
 from repo_infra import callers, workflow
 from repo_infra.pieces import load_pieces
 
+ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 PIECE_INPUTS = ("      target:\n        description: The make target.\n"
                 "        type: string\n        required: true\n")
+
+
+def make_assets(root, current, history=(), core=(), remote=None):
+    """A test store that also holds the pieces the shipped callers call."""
+    return piecekit.make_assets(root, current, history, core,
+                                {**SHIPPED_REMOTE, **(remote or {})})
 
 
 @pytest.fixture
@@ -53,7 +69,14 @@ jobs:
     uses: ./.github/workflows/ri-a.yml
     with:
       ref: ${{ inputs.ref }}
-""" + CI_PASSED.replace("jobs:\n", "").replace("needs: []", "needs: [a]")
+""" + CI_PASSED.split("\njobs:\n", 1)[1].replace("needs: [release-verdict]",
+                                                 "needs: [a, release-verdict]")
+# The release-verdict job of the shipped pattern, as CI carries it (D33).
+VERDICT_JOB = ("  release-verdict:\n    uses: oposs/repo-infra/.github/workflows/"
+               "ri-release-verdict.yml@v2\n    permissions:\n      contents: read\n"
+               "      pull-requests: read\n      statuses: read\n")
+# Where job a ends and the shipped jobs begin.
+A_END = "ref: ${{ inputs.ref }}\n  # D28"
 
 BUILD = """name: Release build
 on:
@@ -103,7 +126,8 @@ jobs:
 
 
 def problems(tmp_path, store, **files):
-    base = {"ci.yml": CI, "release-build.yml": BUILD, "release-publish.yml": PUBLISH}
+    base = {"ci.yml": CI, "release-build.yml": BUILD, "release-publish.yml": PUBLISH,
+            "changelog.yml": CHANGELOG, "release-pr.yml": RELEASE_PR}
     base.update({k.replace("_", "-") + ".yml": v for k, v in files.items()})
     docs = callers.read_workflows(repo(tmp_path, store, base))
     return [(i.name, i.state, i.detail) for i in
@@ -115,7 +139,8 @@ def test_a_conforming_set_of_callers_has_no_problem(tmp_path, store):
 
 
 def test_a_missing_core_caller_is_named(tmp_path, store):
-    root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD})
+    root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
+                                  "changelog.yml": CHANGELOG, "release-pr.yml": RELEASE_PR})
     found = callers.validate(callers.read_workflows(root), load_pieces(store), store)
     assert [(i.name, i.state) for i in found] == [("release-publish.yml", "missing")]
 
@@ -153,10 +178,27 @@ def test_a_required_secret_needs_passing_or_inherit(tmp_path, store):
                                                         ci=inherited, own=own))
 
 
-def test_a_remote_reusable_workflow_is_a_problem(tmp_path, store):
+def test_a_workflow_of_another_repository_is_not_reviewed(tmp_path, store):
+    """P9 of D33: only calls of repo-infra's pieces are reviewed; D30's
+    "copy the piece" is gone."""
     found = problems(tmp_path, store, ci=CI.replace(
-        "./.github/workflows/ri-a.yml", "oposs/repo-infra/.github/workflows/ri-a.yml@v1"))
-    assert any("another repository" in d for _, _, d in found)
+        "./.github/workflows/ri-a.yml", "other/repo/.github/workflows/ri-a.yml@v1"))
+    assert not [d for name, _, d in found if name == "ci.yml" and "job a " in d]
+
+
+def test_a_call_to_a_repo_infra_piece_is_not_a_workflow_in_another_repository(tmp_path, store):
+    # D33: the consumer calls repo-infra's pieces; CI's release-verdict does.
+    assert VERDICT_JOB in CI
+    assert not any("another repository" in d for _, _, d in problems(tmp_path, store))
+
+
+def test_a_repo_infra_call_at_another_ref_is_a_problem(tmp_path, store):
+    ci = CI.replace("ri-release-verdict.yml@v2", "ri-release-verdict.yml@main")
+    assert ci != CI
+    assert ("ci.yml", "problem",
+            "job release-verdict calls oposs/repo-infra/.github/workflows/"
+            "ri-release-verdict.yml@main; call repo-infra's pieces at @v2, the tag every "
+            "release moves (D33)") in problems(tmp_path, store, ci=ci)
 
 
 FLOW = "jobs:\n  x:\n    with: {ref: y}\n"
@@ -200,7 +242,8 @@ def test_an_unreadable_file_carrying_a_piece_marker_is_a_problem(tmp_path, store
 
 
 def test_ci_passed_must_need_every_other_job(tmp_path, store):
-    found = problems(tmp_path, store, ci=CI.replace("needs: [a]", "needs: []"))
+    found = problems(tmp_path, store, ci=CI.replace("needs: [a, release-verdict]",
+                                                    "needs: [release-verdict]"))
     assert ("ci.yml", "problem",
             "ci-passed does not need a; it would report green while that job fails") in found
 
@@ -211,9 +254,53 @@ def test_ci_passed_must_run_always(tmp_path, store):
 
 
 def test_ci_passed_must_follow_the_pattern(tmp_path, store):
-    found = problems(tmp_path, store, ci=CI.replace("timeout-minutes: 5\n    steps:\n      - uses",
-                                                    "timeout-minutes: 9\n    steps:\n      - uses"))
-    assert any("differs from the pattern" in d for _, _, d in found)
+    ci = CI.replace('if [ "$FAILED" = true ]', 'if [ "$FAILED" = maybe ]')
+    assert ci != CI
+    found = problems(tmp_path, store, ci=ci)
+    assert any("ci-passed differs from the pattern" in d for _, _, d in found)
+
+
+def test_a_ci_yml_without_the_verdict_job_is_a_problem(tmp_path, store):
+    ci = CI.replace(VERDICT_JOB, "").replace(", release-verdict]", "]")
+    assert ("ci.yml", "problem", "ci.yml calls no ri-release-verdict; ci-passed has no "
+            "release verdict to read. Copy release-verdict from assets/callers/ci-passed.yml "
+            "in the repo-infra skill") in problems(tmp_path, store, ci=ci)
+
+
+def test_a_verdict_job_that_differs_from_the_pattern_is_a_problem(tmp_path, store):
+    ci = CI.replace(VERDICT_JOB, VERDICT_JOB.replace("      statuses: read\n", ""))
+    assert ("ci.yml", "problem", "release-verdict differs from the pattern (assets/callers/"
+            "ci-passed.yml in the repo-infra skill); copy it word for word"
+            ) in problems(tmp_path, store, ci=ci)
+
+
+def test_the_verdict_job_needs_no_skip():
+    doc = workflow.load("jobs:\n" + VERDICT_JOB)
+    assert callers.release_skip_problems({"ci.yml": doc}) == []
+
+
+@pytest.mark.parametrize("guard", ["(", "!cancelled() && (", "success() && ("])
+def test_a_changelog_yml_without_always_is_a_problem(guard):
+    # Without always() a failed or cancelled changelog job skips
+    # changelog-updated, and a skipped required check counts as passed.
+    pattern = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
+    broken = pattern.replace("always() && (", guard)
+    assert broken != pattern
+    docs = {"changelog.yml": workflow.load(broken)}
+    assert callers.changelog_problems(docs) == [(
+        "changelog.yml", "changelog-updated differs from the pattern "
+        "(assets/callers/changelog.yml in the repo-infra skill); copy it word for word")]
+
+
+def test_a_repository_without_changelog_yml_is_missing_it(tmp_path, store):
+    root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
+                                  "release-publish.yml": PUBLISH, "release-pr.yml": RELEASE_PR})
+    found = callers.validate(callers.read_workflows(root), load_pieces(store), store)
+    assert [(i.name, i.state) for i in found] == [("changelog.yml", "missing")]
+
+
+def test_this_repositorys_changelog_yml_matches_the_pattern():
+    assert callers.changelog_problems({"changelog.yml": workflow.load(own("changelog.yml"))}) == []
 
 
 def test_finalize_must_need_every_other_job(tmp_path, store):
@@ -263,10 +350,9 @@ jobs:
     assert problems(tmp_path / "2", store, ci=ci, ci_local=clean) == []
 
 
-def test_ci_passed_may_check_out_the_base_commit():
-    pattern = workflow.load(CI_PASSED)
-    assert callers.ref_problems(pattern, True) != []
-    assert callers.ref_problems(pattern, True, skip=("ci-passed",)) == []
+def test_the_ci_passed_pattern_checks_out_nothing():
+    # D33: release mode moved to ri-release-verdict, with the library checkout.
+    assert callers.ref_problems(workflow.load(CI_PASSED), True) == []
 
 
 def test_a_called_piece_without_workflow_call_is_a_problem(tmp_path, store):
@@ -292,15 +378,11 @@ def test_the_shipped_ci_passed_pattern_is_accepted_in_a_ci_yml():
     text = (callers.ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8")
     ci = workflow.load(
         "jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n"
-        + text.split("jobs:\n", 1)[1].replace("needs: []", "needs: [a]"))
+        + text.split("\njobs:\n", 1)[1].replace("needs: [release-verdict]",
+                                                "needs: [a, release-verdict]"))
     assert callers.closing_problems({"ci.yml": ci}) == []
-    # The release-mode steps load the library of the base commit: the pattern
-    # keeps that checkout, which the ref contract exempts for ci-passed alone.
-    checkout = callers.jobs(ci)["ci-passed"]["steps"][0]
-    assert checkout["with"]["ref"] == "${{ github.event.pull_request.base.sha }}"
-    assert checkout["with"]["path"] == "repo-infra-base"
-    assert callers.ref_problems(ci, True) != []
-    assert callers.ref_problems(ci, True, skip=("ci-passed",)) == []
+    assert callers.release_skip_problems({"ci.yml": ci}) == [
+        ("ci.yml", NO_SKIP.format("a"))]
 
 
 # The ref contract of a project workflow (D28), ported from the retired seam
@@ -339,6 +421,26 @@ STEPS = GOOD.split("    steps:\n")[0] + "    steps:\n"
 
 def ref_found(text, reserved=False):
     return callers.ref_problems(workflow.load(text), reserved)
+
+
+def test_the_library_checkout_of_a_piece_needs_no_ref_input():
+    library = ("      - uses: actions/checkout@v7\n        with:\n"
+               "          repository: ${{ job.workflow_repository }}\n"
+               "          ref: ${{ job.workflow_sha }}\n          path: .repo-infra\n")
+    assert ref_found(GOOD + library, reserved=True) == []
+    assert ref_found(GOOD + library.replace("job.workflow_repository", "other/repo"),
+                     reserved=True) != []
+
+
+def test_a_checkout_of_the_calling_repository_without_ref_is_a_problem():
+    """In a consumer's ci.yml job.workflow_repository is the consumer itself:
+    without `ref` the checkout tests main (D28). Only the library checkout of
+    a piece, at job.workflow_sha into .repo-infra, needs no ref input."""
+    plain = ("      - uses: actions/checkout@v7\n        with:\n"
+             "          repository: ${{ job.workflow_repository }}\n")
+    assert ref_found(GOOD + plain) != []
+    assert ref_found(GOOD + plain + "          path: .repo-infra\n") != []
+    assert ref_found(GOOD + plain + "          ref: ${{ job.workflow_sha }}\n") != []
 
 
 def test_a_conforming_project_workflow_has_no_ref_problem():
@@ -448,14 +550,14 @@ def test_a_piece_call_without_with_is_a_problem(tmp_path, store):
 
 @pytest.mark.parametrize("value", ["${{ github.sha }}", "main", "${{ inputs.ref || 'x' }}"])
 def test_a_call_passing_another_ref_is_a_problem(tmp_path, store, value):
-    ci = CI.replace("ref: ${{ inputs.ref }}\n  ci-passed", f"ref: {value}\n  ci-passed")
+    ci = CI.replace(A_END, A_END.replace("${{ inputs.ref }}", value))
     assert ci != CI
     assert len(ref_problems_found(tmp_path, store, ci)) == 1
 
 
 @pytest.mark.parametrize("value", ["${{ inputs.ref }}", "${{inputs.ref}}", "'${{ inputs.ref }}'"])
 def test_a_correct_ref_call_is_clean(tmp_path, store, value):
-    ci = CI.replace("ref: ${{ inputs.ref }}\n  ci-passed", f"ref: {value}\n  ci-passed")
+    ci = CI.replace(A_END, A_END.replace("${{ inputs.ref }}", value))
     assert ref_problems_found(tmp_path, store, ci) == []
 
 
@@ -532,7 +634,7 @@ def finalize_problems(tmp_path, publish):
         (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     (folder / "release-publish.yml").write_text(publish, encoding="utf-8")
     docs = callers.read_workflows(tmp_path)
-    return [i.detail for i in callers.validate(docs, load_pieces()) if
+    return [i.detail for i in callers.validate(docs, load_pieces(), home=True) if
             i.name == "release-publish.yml"]
 
 
@@ -581,7 +683,8 @@ def problems_of(tmp_path, name, text):
         (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     (folder / name).write_text(text, encoding="utf-8")
     docs = callers.read_workflows(tmp_path)
-    return [i.detail for i in callers.validate(docs, load_pieces()) if i.name == name]
+    return [i.detail for i in callers.validate(docs, load_pieces(), home=True)
+            if i.name == name]
 
 
 CI_PUSH = "  push:\n    branches: [main]\n"
@@ -635,7 +738,7 @@ def test_ci_without_release_pr_current_is_a_problem(tmp_path):
            "    permissions:\n      contents: read\n      pull-requests: read\n"
            "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
     assert job in own("ci.yml")
-    text = own("ci.yml").replace(job, "").replace(", release-pr-current]", "]")
+    text = own("ci.yml").replace(job, "").replace(", release-pr-current, ", ", ")
     assert problems_of(tmp_path, "ci.yml", text) == [
         "ci.yml calls no ri-release-pr-current.yml; an open release pull request is not "
         "marked stale when main moves (D28). Add its Call: from the catalogue"]
@@ -768,7 +871,8 @@ def test_a_call_in_a_comment_of_an_unreadable_file_does_not_count(tmp_path, stor
 
 def with_bytes(tmp_path, store, name, data):
     root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
-                                  "release-publish.yml": PUBLISH})
+                                  "release-publish.yml": PUBLISH, "changelog.yml": CHANGELOG,
+                                  "release-pr.yml": RELEASE_PR})
     (root / ".github/workflows" / name).write_bytes(data)
     docs = callers.read_workflows(root)
     return [(i.name, i.state, i.detail) for i in
@@ -795,13 +899,12 @@ def test_a_piece_marker_in_a_file_that_is_not_utf8_is_still_found(tmp_path, stor
             "cannot be read: it is not UTF-8 text (byte 0xe9 at offset 29)") in found
 
 
-# --- an installed piece nothing calls ---------------------------------------
-
-UNCALLED = ("{} is installed and no workflow calls it, so it never runs. Add its Call: "
-            "from the catalogue to a caller, or remove the file")
+# --- a remote piece nothing calls -------------------------------------------
 
 
-def test_an_installed_piece_no_workflow_calls_is_a_problem(tmp_path):
+def test_a_remote_piece_no_workflow_calls_is_not_an_installed_copy_problem(tmp_path):
+    """A remote piece is called, never installed (D33); a core one that no
+    workflow calls is reported by check.core_call_items instead."""
     job = "  python:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-ci-python.yml\n    with:\n" \
           "      ref: ${{ inputs.ref }}\n\n"
     assert job in own("ci.yml")
@@ -812,20 +915,8 @@ def test_an_installed_piece_no_workflow_calls_is_a_problem(tmp_path):
         (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     (folder / "ci.yml").write_text(text, encoding="utf-8")
     found = [(i.name, i.detail) for i in
-             callers.validate(callers.read_workflows(tmp_path), load_pieces())]
-    assert found == [("ri-ci-python.yml", UNCALLED.format("ri-ci-python.yml"))]
-
-
-def test_a_piece_called_only_from_an_unreadable_workflow_is_not_called_unused(tmp_path,
-                                                                            store):
-    found = problems(tmp_path, store, release_build=calling("ri-a.yml"))
-    assert ("ri-a.yml", "problem", UNCALLED.format("ri-a.yml")) not in found
-    assert unreadable_names(found) == ["release-build.yml"]
-
-
-def test_an_installed_piece_in_the_store_fixture_nothing_calls_is_a_problem(tmp_path, store):
-    found = problems(tmp_path, store, deploy="# ri-b.yml is installed\non: push\njobs: {}\n")
-    assert ("ri-b.yml", "problem", UNCALLED.format("ri-b.yml")) in found
+             callers.validate(callers.read_workflows(tmp_path), load_pieces(), home=True)]
+    assert found == []
 
 
 def test_a_call_omitting_a_required_ref_is_reported_once(tmp_path, store):
@@ -848,26 +939,35 @@ def own_validated(tmp_path, ci):
         (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     (folder / "ci.yml").write_text(ci, encoding="utf-8")
     return [(i.name, i.detail) for i in
-            callers.validate(callers.read_workflows(tmp_path), load_pieces())]
+            callers.validate(callers.read_workflows(tmp_path), load_pieces(), home=True)]
 
 
-def test_an_uncalled_core_piece_is_not_offered_for_removal(tmp_path):
-    """A removed core piece reads missing, and a bare apply installs it again."""
+def test_the_home_only_library_tests_are_not_a_piece_to_call(tmp_path):
+    """ri-ci-lib.yml left the manifest (D33): repo-infra keeps it for itself."""
     job = "  lib:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-ci-lib.yml\n    with:\n" \
           "      ref: ${{ inputs.ref }}\n\n"
     assert job in own("ci.yml")
     text = own("ci.yml").replace(job, "").replace("needs: [lib, ", "needs: [")
-    assert own_validated(tmp_path, text) == [(
-        "ri-ci-lib.yml", "ri-ci-lib.yml is installed and no workflow calls it, so it never "
-        "runs. Add its Call: from the catalogue to a caller; it is a core piece, so do not "
-        "remove it")]
+    assert own_validated(tmp_path, text) == []
+
+
+def test_the_home_only_selftest_is_not_a_piece_to_call(tmp_path):
+    """ri-ci-repo-infra-selftest.yml left the manifest like ri-ci-lib.yml:
+    repo-infra calls it through ./ and nothing asks a repository for it."""
+    job = "  selftest:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/" \
+          "ri-ci-repo-infra-selftest.yml\n    with:\n      ref: ${{ inputs.ref }}\n\n"
+    assert job in own("ci.yml")
+    assert own_validated(tmp_path / "with", own("ci.yml")) == []
+    text = own("ci.yml").replace(job, "").replace(", selftest", "")
+    assert "selftest" not in text
+    assert own_validated(tmp_path / "without", text) == []
 
 
 def test_ci_without_release_pr_current_is_one_item(tmp_path):
     job = ("  release-pr-current:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
            "    permissions:\n      contents: read\n      pull-requests: read\n"
            "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
-    text = own("ci.yml").replace(job, "").replace(", release-pr-current]", "]")
+    text = own("ci.yml").replace(job, "").replace(", release-pr-current, ", ", ")
     assert own_validated(tmp_path, text) == [(
         "ci.yml", "ci.yml calls no ri-release-pr-current.yml; an open release pull request "
         "is not marked stale when main moves (D28). Add its Call: from the catalogue")]
@@ -923,8 +1023,7 @@ def test_a_looser_skip_is_a_problem(dropped):
 
 
 def test_ci_passed_needs_no_skip():
-    ci = workflow.load(CI_PASSED.replace("needs: []", "needs: [a]"))
-    assert callers.release_skip_problems({"ci.yml": ci}) == []
+    assert callers.release_skip_problems({"ci.yml": workflow.load(CI_PASSED)}) == []
 
 
 def test_jobs_of_other_files_are_not_checked():
@@ -932,24 +1031,264 @@ def test_jobs_of_other_files_are_not_checked():
     assert skip_problems(None, name="ci-local.yml") == []
 
 
-def test_this_repositorys_ci_yml_skips_on_every_job_but_ci_passed():
+def test_this_repositorys_ci_yml_skips_on_every_job_but_the_closing_two():
     doc = workflow.load(own("ci.yml"))
     guarded = {job_id for job_id, job in callers.jobs(doc).items()
                if callers._unwrapped(SKIP) in callers.conjuncts(job.get("if", ""))}
-    assert guarded == set(callers.jobs(doc)) - {"ci-passed"}
+    assert guarded == set(callers.jobs(doc)) - {"ci-passed", "release-verdict"}
 
 
-@pytest.mark.parametrize("name", ["ci.yml", "release-build.yml", "release-publish.yml"])
+MTUSPY_CALLERS = ["ci.yml", "release-build.yml", "release-publish.yml", "changelog.yml",
+                  "release-pr.yml"]
+
+
+@pytest.mark.parametrize("name", MTUSPY_CALLERS)
 def test_the_mtuspy_example_callers_have_no_problem(tmp_path, name):
-    # mtuspy calls pieces repo-infra does not install, so its callers are read
-    # beside the shipped workflow pieces instead of this repository's own.
+    # The callers are read as a v2 consumer holds them: alone, calling
+    # repo-infra's pieces remotely.
     example = REPO / "skills/repo-infra/references/examples/mtuspy"
     folder = tmp_path / ".github/workflows"
     folder.mkdir(parents=True)
-    for path in (REPO / "skills/repo-infra/assets/pieces").glob("ri-*/ri-*.yml"):
-        (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    for caller in ("ci.yml", "release-build.yml", "release-publish.yml"):
+    for caller in MTUSPY_CALLERS:
         (folder / caller).write_text((example / caller).read_text(encoding="utf-8"),
                                      encoding="utf-8")
     docs = callers.read_workflows(tmp_path)
     assert [i.detail for i in callers.validate(docs, load_pieces()) if i.name == name] == []
+
+
+# --- release-pr.yml (D33) -------------------------------------------------------
+
+
+def release_pr(text):
+    return callers.release_pr_problems({"release-pr.yml": workflow.load(text)}, {})
+
+
+def test_the_shipped_release_pr_has_no_problem():
+    assert release_pr(RELEASE_PR) == []
+
+
+def test_a_job_between_prepare_and_finish_that_finish_needs_is_fine():
+    text = RELEASE_PR.replace(
+        "  finish:\n    needs: [prepare, build, test]",
+        "  gate:\n    needs: prepare\n    runs-on: ubuntu-latest\n    steps:\n"
+        "      - run: 'true'\n\n  finish:\n    needs: [prepare, build, test, gate]")
+    assert release_pr(text) == []
+
+
+def test_finish_that_does_not_need_an_added_job_is_a_problem():
+    text = RELEASE_PR.replace(
+        "  finish:\n", "  gate:\n    needs: prepare\n    runs-on: ubuntu-latest\n"
+        "    steps:\n      - run: 'true'\n\n  finish:\n")
+    assert release_pr(text) == [("release-pr.yml", "finish does not need gate; it would "
+                                 "open the pull request before they finished")]
+
+
+def test_a_release_pr_without_ci_is_a_problem():
+    text = RELEASE_PR.replace("uses: ./.github/workflows/ci.yml", "uses: ./.github/workflows/x.yml")
+    assert ("release-pr.yml", "does not call ci.yml; the release pull request would open "
+            "untested or unbuilt") in release_pr(text)
+
+
+def test_a_release_pr_without_finish_is_a_problem():
+    text = RELEASE_PR.replace("ri-release-finish.yml", "ri-release-other.yml")
+    assert ("release-pr.yml", "calls no ri-release-finish; copy assets/callers/release-pr.yml "
+            "in the repo-infra skill") in release_pr(text)
+
+
+def test_a_build_that_does_not_need_prepare_is_a_problem():
+    text = RELEASE_PR.replace("  build:\n    needs: prepare\n", "  build:\n")
+    assert release_pr(text) == [("release-pr.yml", "job build does not need prepare; it "
+                                 "would build or test before the release branch exists")]
+
+
+def test_a_release_pr_without_workflow_dispatch_is_a_problem():
+    text = RELEASE_PR.replace("  workflow_dispatch:\n", "  workflow_call:\n")
+    assert release_pr(text) == [("release-pr.yml", "has no workflow_dispatch trigger; "
+                                 "nobody can start a release")]
+
+
+def test_no_release_pr_is_no_problem_of_its_own():
+    """CORE_CALLERS reports the missing file; release_pr_problems adds nothing."""
+    assert callers.release_pr_problems({}, {}) == []
+
+
+def test_a_missing_release_pr_is_reported_by_validate(tmp_path):
+    found = problems_of(tmp_path, "ci.yml", own("ci.yml"))
+    assert found == []
+    (tmp_path / ".github/workflows/release-pr.yml").unlink()
+    docs = callers.read_workflows(tmp_path)
+    assert [(i.name, i.state) for i in callers.validate(docs, load_pieces(), home=True)
+            if i.name == "release-pr.yml"] == [("release-pr.yml", "missing")]
+
+
+def test_validate_reviews_release_pr(tmp_path):
+    text = own("release-pr.yml").replace("  build:\n    needs: prepare\n", "  build:\n")
+    assert "job build does not need prepare; it would build or test before the release " \
+           "branch exists" in problems_of(tmp_path, "release-pr.yml", text)
+
+
+def test_this_repositorys_release_pr_has_no_problem():
+    assert release_pr(own("release-pr.yml")) == []
+
+
+# --- the action's own test (D33) --------------------------------------------
+
+def test_a_ci_yml_that_calls_the_action_piece_must_call_action_test():
+    ci = workflow.load(
+        "jobs:\n  action:\n    uses: oposs/repo-infra/.github/workflows/"
+        "ri-ci-github-action.yml@v2\n")
+    assert callers.action_test_problems({"ci.yml": ci}) == [(
+        "ci.yml", "ci.yml calls ri-ci-github-action and not ./.github/workflows/"
+        "action-test.yml; the action's own test never runs. Add the job `action-test` "
+        "from the catalogue entry of ri-ci-github-action")]
+
+
+def test_a_ci_yml_that_calls_both_is_fine():
+    ci = workflow.load(
+        "jobs:\n  action:\n    uses: oposs/repo-infra/.github/workflows/"
+        "ri-ci-github-action.yml@v2\n  action-test:\n"
+        "    uses: ./.github/workflows/action-test.yml\n")
+    assert callers.action_test_problems({"ci.yml": ci}) == []
+
+
+def test_validate_reports_a_ci_yml_without_the_action_test():
+    ci = workflow.load(
+        "jobs:\n  action:\n    uses: oposs/repo-infra/.github/workflows/"
+        "ri-ci-github-action.yml@v2\n")
+    found = [i.detail for i in callers.validate({"ci.yml": ci}, load_pieces())
+             if "action-test.yml" in i.detail]
+    assert len(found) == 1
+
+
+def test_a_job_without_uses_and_a_ci_yml_without_jobs_are_tolerated():
+    for text in ("jobs:\n  build:\n    runs-on: x\n", "on: push\n"):
+        assert callers.action_test_problems({"ci.yml": workflow.load(text)}) == []
+
+
+def test_the_consumers_action_test_keeps_the_ref_contract():
+    ci = workflow.load(
+        "jobs:\n  action-test:\n    uses: ./.github/workflows/action-test.yml\n"
+        "    with:\n      ref: ${{ inputs.ref }}\n")
+    bad = workflow.load(
+        "on:\n  workflow_call:\n    inputs:\n      ref:\n        type: string\n"
+        "jobs:\n  t:\n    runs-on: x\n    steps:\n      - uses: actions/checkout@v7\n")
+    found = callers.ref_contract_problems({"ci.yml": ci, "action-test.yml": bad}, set())
+    assert any(name == "action-test.yml" for name, _ in found)
+
+
+# --- calls of repo-infra's pieces (D33) -------------------------------------
+
+REAL = load_pieces()
+V2 = "oposs/repo-infra/.github/workflows/{}.yml@v2"
+
+
+def consumer(ci_jobs, files=None):
+    """A consumer whose ci.yml holds `ci_jobs` (text under jobs:), validated
+    against the real pieces."""
+    text = ("on:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n"
+            "  workflow_call:\n    inputs:\n      ref:\n        description: x\n"
+            "        type: string\n        required: false\n        default: ''\n"
+            "permissions:\n  contents: read\njobs:\n" + ci_jobs)
+    docs = {"ci.yml": workflow.load(text), **(files or {})}
+    return [i.detail for i in callers.validate(docs, REAL) if i.name == "ci.yml"]
+
+
+def job(uses, extra=""):
+    return (f"  rust:\n    {SKIP_IF}\n    uses: {uses}\n    with:\n"
+            f"      ref: ${{{{ inputs.ref }}}}\n{extra}")
+
+
+@pytest.mark.parametrize("ref", ["main", "v2.0.0", "V2", "v1", "", " v2"])
+def test_a_piece_called_at_another_ref_is_a_problem(ref):
+    uses = f"oposs/repo-infra/.github/workflows/ri-ci-rust.yml@{ref}"
+    assert (f"job rust calls {uses}; call repo-infra's pieces at @v2, the tag every "
+            "release moves (D33)") in consumer(job(f"'{uses}'"))
+
+
+def test_a_piece_called_without_a_ref_is_a_problem():
+    uses = "oposs/repo-infra/.github/workflows/ri-ci-rust.yml"
+    assert (f"job rust calls {uses}; call repo-infra's pieces at @v2, the tag every "
+            "release moves (D33)") in consumer(job(uses))
+
+
+def test_the_owner_and_repository_are_matched_in_any_case():
+    """GitHub finds a repository whatever the case of its name."""
+    uses = "OPOSS/Repo-Infra/.github/workflows/ri-ci-rust.yml@main"
+    assert (f"job rust calls {uses}; call repo-infra's pieces at @v2, the tag every "
+            "release moves (D33)") in consumer(job(uses))
+
+
+def test_a_piece_called_at_v2_is_fine():
+    assert not [d for d in consumer(job(V2.format("ri-ci-rust"))) if "job rust" in d]
+
+
+def test_a_call_to_a_file_that_is_no_piece_is_a_problem():
+    uses = V2.format("ri-nothing")
+    assert f"job rust calls {uses}, which is not a piece of repo-infra" in consumer(job(uses))
+
+
+def test_a_local_call_to_a_remote_piece_is_the_v1_layout():
+    found = consumer(job("./.github/workflows/ri-ci-rust.yml"))
+    assert ("job rust calls ./.github/workflows/ri-ci-rust.yml, a copy of the piece (v1 "
+            f"layout); call {V2.format('ri-ci-rust')} and run apply to migrate (D33)") in found
+
+
+def test_inherit_on_a_remote_call_is_a_problem():
+    found = consumer(job(V2.format("ri-ci-rust"), "    secrets: inherit\n"))
+    assert (f"job rust passes secrets: inherit to {V2.format('ri-ci-rust')}; GitHub does not "
+            "pass inherited secrets to a workflow of another organisation. Pass each secret "
+            "by name") in found
+
+
+def test_inherit_does_not_hide_a_missing_required_secret(tmp_path):
+    secret = ("    secrets:\n      TOKEN:\n        description: t\n"
+              "        required: true\n")
+    piece = workflow_piece("ri-r", 2).replace("permissions:\n", secret + "permissions:\n", 1)
+    store_ = make_assets(tmp_path, {}, remote={"ri-r": piece})
+    uses = V2.format("ri-r")
+    ci = workflow.load(f"jobs:\n  r:\n    uses: {uses}\n    secrets: inherit\n")
+    found = [i.detail for i in callers.validate({"ci.yml": ci}, load_pieces(store_), store_)]
+    assert f"job r passes secrets: inherit to {uses}; GitHub does not pass inherited " \
+           "secrets to a workflow of another organisation. Pass each secret by name" in found
+    assert "job r calls ri-r.yml without its required secret TOKEN; pass it, or write " \
+           "`secrets: inherit`" not in found
+    assert [d for d in found if d.startswith("job r calls ri-r.yml without its required "
+                                             "secret TOKEN")] != []
+
+
+def test_an_input_the_remote_piece_lacks_is_a_problem():
+    found = consumer(job(V2.format("ri-ci-rust"), "      nonsense: 1\n"))
+    assert ("job rust calls ri-ci-rust.yml with the input nonsense, which ri-ci-rust.yml "
+            "does not declare") in found
+
+
+def test_a_remote_call_in_repo_infra_itself_is_a_problem():
+    text = own("ci.yml").replace("uses: ./.github/workflows/ri-ci-python.yml",
+                                 "uses: " + V2.format("ri-ci-python"))
+    docs = callers.read_workflows(REPO)
+    docs["ci.yml"] = workflow.load(text)
+    found = [i.detail for i in callers.validate(docs, REAL, home=True)]
+    assert (f"job python calls {V2.format('ri-ci-python')}; repo-infra calls its own pieces "
+            "through ./ so a pull request runs the pieces it changes (D33)") in found
+
+
+def test_permissions_of_a_remote_call_are_checked_against_the_piece():
+    text = job(V2.format("ri-release-pr-current")).replace("  rust:", "  current:")
+    assert ("job current grants contents: read and ri-release-pr-current.yml needs checks: "
+            "write, pull-requests: read; GitHub refuses to start the run") in consumer(text)
+
+
+def test_a_remote_call_without_ref_input_is_a_ref_problem():
+    found = consumer(f"  rust:\n    {SKIP_IF}\n    uses: {V2.format('ri-ci-rust')}\n")
+    assert any(d.startswith("job rust calls ri-ci-rust.yml, which takes `ref`, without")
+               for d in found)
+
+
+def test_a_finish_job_without_actions_write_is_a_problem(tmp_path):
+    """#58: finish deletes the parked runs of the pull request it opens."""
+    grant = "      checks: write\n      actions: write\n    with:\n      version:"
+    text = own("release-pr.yml")
+    assert text.count(grant) == 1
+    found = problems_of(tmp_path, "release-pr.yml",
+                        text.replace(grant, "      checks: write\n    with:\n      version:"))
+    assert any(d.startswith("job finish grants") and "actions: write" in d for d in found), found

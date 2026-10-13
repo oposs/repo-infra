@@ -1,4 +1,3 @@
-// repo-infra: workflow-lib v9
 'use strict';
 
 // Release tags are exactly vX.Y.Z. Pre-release and build suffixes are deliberately

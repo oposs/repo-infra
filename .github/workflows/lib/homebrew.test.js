@@ -1,4 +1,3 @@
-// repo-infra: workflow-lib v9
 'use strict';
 
 const test = require('node:test');
@@ -54,7 +53,7 @@ class Tool < Formula
   end
 end
 `;
-const ENV = { BIN: 'tool', VERSION: '1.2.3', GITHUB_REPOSITORY: 'owner/tool', RUNNER_TEMP: '/t' };
+const ENV = { BIN: 'tool', VERSION: '1.2.3', REPOSITORY: 'owner/tool', RUNNER_TEMP: '/t' };
 
 // The shape `brew bottle --json --no-rebuild` writes: one entry per formula,
 // the cellar on the bottle, the two file names on each tag.

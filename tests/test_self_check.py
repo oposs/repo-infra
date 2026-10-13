@@ -6,16 +6,18 @@ import pathlib
 
 import pytest
 
-from repo_infra import cli
+from repo_infra import check, cli
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "skills/repo-infra/references/examples/repo-infra"
 
 
-def test_this_repository_passes_its_own_check(monkeypatch, capsys):
+def test_this_repository_passes_its_own_check(monkeypatch):
     monkeypatch.setattr(cli, "read_facts", lambda repo: cli.CONFORMING_FACTS)
-    code = cli.main(["check", "--root", str(ROOT), "--repo", "oposs/repo-infra"])
-    assert code == 0, capsys.readouterr().out
+    items = check.run(ROOT, cli.CONFORMING_FACTS)
+    found = [(i.name, " ".join(i.detail.split())) for i in items
+             if i.state not in ("current", "ok")]
+    assert found == []
 
 
 @pytest.mark.parametrize("name, installed", [

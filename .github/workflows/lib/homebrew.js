@@ -1,4 +1,3 @@
-// repo-infra: workflow-lib v9
 'use strict';
 
 // ri-release-homebrew (D32): the three formula steps around the bottle
@@ -194,7 +193,7 @@ function rewriteFormula(env, io = nodeIo()) {
     .map((name) => JSON.parse(io.read(`bottles/${name}`)));
   const text = releaseFormula(io.read(formula), {
     formula, version: env.VERSION, shas, jsons, built: io.list('artifacts'),
-    repository: env.GITHUB_REPOSITORY,
+    repository: env.REPOSITORY,
   });
   io.write(formula, text);
   io.mkdir('release-files/Formula');

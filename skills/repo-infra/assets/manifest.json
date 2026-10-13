@@ -1,26 +1,9 @@
 {
   "pieces": {
-    "changelog": {
-      "target": ".github/workflows/changelog.yml",
-      "group": "release",
-      "core": true
-    },
-    "release-pr": {
-      "target": ".github/workflows/release-pr.yml",
-      "group": "release",
-      "core": true
-    },
     "dependabot": {
       "target": ".github/dependabot.yml",
       "group": "release",
       "core": true
-    },
-    "workflow-lib": {
-      "target": ".github/workflows/lib",
-      "group": "release",
-      "core": true,
-      "kind": "dir",
-      "header": "release.js"
     },
     "container": {
       "target": "build/container.mk",
@@ -38,100 +21,111 @@
       "target": "build/man-deflist.lua",
       "group": "build"
     },
-    "ri-ci-lib": {
-      "target": ".github/workflows/ri-ci-lib.yml",
-      "group": "ci",
-      "core": true
-    },
     "ri-ci-claude-plugin": {
-      "target": ".github/workflows/ri-ci-claude-plugin.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-python": {
-      "target": ".github/workflows/ri-ci-python.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-go": {
-      "target": ".github/workflows/ri-ci-go.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-node-pnpm": {
-      "target": ".github/workflows/ri-ci-node-pnpm.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-node-bun": {
-      "target": ".github/workflows/ri-ci-node-bun.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-perl-autotools": {
-      "target": ".github/workflows/ri-ci-perl-autotools.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-perl-mkpl": {
-      "target": ".github/workflows/ri-ci-perl-mkpl.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-checkmk-plugin": {
-      "target": ".github/workflows/ri-ci-checkmk-plugin.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-rust": {
-      "target": ".github/workflows/ri-ci-rust.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-rust-musl": {
-      "target": ".github/workflows/ri-ci-rust-musl.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-man": {
-      "target": ".github/workflows/ri-ci-man.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-ci-github-action": {
-      "target": ".github/workflows/ri-ci-github-action.yml",
-      "group": "ci"
-    },
-    "ri-ci-repo-infra-selftest": {
-      "target": ".github/workflows/ri-ci-repo-infra-selftest.yml",
+      "kind": "remote",
       "group": "ci"
     },
     "ri-release-pr-current": {
-      "target": ".github/workflows/ri-release-pr-current.yml",
+      "kind": "remote",
       "group": "ci",
       "core": true
     },
+    "ri-release-verdict": {
+      "kind": "remote",
+      "group": "release",
+      "core": true
+    },
+    "ri-changelog": {
+      "kind": "remote",
+      "group": "release",
+      "core": true
+    },
+    "ri-release-prepare": {
+      "kind": "remote",
+      "group": "release",
+      "core": true
+    },
+    "ri-release-finish": {
+      "kind": "remote",
+      "group": "release",
+      "core": true
+    },
     "ri-publish-tag": {
-      "target": ".github/workflows/ri-publish-tag.yml",
+      "kind": "remote",
       "group": "publish",
       "core": true
     },
     "ri-publish-finalize": {
-      "target": ".github/workflows/ri-publish-finalize.yml",
+      "kind": "remote",
       "group": "publish",
       "core": true
     },
     "ri-release-source-tarball": {
-      "target": ".github/workflows/ri-release-source-tarball.yml",
+      "kind": "remote",
       "group": "release-build"
     },
     "ri-release-rust-binaries": {
-      "target": ".github/workflows/ri-release-rust-binaries.yml",
+      "kind": "remote",
       "group": "release-build"
     },
     "ri-release-nfpm": {
-      "target": ".github/workflows/ri-release-nfpm.yml",
+      "kind": "remote",
       "group": "release-build"
     },
     "ri-release-homebrew": {
-      "target": ".github/workflows/ri-release-homebrew.yml",
+      "kind": "remote",
       "group": "release-build"
     },
     "ri-publish-crates-io": {
-      "target": ".github/workflows/ri-publish-crates-io.yml",
+      "kind": "remote",
       "group": "publish"
     },
     "ri-publish-gitea": {
-      "target": ".github/workflows/ri-publish-gitea.yml",
+      "kind": "remote",
       "group": "publish"
     }
   },
@@ -148,7 +142,8 @@
     "oven-sh/setup-bun": "v2",
     "shogo82148/actions-setup-perl": "v1",
     "rust-lang/crates-io-auth-action": "v1",
-    "oposs/mkp-builder": "v2"
+    "oposs/mkp-builder": "v2",
+    "actions/create-github-app-token": "v3"
   },
   "gh": {
     "ruleset-main": {
