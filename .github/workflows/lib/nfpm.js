@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v9
+// repo-infra: workflow-lib v10
 'use strict';
 
 // ri-release-nfpm (D32): .deb and .rpm packages built by nfpm from the

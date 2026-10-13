@@ -3,6 +3,10 @@
 Upgrade notes, newest first. Each section says what a caller or
 .github/repo-infra.json must change to take that version.
 
+## v10
+
+No caller or config change. release.js gains verdictOutputs, which ri-release-verdict runs.
+
 ## v9
 
 No caller or config change. nfpm.js and homebrew.js carry the logic of ri-release-nfpm and ri-release-homebrew, which need this version; every file carries the new marker.

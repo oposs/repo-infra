@@ -589,20 +589,6 @@ publish:
 
 ## Release flow: called from changelog.yml, ci.yml and release-pr.yml
 
-### changelog v6
-
-Installed at `.github/workflows/changelog.yml`.
-
-**Purpose:** The changelog-updated required check (D2, D6).
-
-**Choose it when:** Always.
-
-**The repository supplies:** CHANGES.md with an Unreleased section; the no-changelog label.
-
-**Needs the pieces:** workflow-lib
-
-**Permissions it needs:** contents: read, pull-requests: read, statuses: read
-
 ### dependabot v2
 
 Installed at `.github/dependabot.yml`.
@@ -627,7 +613,60 @@ Installed at `.github/workflows/release-pr.yml`.
 
 **Permissions it needs:** actions: write, checks: write, contents: write, pull-requests: write, statuses: write
 
-### workflow-lib v9
+### ri-changelog
+
+Called as `oposs/repo-infra/.github/workflows/ri-changelog.yml@v2`.
+
+**Purpose:** Judge a pull request's CHANGES.md for the inline changelog-updated job (D2, D6, D33).
+
+**Choose it when:** Always; changelog.yml calls it and changelog-updated reads its result.
+
+**The repository supplies:** CHANGES.md with an Unreleased section; the no-changelog label.
+
+**Produces:** The output message; the job fails when the changelog is refused.
+
+**Outputs:** `message`
+
+**Permissions it needs:** contents: read, pull-requests: read, statuses: read
+
+```yaml
+changelog:
+  if: >-
+    startsWith(github.head_ref, 'release/') ||
+    !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+  uses: oposs/repo-infra/.github/workflows/ri-changelog.yml@v2
+  permissions:
+    contents: read
+    pull-requests: read
+    statuses: read
+```
+
+### ri-release-verdict
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-verdict.yml@v2`.
+
+**Purpose:** Judge a release pull request for the inline ci-passed job (D28, D33).
+
+**Choose it when:** Always; ci.yml calls it and ci-passed reads its outputs.
+
+**The repository supplies:** The ci-passed job of assets/callers/ci-passed.yml, which needs this job.
+
+**Produces:** The outputs mode (release or ordinary), ok (true or false) and message.
+
+**Outputs:** `mode`, `ok`, `message`
+
+**Permissions it needs:** contents: read, pull-requests: read, statuses: read
+
+```yaml
+release-verdict:
+  uses: oposs/repo-infra/.github/workflows/ri-release-verdict.yml@v2
+  permissions:
+    contents: read
+    pull-requests: read
+    statuses: read
+```
+
+### workflow-lib v10
 
 Installed at `.github/workflows/lib`.
 

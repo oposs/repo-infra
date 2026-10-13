@@ -1,4 +1,4 @@
-// repo-infra: workflow-lib v9
+// repo-infra: workflow-lib v10
 //
 // Purpose: The JavaScript the release flow, the publish pieces and the release build pieces run (D8, D32).
 // Choose: Always.
@@ -155,6 +155,20 @@ async function releaseModeVerdict(github, { owner, repo, pr }) {
   });
 }
 
+// D33: the outputs of ri-release-verdict, which the inline ci-passed reads.
+// Only a pull request from a release/* branch asks the API; every other event
+// is ordinary. An API error throws, which fails the verdict job, and ci-passed
+// fails when that job did not succeed.
+async function verdictOutputs(github, { eventName, owner, repo, pr }) {
+  const ordinary = { mode: 'ordinary', ok: 'true', message: '' };
+  if (eventName !== 'pull_request' || !pr || !pr.head.ref.startsWith('release/')) {
+    return ordinary;
+  }
+  const verdict = await releaseModeVerdict(github, { owner, repo, pr });
+  if (verdict === null) return ordinary;
+  return { mode: 'release', ok: verdict.ok ? 'true' : 'false', message: verdict.message };
+}
+
 // finish opens the pull request first and judges it afterwards, so a release
 // that went stale while it built is visible and says why.
 function finishVerdict({ behindBy, tag }) {
@@ -274,5 +288,5 @@ module.exports = {
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
   staleReleasePr, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
-  fetchParkedRuns,
+  fetchParkedRuns, verdictOutputs,
 };

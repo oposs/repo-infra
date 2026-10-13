@@ -127,8 +127,24 @@ def call_problems(job_id, job, docs):
     return found
 
 
-def _without_needs(job):
-    return {key: value for key, value in job.items() if key != "needs"}
+VERDICT = "ri-release-verdict"
+_HOME_CALL = re.compile(r"^oposs/repo-infra/\.github/workflows/([^@]+)@(.*)$")
+
+
+def normal_uses(uses):
+    """The file of a call to a repo-infra piece in either form, so a pattern
+    written for consumers (@v2) matches repo-infra's own ./ callers (D33)."""
+    if not isinstance(uses, str):
+        return uses
+    match = _HOME_CALL.match(uses)
+    if match:
+        return match[1]
+    return local_target(uses) or uses
+
+
+def _normal_job(job):
+    return {key: (normal_uses(value) if key == "uses" else value)
+            for key, value in job.items() if key != "needs"}
 
 
 def closing_problems(docs, assets=ASSETS):
@@ -152,10 +168,47 @@ def closing_problems(docs, assets=ASSETS):
         if job.get("if") != "always()":
             found.append((name, "ci-passed lacks `if: always()`: a failed job would skip it, "
                                 "and a skipped required check counts as passed"))
-        elif _without_needs(job) != _without_needs(pattern["ci-passed"]):
+        elif _normal_job(job) != _normal_job(pattern["ci-passed"]):
             found.append((name, "ci-passed differs from the pattern (assets/callers/"
                                 "ci-passed.yml in the repo-infra skill); copy it word for "
                                 "word and keep only your needs: list"))
+        verdicts = [other for other in all_jobs.values()
+                    if normal_uses(other.get("uses")) == f"{VERDICT}.yml"]
+        if not verdicts:
+            found.append((name, f"ci.yml calls no {VERDICT}; ci-passed has no release verdict "
+                                "to read. Copy release-verdict from assets/callers/"
+                                "ci-passed.yml in the repo-infra skill"))
+        elif any(_normal_job(other) != _normal_job(pattern["release-verdict"])
+                 for other in verdicts):
+            found.append((name, "release-verdict differs from the pattern (assets/callers/"
+                                "ci-passed.yml in the repo-infra skill); copy it word for "
+                                "word"))
+    return found
+
+
+def changelog_problems(docs, assets=ASSETS):
+    """D33: changelog.yml is the pattern, word for word, apart from the form
+    of the `uses:` line."""
+    doc = docs.get("changelog.yml")
+    if not isinstance(doc, dict):
+        return []
+    pattern = workflow.load(
+        (pathlib.Path(assets) / "callers/changelog.yml").read_text(encoding="utf-8"))
+    mine, wanted = jobs(doc), jobs(pattern)
+    found = []
+    for job_id, job in wanted.items():
+        if job_id not in mine:
+            found.append(("changelog.yml", f"has no {job_id} job; copy "
+                                           "assets/callers/changelog.yml in the repo-infra "
+                                           "skill word for word"))
+        elif {**_normal_job(mine[job_id]), "needs": needs(mine[job_id])} != {
+                **_normal_job(job), "needs": needs(job)}:
+            found.append(("changelog.yml", f"{job_id} differs from the pattern "
+                                           "(assets/callers/changelog.yml in the repo-infra "
+                                           "skill); copy it word for word"))
+    if doc.get("on") != pattern.get("on"):
+        found.append(("changelog.yml", "its triggers differ from the pattern; the required "
+                                       "check would not report on every pull request"))
     return found
 
 
@@ -267,7 +320,9 @@ def release_skip_problems(docs, assets=ASSETS):
     the release pull request Create release PR opened. That run parks as
     action_required; approving it built and tested everything a second time
     (oetiker/mdmost run 37503956034), on a commit Create release PR had
-    tested and whose results ci-passed ignores in release mode."""
+    tested and whose results ci-passed ignores in release mode. D33 exempts
+    the job that calls ri-release-verdict: on that run it is what ci-passed
+    decides on."""
     doc = docs.get("ci.yml")
     if not isinstance(doc, dict):
         return []
@@ -281,7 +336,8 @@ def release_skip_problems(docs, assets=ASSETS):
                        "run on a release pull request would build and test everything a "
                        "second time (D31). Add it, or join it to the job's own `if:` with &&")
             for job_id, job in jobs(doc).items()
-            if job_id != "ci-passed" and wanted not in conjuncts(job.get("if", ""))]
+            if job_id != "ci-passed" and normal_uses(job.get("uses")) != f"{VERDICT}.yml"
+            and wanted not in conjuncts(job.get("if", ""))]
 
 
 def _names(value):
@@ -596,6 +652,10 @@ def validate(docs, pieces, assets=ASSETS):
     for name, doc in docs.items():
         for job_id, job in jobs(doc).items():
             uses = job.get("uses")
+            if isinstance(uses, str) and _HOME_CALL.match(uses):
+                # A call to a repo-infra piece (D33). Task 9 of the D33 plan
+                # reviews it: the file must be a piece and the ref exactly v2.
+                continue
             if isinstance(uses, str) and _REMOTE.match(uses):
                 items.append(Item("callers", name, "problem",
                                   f"job {job_id} calls {uses}, a workflow in another "
@@ -618,7 +678,8 @@ def validate(docs, pieces, assets=ASSETS):
               for file in sorted(byte_files)
               if file in docs and file not in framed and _callable(pieces, file)
               and not calls(docs, file) and file not in called_by_text]
-    found = (closing_problems(docs, assets) + release_skip_problems(docs, assets)
+    found = (closing_problems(docs, assets) + changelog_problems(docs, assets)
+             + release_skip_problems(docs, assets)
              + finalize_problems(docs, pieces)
              + frame_problems(docs, pieces)
              + ref_contract_problems(docs, piece_files)

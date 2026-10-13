@@ -13,19 +13,10 @@ ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets
 RELEASE_PR_SKIP = (ASSETS / "callers/release-pr-skip.yml").read_text(encoding="utf-8")
 SKIP_IF = next(line for line in RELEASE_PR_SKIP.splitlines() if line.startswith("if: "))
 
-CI_PASSED = """jobs:
-  ci-passed:
-    if: always()
-    needs: []
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
-      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: exit 1
-"""
+# The shipped release-verdict and ci-passed jobs (D33), copied into every
+# test store; a fixture's ci.yml carries them with its own needs: list.
+CI_PASSED = (ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8")
+CHANGELOG = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
 
 
 def digest(text):
@@ -134,6 +125,7 @@ def make_assets(root, current, history=(), core=(), remote=None):
     (root / "generations.json").write_text(json.dumps(record), encoding="utf-8")
     (root / "callers").mkdir()
     (root / "callers/ci-passed.yml").write_text(CI_PASSED, encoding="utf-8")
+    (root / "callers/changelog.yml").write_text(CHANGELOG, encoding="utf-8")
     (root / "callers/release-pr-skip.yml").write_text(RELEASE_PR_SKIP, encoding="utf-8")
     return root
 

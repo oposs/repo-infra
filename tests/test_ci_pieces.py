@@ -39,10 +39,10 @@ def test_no_ci_piece_filters_on_paths(name):
     assert check.path_filter_items({"ci.yml": doc}) == []
 
 
-def test_the_changelog_piece_filters_on_no_paths():
+def test_the_changelog_caller_filters_on_no_paths():
     # `changelog-updated` must report on every pull request, or the required
     # check never reports for the ones a filter skips (D13).
-    text = (ASSETS / "pieces/changelog/changelog.yml").read_text(encoding="utf-8")
+    text = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
     assert check.path_filter_items({"changelog.yml": workflow.load(text)}) == []
 
 

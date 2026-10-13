@@ -9,6 +9,7 @@ from piecekit import CI_PASSED, SKIP_IF, install, make_assets, workflow_piece
 from repo_infra import callers, workflow
 from repo_infra.pieces import load_pieces
 
+ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
 PIECE_INPUTS = ("      target:\n        description: The make target.\n"
                 "        type: string\n        required: true\n")
 
@@ -53,7 +54,14 @@ jobs:
     uses: ./.github/workflows/ri-a.yml
     with:
       ref: ${{ inputs.ref }}
-""" + CI_PASSED.replace("jobs:\n", "").replace("needs: []", "needs: [a]")
+""" + CI_PASSED.split("\njobs:\n", 1)[1].replace("needs: [release-verdict]",
+                                                 "needs: [a, release-verdict]")
+# The release-verdict job of the shipped pattern, as CI carries it (D33).
+VERDICT_JOB = ("  release-verdict:\n    uses: oposs/repo-infra/.github/workflows/"
+               "ri-release-verdict.yml@v2\n    permissions:\n      contents: read\n"
+               "      pull-requests: read\n      statuses: read\n")
+# Where job a ends and the shipped jobs begin.
+A_END = "ref: ${{ inputs.ref }}\n  # D28"
 
 BUILD = """name: Release build
 on:
@@ -155,8 +163,22 @@ def test_a_required_secret_needs_passing_or_inherit(tmp_path, store):
 
 def test_a_remote_reusable_workflow_is_a_problem(tmp_path, store):
     found = problems(tmp_path, store, ci=CI.replace(
-        "./.github/workflows/ri-a.yml", "oposs/repo-infra/.github/workflows/ri-a.yml@v1"))
+        "./.github/workflows/ri-a.yml", "other/repo/.github/workflows/ri-a.yml@v1"))
     assert any("another repository" in d for _, _, d in found)
+
+
+def test_a_call_to_a_repo_infra_piece_is_not_a_workflow_in_another_repository(tmp_path, store):
+    # D33: the consumer calls repo-infra's pieces; CI's release-verdict does.
+    assert VERDICT_JOB in CI
+    assert not any("another repository" in d for _, _, d in problems(tmp_path, store))
+
+
+def test_a_repo_infra_call_at_another_ref_is_not_reviewed_yet(tmp_path, store):
+    # Interim skip until Task 9 of D33, which makes this call a problem (the
+    # ref must be exactly v2); that task flips this test.
+    ci = CI.replace("ri-release-verdict.yml@v2", "ri-release-verdict.yml@main")
+    assert ci != CI
+    assert problems(tmp_path, store, ci=ci) == []
 
 
 FLOW = "jobs:\n  x:\n    with: {ref: y}\n"
@@ -200,7 +222,8 @@ def test_an_unreadable_file_carrying_a_piece_marker_is_a_problem(tmp_path, store
 
 
 def test_ci_passed_must_need_every_other_job(tmp_path, store):
-    found = problems(tmp_path, store, ci=CI.replace("needs: [a]", "needs: []"))
+    found = problems(tmp_path, store, ci=CI.replace("needs: [a, release-verdict]",
+                                                    "needs: [release-verdict]"))
     assert ("ci.yml", "problem",
             "ci-passed does not need a; it would report green while that job fails") in found
 
@@ -211,9 +234,42 @@ def test_ci_passed_must_run_always(tmp_path, store):
 
 
 def test_ci_passed_must_follow_the_pattern(tmp_path, store):
-    found = problems(tmp_path, store, ci=CI.replace("timeout-minutes: 5\n    steps:\n      - uses",
-                                                    "timeout-minutes: 9\n    steps:\n      - uses"))
-    assert any("differs from the pattern" in d for _, _, d in found)
+    ci = CI.replace('if [ "$FAILED" = true ]', 'if [ "$FAILED" = maybe ]')
+    assert ci != CI
+    found = problems(tmp_path, store, ci=ci)
+    assert any("ci-passed differs from the pattern" in d for _, _, d in found)
+
+
+def test_a_ci_yml_without_the_verdict_job_is_a_problem(tmp_path, store):
+    ci = CI.replace(VERDICT_JOB, "").replace(", release-verdict]", "]")
+    assert ("ci.yml", "problem", "ci.yml calls no ri-release-verdict; ci-passed has no "
+            "release verdict to read. Copy release-verdict from assets/callers/ci-passed.yml "
+            "in the repo-infra skill") in problems(tmp_path, store, ci=ci)
+
+
+def test_a_verdict_job_that_differs_from_the_pattern_is_a_problem(tmp_path, store):
+    ci = CI.replace(VERDICT_JOB, VERDICT_JOB.replace("      statuses: read\n", ""))
+    assert ("ci.yml", "problem", "release-verdict differs from the pattern (assets/callers/"
+            "ci-passed.yml in the repo-infra skill); copy it word for word"
+            ) in problems(tmp_path, store, ci=ci)
+
+
+def test_the_verdict_job_needs_no_skip():
+    doc = workflow.load("jobs:\n" + VERDICT_JOB)
+    assert callers.release_skip_problems({"ci.yml": doc}) == []
+
+
+def test_a_changelog_yml_with_a_dropped_not_cancelled_is_a_problem(tmp_path):
+    pattern = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
+    broken = pattern.replace("!cancelled() && (", "(")
+    docs = {"changelog.yml": workflow.load(broken)}
+    assert callers.changelog_problems(docs) == [(
+        "changelog.yml", "changelog-updated differs from the pattern "
+        "(assets/callers/changelog.yml in the repo-infra skill); copy it word for word")]
+
+
+def test_this_repositorys_changelog_yml_matches_the_pattern():
+    assert callers.changelog_problems({"changelog.yml": workflow.load(own("changelog.yml"))}) == []
 
 
 def test_finalize_must_need_every_other_job(tmp_path, store):
@@ -263,10 +319,9 @@ jobs:
     assert problems(tmp_path / "2", store, ci=ci, ci_local=clean) == []
 
 
-def test_ci_passed_may_check_out_the_base_commit():
-    pattern = workflow.load(CI_PASSED)
-    assert callers.ref_problems(pattern, True) != []
-    assert callers.ref_problems(pattern, True, skip=("ci-passed",)) == []
+def test_the_ci_passed_pattern_checks_out_nothing():
+    # D33: release mode moved to ri-release-verdict, with the library checkout.
+    assert callers.ref_problems(workflow.load(CI_PASSED), True) == []
 
 
 def test_a_called_piece_without_workflow_call_is_a_problem(tmp_path, store):
@@ -292,15 +347,11 @@ def test_the_shipped_ci_passed_pattern_is_accepted_in_a_ci_yml():
     text = (callers.ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8")
     ci = workflow.load(
         "jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n"
-        + text.split("jobs:\n", 1)[1].replace("needs: []", "needs: [a]"))
+        + text.split("\njobs:\n", 1)[1].replace("needs: [release-verdict]",
+                                                "needs: [a, release-verdict]"))
     assert callers.closing_problems({"ci.yml": ci}) == []
-    # The release-mode steps load the library of the base commit: the pattern
-    # keeps that checkout, which the ref contract exempts for ci-passed alone.
-    checkout = callers.jobs(ci)["ci-passed"]["steps"][0]
-    assert checkout["with"]["ref"] == "${{ github.event.pull_request.base.sha }}"
-    assert checkout["with"]["path"] == "repo-infra-base"
-    assert callers.ref_problems(ci, True) != []
-    assert callers.ref_problems(ci, True, skip=("ci-passed",)) == []
+    assert callers.release_skip_problems({"ci.yml": ci}) == [
+        ("ci.yml", NO_SKIP.format("a"))]
 
 
 # The ref contract of a project workflow (D28), ported from the retired seam
@@ -457,14 +508,14 @@ def test_a_piece_call_without_with_is_a_problem(tmp_path, store):
 
 @pytest.mark.parametrize("value", ["${{ github.sha }}", "main", "${{ inputs.ref || 'x' }}"])
 def test_a_call_passing_another_ref_is_a_problem(tmp_path, store, value):
-    ci = CI.replace("ref: ${{ inputs.ref }}\n  ci-passed", f"ref: {value}\n  ci-passed")
+    ci = CI.replace(A_END, A_END.replace("${{ inputs.ref }}", value))
     assert ci != CI
     assert len(ref_problems_found(tmp_path, store, ci)) == 1
 
 
 @pytest.mark.parametrize("value", ["${{ inputs.ref }}", "${{inputs.ref}}", "'${{ inputs.ref }}'"])
 def test_a_correct_ref_call_is_clean(tmp_path, store, value):
-    ci = CI.replace("ref: ${{ inputs.ref }}\n  ci-passed", f"ref: {value}\n  ci-passed")
+    ci = CI.replace(A_END, A_END.replace("${{ inputs.ref }}", value))
     assert ref_problems_found(tmp_path, store, ci) == []
 
 
@@ -644,7 +695,7 @@ def test_ci_without_release_pr_current_is_a_problem(tmp_path):
            "    permissions:\n      contents: read\n      pull-requests: read\n"
            "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
     assert job in own("ci.yml")
-    text = own("ci.yml").replace(job, "").replace(", release-pr-current]", "]")
+    text = own("ci.yml").replace(job, "").replace(", release-pr-current, ", ", ")
     assert problems_of(tmp_path, "ci.yml", text) == [
         "ci.yml calls no ri-release-pr-current.yml; an open release pull request is not "
         "marked stale when main moves (D28). Add its Call: from the catalogue"]
@@ -882,7 +933,7 @@ def test_ci_without_release_pr_current_is_one_item(tmp_path):
     job = ("  release-pr-current:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-release-pr-current.yml\n"
            "    permissions:\n      contents: read\n      pull-requests: read\n"
            "      checks: write\n    with:\n      ref: ${{ inputs.ref }}\n\n")
-    text = own("ci.yml").replace(job, "").replace(", release-pr-current]", "]")
+    text = own("ci.yml").replace(job, "").replace(", release-pr-current, ", ", ")
     assert own_validated(tmp_path, text) == [(
         "ci.yml", "ci.yml calls no ri-release-pr-current.yml; an open release pull request "
         "is not marked stale when main moves (D28). Add its Call: from the catalogue")]
@@ -938,8 +989,7 @@ def test_a_looser_skip_is_a_problem(dropped):
 
 
 def test_ci_passed_needs_no_skip():
-    ci = workflow.load(CI_PASSED.replace("needs: []", "needs: [a]"))
-    assert callers.release_skip_problems({"ci.yml": ci}) == []
+    assert callers.release_skip_problems({"ci.yml": workflow.load(CI_PASSED)}) == []
 
 
 def test_jobs_of_other_files_are_not_checked():
@@ -947,14 +997,18 @@ def test_jobs_of_other_files_are_not_checked():
     assert skip_problems(None, name="ci-local.yml") == []
 
 
-def test_this_repositorys_ci_yml_skips_on_every_job_but_ci_passed():
+def test_this_repositorys_ci_yml_skips_on_every_job_but_the_closing_two():
     doc = workflow.load(own("ci.yml"))
     guarded = {job_id for job_id, job in callers.jobs(doc).items()
                if callers._unwrapped(SKIP) in callers.conjuncts(job.get("if", ""))}
-    assert guarded == set(callers.jobs(doc)) - {"ci-passed"}
+    assert guarded == set(callers.jobs(doc)) - {"ci-passed", "release-verdict"}
 
 
-@pytest.mark.parametrize("name", ["ci.yml", "release-build.yml", "release-publish.yml"])
+@pytest.mark.parametrize("name", [
+    pytest.param("ci.yml", marks=pytest.mark.xfail(
+        strict=True, reason="the mtuspy example stays on v1 and has no release-verdict job; "
+                            "Task 9/11 of D33 move it to v2")),
+    "release-build.yml", "release-publish.yml"])
 def test_the_mtuspy_example_callers_have_no_problem(tmp_path, name):
     # mtuspy calls pieces repo-infra does not install, so its callers are read
     # beside the shipped workflow pieces instead of this repository's own.

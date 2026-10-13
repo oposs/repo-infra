@@ -1,6 +1,6 @@
-# The `if:` of every job of ci.yml except ci-passed (D31). Copy it onto each
-# such job word for word; a stricter guard joined with `&&` is fine. check
-# compares each job's `if:` with this text.
+# The `if:` of the jobs of ci.yml (D31). Copy it onto every job of ci.yml
+# except ci-passed and release-verdict, word for word; a stricter guard joined
+# with `&&` is fine. check compares each job's `if:` with this text.
 #
 # It is false on exactly one run: the pull_request run of the release pull
 # request that Create release PR opened. Create release PR has already run

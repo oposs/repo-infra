@@ -110,7 +110,6 @@ def test_a_release_maps_old_asset_paths_to_the_piece_paths():
     if "v0.2.0" not in _tags():
         pytest.skip("this checkout lacks the v0.2.0 tag")
     found = generations.released("v0.2.0")
-    assert found["pieces/changelog/changelog.yml"][0] == 2
     assert found["pieces/release-pr/release-pr.yml"][0] == 3
     assert found["pieces/container/container.mk"][0] == 1
     assert found["pieces/workflow-lib/lib/bump.js"][0] == 4
@@ -203,7 +202,7 @@ def test_v0_1_0_counts_with_the_piece_files_it_carried_as_its_own():
     if "v0.1.0" not in _tags():
         pytest.skip("this checkout lacks the v0.1.0 tag")
     found = generations.released("v0.1.0")
+    # changelog left the store (D33): its v1 is no piece's any more.
     assert {path: version for path, (version, _) in found.items()} == {
-        "pieces/changelog/changelog.yml": 1,
         "pieces/dependabot/dependabot.yml": 1,
         "pieces/release-pr/release-pr.yml": 1}

@@ -1,9 +1,10 @@
-// repo-infra: workflow-lib v9
+// repo-infra: workflow-lib v10
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const r = require('./release.js');
+const { verdictOutputs, BOT } = r;
 
 const REPO = 'oetiker/mdmost';
 const pr = (ref, { repo = REPO, login = r.BOT } = {}) => ({
@@ -350,4 +351,37 @@ test('fetchParkedRuns does not write the job count into the listed runs', async 
   const runs = [run(1, 'release/v1.2.0', { conclusion: 'failure' })];
   await r.fetchParkedRuns(runsGithub(runs), { owner: 'oetiker', repo: 'mdmost' });
   assert.equal('jobCount' in runs[0], false);
+});
+
+test('verdictOutputs: ordinary on every event but a pull request from release/*', async () => {
+  const never = { paginate: async () => { throw new Error('no API call expected'); } };
+  for (const eventName of ['push', 'workflow_dispatch', 'workflow_call']) {
+    assert.deepEqual(await verdictOutputs(never, { eventName, owner: 'o', repo: 'r', pr: null }),
+      { mode: 'ordinary', ok: 'true', message: '' });
+  }
+  const pr = { head: { ref: 'fix/x', sha: 'h', repo: { full_name: 'o/r' } },
+    user: { login: BOT }, base: { ref: 'main' } };
+  assert.deepEqual(await verdictOutputs(never, { eventName: 'pull_request', owner: 'o', repo: 'r', pr }),
+    { mode: 'ordinary', ok: 'true', message: '' });
+});
+
+test('verdictOutputs: a release pull request reports its verdict without throwing', async () => {
+  const pr = { number: 7, head: { ref: 'release/v1.2.0', sha: 'h', repo: { full_name: 'o/r' } },
+    user: { login: BOT }, base: { ref: 'main' } };
+  const github = {
+    paginate: async () => [{ context: 'release-built', state: 'success', creator: { login: BOT } }],
+    rest: { repos: { listCommitStatusesForRef: 'statuses',
+      compareCommitsWithBasehead: async () => ({ data: { behind_by: 2 } }) } },
+  };
+  const out = await verdictOutputs(github, { eventName: 'pull_request', owner: 'o', repo: 'r', pr });
+  assert.equal(out.mode, 'release');
+  assert.equal(out.ok, 'false');
+  assert.match(out.message, /^main moved after v1\.2\.0 was built/);
+});
+
+test('verdictOutputs: someone else\'s release/x is ordinary', async () => {
+  const pr = { head: { ref: 'release/x', sha: 'h', repo: { full_name: 'fork/r' } },
+    user: { login: 'someone' }, base: { ref: 'main' } };
+  const out = await verdictOutputs({}, { eventName: 'pull_request', owner: 'o', repo: 'r', pr });
+  assert.deepEqual(out, { mode: 'ordinary', ok: 'true', message: '' });
 });
