@@ -133,3 +133,25 @@ def test_finish_downloads_both_artifact_kinds():
 def test_the_rust_lockfile_note_survives():
     assert "a Rust repository lists Cargo.lock in version_files" in PREPARE.read_text(
         encoding="utf-8")
+
+
+OWN = ROOT / ".github/workflows/release-pr.yml"
+
+
+def test_repo_infra_gates_its_release_on_mtuspy():
+    jobs = load(OWN)["jobs"]
+    assert list(jobs) == ["prepare", "build", "test", "gate", "finish"]
+    assert jobs["gate"]["needs"] == "prepare"
+    assert jobs["gate"]["permissions"] == {"contents": "read", "actions": "write"}
+    assert jobs["finish"]["needs"] == ["prepare", "build", "test", "gate"]
+    script = jobs["gate"]["steps"][-1]["with"]["script"]
+    assert "workflow: 'gate-mtuspy.yml'" in script and "process.env.BRANCH" in script
+
+
+def test_no_other_job_of_the_release_flow_may_write_actions():
+    caller_jobs = caller()["jobs"]
+    assert all(job["permissions"].get("actions") != "write"
+               for job_id, job in caller_jobs.items() if job_id != "prepare")
+    own_jobs = load(OWN)["jobs"]
+    assert all(job["permissions"].get("actions") != "write"
+               for job_id, job in own_jobs.items() if job_id not in ("prepare", "gate"))
