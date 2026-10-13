@@ -79,14 +79,18 @@ def _version(text):
     return parse_markers(text)[0].version
 
 
-def make_assets(root, current, history=(), core=()):
-    """A piece store under `root`.
+def make_assets(root, current, history=(), core=(), remote=None):
+    """A fake plugin under `root`: the store at skills/repo-infra/assets, which
+    is returned, and the remote pieces in `remote` ({name: text}) at
+    .github/workflows/<name>.yml, where load_pieces looks for them (D33).
 
     `current` maps a piece name to its text (a file piece, installed at
     .github/workflows/<name>.yml) or to {file name: text} (a directory piece,
     installed at .github/workflows/<name>/). `history` lists
     (name, file name or None, text) published before the current ones."""
-    root = pathlib.Path(root)
+    plugin = pathlib.Path(root)
+    root = plugin / "skills/repo-infra/assets"
+    root.mkdir(parents=True)
     manifest = {"pieces": {}, "actions": {"actions/checkout": "v7"}, "gh": {}}
     record = {}
     versions = {}
@@ -120,6 +124,12 @@ def make_assets(root, current, history=(), core=()):
                            for v in sorted(found, reverse=True))
         (root / "pieces" / name / "CHANGES.md").write_text(f"# {name}\n\n{sections}",
                                                             encoding="utf-8")
+    for name, text in (remote or {}).items():
+        install(plugin, f".github/workflows/{name}.yml", text)
+        spec = {"kind": "remote", "group": "ci"}
+        if name in core:
+            spec["core"] = True
+        manifest["pieces"][name] = spec
     (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (root / "generations.json").write_text(json.dumps(record), encoding="utf-8")
     (root / "callers").mkdir()

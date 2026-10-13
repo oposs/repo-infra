@@ -10,8 +10,7 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PIECE = (ROOT / "skills/repo-infra/assets/pieces/ri-release-rust-binaries/"
-         "ri-release-rust-binaries.yml")
+PIECE = ROOT / ".github/workflows/ri-release-rust-binaries.yml"
 SHAPE = ROOT / "skills/repo-infra/references/project-shape.md"
 TARGETS = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-apple-darwin",
            "aarch64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc",

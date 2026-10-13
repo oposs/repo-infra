@@ -24,7 +24,7 @@ def merged_pr(sha=MERGE, ref="release/v1.2.0", login="github-actions[bot]"):
 
 
 def piece(name):
-    path = ASSETS / "pieces" / name / (name + ".yml")
+    path = ASSETS.parents[2] / ".github/workflows" / (name + ".yml")
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 

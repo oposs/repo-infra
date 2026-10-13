@@ -1,11 +1,11 @@
-# repo-infra: ri-ci-repo-infra-selftest v1
+# repo-infra: ri-ci-repo-infra-selftest v2
 #
 # Purpose: Run the container and pandoc tests of the pytest suite.
 # Choose: Only in repo-infra itself.
 # Supplies: The pytest suite with the container and pandoc markers.
 # Call:
 #   selftest:
-#     uses: ./.github/workflows/ri-ci-repo-infra-selftest.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-ci-repo-infra-selftest.yml@v2
 #     with:
 #       ref: ${{ inputs.ref }}
 

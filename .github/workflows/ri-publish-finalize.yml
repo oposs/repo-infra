@@ -1,4 +1,4 @@
-# repo-infra: ri-publish-finalize v1
+# repo-infra: ri-publish-finalize v2
 #
 # Purpose: Check the release carries every file, then publish it.
 # Choose: Always; release-publish.yml calls it last.
@@ -8,7 +8,7 @@
 #   finalize:
 #     needs: [publish]
 #     if: needs.publish.outputs.release_id != ''
-#     uses: ./.github/workflows/ri-publish-finalize.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-publish-finalize.yml@v2
 #     permissions:
 #       contents: write
 #       actions: write

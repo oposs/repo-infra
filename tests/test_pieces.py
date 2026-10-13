@@ -35,12 +35,21 @@ def test_a_piece_names_a_known_group_and_existing_pieces(piece):
     assert [n for n in piece.needs if n not in PIECES] == []
 
 
-@pytest.mark.parametrize("piece", ALL, ids=ids)
+BYTE = [p for p in ALL if not p.remote]
+REMOTE = [p for p in ALL if p.remote]
+
+
+@pytest.mark.parametrize("piece", BYTE, ids=ids)
 def test_changes_has_a_section_for_the_current_version(piece):
     text = (ASSETS / "pieces" / piece.name / "CHANGES.md").read_text(encoding="utf-8")
     versions = [int(v) for v in re.findall(r"^## v(\d+)\s*$", text, re.MULTILINE)]
     assert piece.version in versions
     assert max(versions) == piece.version
+
+
+@pytest.mark.parametrize("piece", REMOTE, ids=ids)
+def test_a_remote_piece_has_no_copy_and_no_upgrade_notes(piece):
+    assert not (ASSETS / "pieces" / piece.name).exists()
 
 
 @pytest.mark.parametrize("piece", CALLED, ids=ids)
@@ -78,9 +87,16 @@ def test_the_call_snippet_calls_this_piece_correctly(piece):
     snippet = workflow.load(piece.header["Call"])
     assert len(snippet) == 1, "Call: holds exactly one job"
     (job_id, job), = snippet.items()
+    assert job["uses"] == piece.uses
     file = pathlib.PurePosixPath(piece.target).name
-    assert job["uses"] == f"./.github/workflows/{file}"
-    assert callers.call_problems(job_id, job, {file: doc_of(piece)}) == []
+    local = dict(job, uses=f"./.github/workflows/{file}")
+    assert callers.call_problems(job_id, local, {file: doc_of(piece)}) == []
+
+
+def test_every_ri_workflow_of_repo_infra_is_a_piece_or_home_only():
+    root = ASSETS.parents[2]
+    files = {p.name for p in (root / ".github/workflows").glob("ri-*.yml")}
+    assert files == {f"{p.name}.yml" for p in REMOTE} | {"ri-ci-lib.yml"}
 
 
 @pytest.mark.parametrize("piece", [p for p in CALLED

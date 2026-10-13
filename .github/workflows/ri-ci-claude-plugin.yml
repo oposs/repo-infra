@@ -1,11 +1,11 @@
-# repo-infra: ri-ci-claude-plugin v1
+# repo-infra: ri-ci-claude-plugin v2
 #
 # Purpose: Check that .claude-plugin/plugin.json is valid.
 # Choose: The repository has .claude-plugin/plugin.json.
 # Supplies: .claude-plugin/plugin.json.
 # Call:
 #   plugin:
-#     uses: ./.github/workflows/ri-ci-claude-plugin.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-ci-claude-plugin.yml@v2
 #     with:
 #       ref: ${{ inputs.ref }}
 

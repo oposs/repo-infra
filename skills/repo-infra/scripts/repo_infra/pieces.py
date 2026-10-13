@@ -18,6 +18,18 @@ from .markers import parse_markers
 
 ASSETS = pathlib.Path(__file__).resolve().parents[2] / "assets"
 
+# D33: consumers call the pieces of this repository remotely, at the moving
+# major tag. The pieces lie in .github/workflows/ of the plugin root, the
+# only directory GitHub runs a reusable workflow from.
+HOME_REPO = "oposs/repo-infra"
+MAJOR = "v2"
+
+
+def plugin_root(assets):
+    """The repository root of the plugin: assets is skills/repo-infra/assets."""
+    return pathlib.Path(assets).resolve().parents[2]
+
+
 COMMENT = {".yml": "#", ".yaml": "#", ".mk": "#", ".js": "//", ".m4": "dnl", ".lua": "--"}
 FIELDS = ("Purpose", "Choose", "Supplies", "Pieces", "Produces", "Call")
 REQUIRED = ("Purpose", "Choose", "Supplies")
@@ -41,8 +53,18 @@ class Piece:
     header: dict
 
     @property
+    def remote(self):
+        return self.kind == "remote"
+
+    @property
     def workflow(self):
-        return self.kind == "file" and self.target.startswith(".github/workflows/")
+        return self.remote or (self.kind == "file"
+                               and self.target.startswith(".github/workflows/"))
+
+    @property
+    def uses(self):
+        """How a consumer calls a remote piece (D33)."""
+        return f"{HOME_REPO}/{self.target}@{MAJOR}"
 
     @property
     def needs(self):
@@ -106,11 +128,44 @@ def _source(name, spec):
     return f"pieces/{name}/{pathlib.PurePosixPath(spec['target']).name}"
 
 
+def _remote_target(name):
+    return f".github/workflows/{name}.yml"
+
+
+def source_path(name, spec, assets):
+    """Where the store keeps the piece: under assets, or for a remote piece
+    in .github/workflows/ of the plugin root."""
+    if spec.get("kind") == "remote":
+        return plugin_root(assets) / _remote_target(name)
+    return pathlib.Path(assets) / _source(name, spec)
+
+
 def load_pieces(assets=ASSETS):
     assets = pathlib.Path(assets)
     found = {}
     for name, spec in _manifest(assets).get("pieces", {}).items():
         kind = spec.get("kind", "file")
+        if kind == "remote":
+            target = _remote_target(name)
+            source = source_path(name, spec, assets)
+            if not source.is_file():
+                raise PieceError(f"{name}: {target} is missing from the plugin")
+            text = source.read_text(encoding="utf-8")
+            markers = parse_markers(text)
+            if not markers or markers[0].asset != name:
+                raise PieceError(f"{target}: the first marker must be `repo-infra: {name} "
+                                 f"{MAJOR}`")
+            if f"v{markers[0].version}" != MAJOR:
+                raise PieceError(f"{target}: a remote piece is {MAJOR}, the major tag "
+                                 f"consumers call; it says v{markers[0].version}")
+            try:
+                header = parse_header(text, "#")
+            except PieceError as error:
+                raise PieceError(f"{target}: {error}") from error
+            found[name] = Piece(name, markers[0].version, target, kind,
+                                spec.get("group", ""), bool(spec.get("core")),
+                                {target: text}, header)
+            continue
         for key in ("target", "header") if kind == "dir" else ("target",):
             if key not in spec:
                 raise PieceError(f"{name}: the manifest entry lacks {key}")
@@ -152,6 +207,9 @@ def load_published(assets=ASSETS):
     record = json.loads((assets / "generations.json").read_text(encoding="utf-8"))
     published = {}
     for name, spec in _manifest(assets).get("pieces", {}).items():
+        if spec.get("kind") == "remote":
+            published[name] = {}
+            continue
         source = _source(name, spec)
         entry = published.setdefault(name, {})
         for path, versions in record.items():

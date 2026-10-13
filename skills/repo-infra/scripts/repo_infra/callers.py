@@ -581,12 +581,21 @@ def _core(pieces, file):
 def validate(docs, pieces, assets=ASSETS):
     piece_files = {pathlib.PurePosixPath(p.target).name
                    for p in pieces.values() if p.workflow}
+    # A remote piece is called, never installed (D33): no copy to report.
+    byte_files = {pathlib.PurePosixPath(p.target).name
+                  for p in pieces.values() if p.workflow and not p.remote}
+    # In repo-infra the remote pieces lie among the workflows. They are what
+    # callers call, not callers: a `./` inside one resolves in the called
+    # repository (Task 1 probe), so its jobs are not reviewed as a caller's.
+    remote_files = piece_files - byte_files
     concerns = unreadable_concerns(docs, pieces)
     items = [Item("callers", name, "problem", f"cannot be read: {doc}")
              for name, doc in docs.items() if name in concerns]
     items += [Item("callers", name, "missing", f"not there; {why}")
               for name, why in CORE_CALLERS.items() if name not in docs]
     for name, doc in docs.items():
+        if name in remote_files:
+            continue
         for job_id, job in jobs(doc).items():
             uses = job.get("uses")
             if isinstance(uses, str) and _REMOTE.match(uses):
@@ -608,7 +617,7 @@ def validate(docs, pieces, assets=ASSETS):
                    # A removed core piece reads missing and bare apply reinstalls it.
                    + ("; it is a core piece, so do not remove it" if _core(pieces, file)
                       else ", or remove the file"))
-              for file in sorted(piece_files)
+              for file in sorted(byte_files)
               if file in docs and file not in framed and _callable(pieces, file)
               and not calls(docs, file) and file not in called_by_text]
     found = (closing_problems(docs, assets) + release_skip_problems(docs, assets)

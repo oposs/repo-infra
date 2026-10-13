@@ -801,7 +801,9 @@ UNCALLED = ("{} is installed and no workflow calls it, so it never runs. Add its
             "from the catalogue to a caller, or remove the file")
 
 
-def test_an_installed_piece_no_workflow_calls_is_a_problem(tmp_path):
+def test_a_remote_piece_no_workflow_calls_is_not_an_installed_copy_problem(tmp_path):
+    """A remote piece is called, never installed (D33); a core one that no
+    workflow calls is reported by check.core_call_items instead."""
     job = "  python:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-ci-python.yml\n    with:\n" \
           "      ref: ${{ inputs.ref }}\n\n"
     assert job in own("ci.yml")
@@ -813,7 +815,7 @@ def test_an_installed_piece_no_workflow_calls_is_a_problem(tmp_path):
     (folder / "ci.yml").write_text(text, encoding="utf-8")
     found = [(i.name, i.detail) for i in
              callers.validate(callers.read_workflows(tmp_path), load_pieces())]
-    assert found == [("ri-ci-python.yml", UNCALLED.format("ri-ci-python.yml"))]
+    assert found == []
 
 
 def test_a_piece_called_only_from_an_unreadable_workflow_is_not_called_unused(tmp_path,
@@ -851,16 +853,13 @@ def own_validated(tmp_path, ci):
             callers.validate(callers.read_workflows(tmp_path), load_pieces())]
 
 
-def test_an_uncalled_core_piece_is_not_offered_for_removal(tmp_path):
-    """A removed core piece reads missing, and a bare apply installs it again."""
+def test_the_home_only_library_tests_are_not_a_piece_to_call(tmp_path):
+    """ri-ci-lib.yml left the manifest (D33): repo-infra keeps it for itself."""
     job = "  lib:\n    " + SKIP_IF + "\n    uses: ./.github/workflows/ri-ci-lib.yml\n    with:\n" \
           "      ref: ${{ inputs.ref }}\n\n"
     assert job in own("ci.yml")
     text = own("ci.yml").replace(job, "").replace("needs: [lib, ", "needs: [")
-    assert own_validated(tmp_path, text) == [(
-        "ri-ci-lib.yml", "ri-ci-lib.yml is installed and no workflow calls it, so it never "
-        "runs. Add its Call: from the catalogue to a caller; it is a core piece, so do not "
-        "remove it")]
+    assert own_validated(tmp_path, text) == []
 
 
 def test_ci_without_release_pr_current_is_one_item(tmp_path):
@@ -946,7 +945,7 @@ def test_the_mtuspy_example_callers_have_no_problem(tmp_path, name):
     example = REPO / "skills/repo-infra/references/examples/mtuspy"
     folder = tmp_path / ".github/workflows"
     folder.mkdir(parents=True)
-    for path in (REPO / "skills/repo-infra/assets/pieces").glob("ri-*/ri-*.yml"):
+    for path in (REPO / ".github/workflows").glob("ri-*.yml"):
         (folder / path.name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     for caller in ("ci.yml", "release-build.yml", "release-publish.yml"):
         (folder / caller).write_text((example / caller).read_text(encoding="utf-8"),

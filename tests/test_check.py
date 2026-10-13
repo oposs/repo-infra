@@ -359,3 +359,32 @@ def test_skip_is_told_to_become_exceptions(tmp_path):
                       "skip is now exceptions (D32): rename the key, and rewrite each of "
                       "its keys as a rule id of references/project-shape.md with the reason "
                       "the rule does not apply")]
+
+
+def remote_store(tmp_path):
+    return make_assets(tmp_path / "assets", {}, core=("ri-r",),
+                       remote={"ri-r": workflow_piece("ri-r", 2)})
+
+
+def test_a_remote_piece_is_not_a_copy_to_compare(tmp_path):
+    store = remote_store(tmp_path)
+    assert rows(tmp_path / "repo", store) == []
+
+
+def test_a_core_remote_piece_nobody_calls_is_missing(tmp_path):
+    pieces = load_pieces(remote_store(tmp_path))
+    (item,) = check.core_call_items({}, pieces)
+    assert (item.name, item.state) == ("ri-r", "missing")
+    assert "oposs/repo-infra/.github/workflows/ri-r.yml@v2" in item.detail
+
+
+def test_a_core_remote_piece_that_a_workflow_calls_is_not_reported(tmp_path):
+    pieces = load_pieces(remote_store(tmp_path))
+    docs = {"ci.yml": {"jobs": {"r": {"uses": "./.github/workflows/ri-r.yml"}}}}
+    assert check.core_call_items(docs, pieces) == []
+
+
+def test_home_is_the_checkout_that_holds_the_manifest(tmp_path):
+    assert not check.is_home(tmp_path)
+    install(tmp_path, "skills/repo-infra/assets/manifest.json", "{}")
+    assert check.is_home(tmp_path)

@@ -15,7 +15,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-PIECE = ASSETS / "pieces/ri-ci-github-action/ri-ci-github-action.yml"
+PIECE = ROOT / ".github/workflows/ri-ci-github-action.yml"
 
 ACTION = """\
 name: Example

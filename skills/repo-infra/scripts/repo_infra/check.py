@@ -78,6 +78,13 @@ def piece_state(repo_root, piece, history):
     return PieceState("current" if current else "outdated", min(versions.values()), [])
 
 
+def is_home(repo_root):
+    """True in repo-infra itself, the repository that ships the pieces (D33):
+    its pieces are local and called through ./, and its library is the
+    library."""
+    return (pathlib.Path(repo_root) / "skills/repo-infra/assets/manifest.json").is_file()
+
+
 def missing_dependencies(pieces, states):
     found = {}
     for name, state in sorted(states.items()):
@@ -130,9 +137,20 @@ def unknown_items(repo_root, pieces):
     return items
 
 
+def core_call_items(docs, pieces):
+    """A core remote piece is used by calling it (D33). Before D33 an absent
+    core piece read missing and apply installed it."""
+    return [Item("pieces", name, "missing",
+                 f"no workflow calls it; every repository calls {piece.uses} "
+                 "(see its Call: in the catalogue)")
+            for name, piece in sorted(pieces.items())
+            if piece.remote and piece.core
+            and not callers.calls(docs, pathlib.PurePosixPath(piece.target).name)]
+
+
 def piece_items(repo_root, pieces, published):
     states = {name: piece_state(repo_root, piece, published.get(name, {}))
-              for name, piece in pieces.items()}
+              for name, piece in pieces.items() if not piece.remote}
     items = []
     for name, state in sorted(states.items()):
         piece = pieces[name]
@@ -317,6 +335,7 @@ def run(repo_root, facts, assets=ASSETS):
     pieces = load_pieces(assets)
     docs = callers.read_workflows(repo_root)
     return (piece_items(repo_root, pieces, load_published(assets))
+            + core_call_items(docs, pieces)
             + callers.validate(docs, pieces, assets)
             + config_items(repo_root, docs)
             + path_filter_items(docs)

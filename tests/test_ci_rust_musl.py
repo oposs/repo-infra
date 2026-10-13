@@ -11,7 +11,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-PIECE = ASSETS / "pieces/ri-ci-rust-musl/ri-ci-rust-musl.yml"
+PIECE = ROOT / ".github/workflows/ri-ci-rust-musl.yml"
 
 
 def piece_job():

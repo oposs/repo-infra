@@ -9,7 +9,7 @@ ASSETS = ROOT / "skills/repo-infra/assets"
 
 
 def jobs():
-    path = ASSETS / "pieces/ri-ci-rust/ri-ci-rust.yml"
+    path = ROOT / ".github/workflows/ri-ci-rust.yml"
     return yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]
 
 

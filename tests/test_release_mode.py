@@ -31,7 +31,7 @@ def ci_passed_job():
 
 
 def release_pr_current_job():
-    piece = yaml.safe_load((ASSETS / "pieces/ri-release-pr-current/ri-release-pr-current.yml")
+    piece = yaml.safe_load((ROOT / ".github/workflows/ri-release-pr-current.yml")
                            .read_text(encoding="utf-8"))
     return piece["jobs"]["release-pr-current"]
 

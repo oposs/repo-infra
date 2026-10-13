@@ -1,4 +1,4 @@
-# repo-infra: ri-release-pr-current v1
+# repo-infra: ri-release-pr-current v2
 #
 # Purpose: Mark open release pull requests stale when main moves (D28).
 # Choose: Always; ci.yml calls it.
@@ -6,7 +6,7 @@
 # Pieces: workflow-lib
 # Call:
 #   release-pr-current:
-#     uses: ./.github/workflows/ri-release-pr-current.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-release-pr-current.yml@v2
 #     permissions:
 #       contents: read
 #       pull-requests: read

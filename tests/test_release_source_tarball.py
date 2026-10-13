@@ -7,7 +7,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-PIECE = ASSETS / "pieces/ri-release-source-tarball/ri-release-source-tarball.yml"
+PIECE = ROOT / ".github/workflows/ri-release-source-tarball.yml"
 REF = "${{ inputs.ref }}"
 
 

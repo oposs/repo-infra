@@ -8,18 +8,18 @@ import pathlib
 import pytest
 
 from repo_infra import check, workflow
-from repo_infra.pieces import ASSETS
+from repo_infra.pieces import ASSETS, load_pieces
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MAN_TOOLCHAIN_LINE = "          sudo apt-get install -y pandoc groff man-db"
 
 
 def piece_text(name):
-    return (ASSETS / "pieces" / name / (name + ".yml")).read_text(encoding="utf-8")
+    return (ROOT / ".github/workflows" / (name + ".yml")).read_text(encoding="utf-8")
 
 
 def ci_pieces():
-    return sorted(p.name for p in (ASSETS / "pieces").glob("ri-ci-*") if p.is_dir())
+    return sorted(name for name in load_pieces() if name.startswith("ri-ci-"))
 
 
 def test_the_ci_piece_set_is_not_empty():
@@ -100,11 +100,11 @@ def test_the_three_pieces_install_a_byte_identical_host_toolchain():
     # appended packages.
     expected_line = "          sudo apt-get install -y autoconf automake gettext podman"
     for name in (
-        "pieces/ri-ci-perl-autotools/ri-ci-perl-autotools.yml",
-        "pieces/ri-ci-repo-infra-selftest/ri-ci-repo-infra-selftest.yml",
-        "pieces/ri-release-source-tarball/ri-release-source-tarball.yml",
+        ".github/workflows/ri-ci-perl-autotools.yml",
+        ".github/workflows/ri-ci-repo-infra-selftest.yml",
+        ".github/workflows/ri-release-source-tarball.yml",
     ):
-        text = (ASSETS / name).read_text(encoding="utf-8")
+        text = (ROOT / name).read_text(encoding="utf-8")
         # The selftest piece also installs the man toolchain for repo-infra-man;
         # that line is pinned separately, against ri-ci-man.
         lines = [line for line in text.split("\n")

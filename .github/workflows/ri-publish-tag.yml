@@ -1,4 +1,4 @@
-# repo-infra: ri-publish-tag v1
+# repo-infra: ri-publish-tag v2
 #
 # Purpose: Tag the merged release and create its draft release (D28).
 # Choose: Always; release-publish.yml calls it.
@@ -6,7 +6,7 @@
 # Pieces: workflow-lib
 # Call:
 #   publish:
-#     uses: ./.github/workflows/ri-publish-tag.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-publish-tag.yml@v2
 #     permissions:
 #       contents: write
 #       pull-requests: read

@@ -10,7 +10,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "skills/repo-infra/assets"
-PIECE = ASSETS / "pieces/ri-ci-man/ri-ci-man.yml"
+PIECE = ROOT / ".github/workflows/ri-ci-man.yml"
 
 
 def test_the_piece_declares_exactly_its_one_job():

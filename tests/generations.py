@@ -78,7 +78,8 @@ def piece_sources(assets_root):
     if not manifest_path.is_file():
         return []
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    return sorted(_source(name, spec) for name, spec in manifest.get("pieces", {}).items())
+    return sorted(_source(name, spec) for name, spec in manifest.get("pieces", {}).items()
+                  if spec.get("kind") != "remote")
 
 
 def _of_a_piece(path, shipped):
@@ -167,12 +168,15 @@ def released_files(tag, assets_root=ASSETS):
         # v0.1.0 had no asset store. It shipped repo-infra's own files, at
         # the paths a piece is installed to today.
         base = ""
-        targets = [spec["target"] for spec in now.values()]
+        targets = [spec["target"] for spec in now.values() if spec.get("kind") != "remote"]
         names = _git("ls-tree", "-r", "--name-only", tag, "--", *targets).split("\n")
         old = {name: (spec["target"], spec.get("kind") == "dir")
-               for name, spec in now.items()}
+               for name, spec in now.items() if spec.get("kind") != "remote"}
     found = {}
     for name, spec in now.items():
+        # A remote piece (D33) has no bytes in the record.
+        if spec.get("kind") == "remote":
+            continue
         if name not in old:
             continue
         source, is_dir = old[name]

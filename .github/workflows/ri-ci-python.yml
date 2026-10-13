@@ -1,4 +1,4 @@
-# repo-infra: ri-ci-python v1
+# repo-infra: ri-ci-python v2
 #
 # Purpose: Lint with ruff and run pytest.
 # Choose: The repository has pyproject.toml.
@@ -6,7 +6,7 @@
 #   for the test dependencies, when it exists.
 # Call:
 #   python:
-#     uses: ./.github/workflows/ri-ci-python.yml
+#     uses: oposs/repo-infra/.github/workflows/ri-ci-python.yml@v2
 #     with:
 #       ref: ${{ inputs.ref }}
 

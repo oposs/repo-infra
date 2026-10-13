@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PIECE = ROOT / "skills/repo-infra/assets/pieces/ri-release-homebrew/ri-release-homebrew.yml"
+PIECE = ROOT / ".github/workflows/ri-release-homebrew.yml"
 LIB = ROOT / "skills/repo-infra/assets/pieces/workflow-lib/lib"
 SHAPE = ROOT / "skills/repo-infra/references/project-shape.md"
 FILLED = {"<Class>": "Tool", "<one-line description>": "A tool", "<owner>": "owner",

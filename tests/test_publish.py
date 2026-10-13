@@ -20,7 +20,7 @@ ASSETS = ROOT / "skills/repo-infra/assets"
 
 
 def _crates_io_job():
-    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+    text = (ROOT / ".github/workflows/ri-publish-crates-io.yml").read_text(
         encoding="utf-8")
     return yaml.safe_load(text)["jobs"]["publish-crates-io"]
 
@@ -36,14 +36,14 @@ def _shell_code(run):
 
 
 def test_the_crates_io_piece_declares_exactly_the_job_it_contains():
-    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+    text = (ROOT / ".github/workflows/ri-publish-crates-io.yml").read_text(
         encoding="utf-8")
     assert list(yaml.safe_load(text)["jobs"]) == ["publish-crates-io"]
 
 
 def test_the_crates_io_call_snippet_waits_for_publish_and_honours_the_guard():
     # The caller carries needs and if, so the piece's header shows them.
-    text = (ASSETS / "pieces/ri-publish-crates-io/ri-publish-crates-io.yml").read_text(
+    text = (ROOT / ".github/workflows/ri-publish-crates-io.yml").read_text(
         encoding="utf-8")
     assert "#     needs: [publish]\n" in text
     assert "#     if: needs.publish.outputs.release_id != ''\n" in text
@@ -116,7 +116,7 @@ DEB = {"job": "publish-deb-container", "assets": ["*.deb", "smtp-proxy-*-musl"]}
 
 
 def _piece_finalize():
-    piece = yaml.safe_load((ASSETS / "pieces/ri-publish-finalize/ri-publish-finalize.yml")
+    piece = yaml.safe_load((ROOT / ".github/workflows/ri-publish-finalize.yml")
                            .read_text(encoding="utf-8"))
     return piece["jobs"]["finalize"]
 
