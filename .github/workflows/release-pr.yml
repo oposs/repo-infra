@@ -18,7 +18,8 @@ name: Create release PR
 #            and wait for it (D33)
 #   finish   ri-release-finish: commit the declared release files, draft the
 #            release, mark the head, write the two required checks, open the
-#            pull request, then judge it against main
+#            pull request, judge it against main, then delete the
+#            pull request's parked runs
 #
 # main is protected and GITHUB_TOKEN cannot be given a ruleset bypass: the
 # bypass list takes users, teams and GitHub Apps, and the Actions token is
@@ -94,8 +95,8 @@ jobs:
   # pull request opens, so v2 never moves to pieces that break a consumer.
   # It dispatches gate-mtuspy.yml on the release branch, a run of its own,
   # so the gate's artifacts never reach this run's draft. Dispatching a
-  # workflow needs actions: write. Besides prepare's guard, only this job
-  # holds it; consumers' build jobs never do.
+  # workflow needs actions: write. Besides this job only prepare and finish
+  # hold it, to delete parked runs; consumers' build jobs never do.
   gate:
     name: Build mtuspy with the release's pieces
     needs: prepare
@@ -141,6 +142,7 @@ jobs:
       pull-requests: write
       statuses: write
       checks: write
+      actions: write
     with:
       version: ${{ needs.prepare.outputs.version }}
       date: ${{ needs.prepare.outputs.date }}

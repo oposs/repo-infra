@@ -10,6 +10,8 @@ CALLER = ROOT / "skills/repo-infra/assets/callers/release-pr.yml"
 PREPARE = ROOT / ".github/workflows/ri-release-prepare.yml"
 FINISH_PIECE = ROOT / ".github/workflows/ri-release-finish.yml"
 FINISH = "Commit the release files, draft the release, open the pull request"
+OWN = ROOT / ".github/workflows/release-pr.yml"
+MTUSPY = ROOT / "skills/repo-infra/references/examples/mtuspy/release-pr.yml"
 REFUSE = "Refuse an open or unpublished release; delete stale drafts and parked runs"
 
 
@@ -62,7 +64,25 @@ def test_permissions_per_job():
     assert wf["jobs"]["test"]["permissions"] == {
         "contents": "read", "pull-requests": "read", "statuses": "read", "checks": "write"}
     assert wf["jobs"]["finish"]["permissions"] == {
-        "contents": "write", "pull-requests": "write", "statuses": "write", "checks": "write"}
+        "contents": "write", "pull-requests": "write", "statuses": "write", "checks": "write",
+        "actions": "write"}
+
+
+def test_finish_may_delete_the_runs_github_parks_on_its_pull_request():
+    """#58: finish deletes the parked runs of the pull request it opens, which
+    is `actions: write` on the piece and on every caller's finish job."""
+    assert load(FINISH_PIECE)["permissions"]["actions"] == "write"
+    for path in (CALLER, OWN, MTUSPY):
+        assert load(path)["jobs"]["finish"]["permissions"]["actions"] == "write", path
+
+
+def test_finish_deletes_the_parked_runs_of_its_head_after_the_required_checks():
+    s = script(FINISH_PIECE, "finish", FINISH)
+    assert s.index("pulls.create") < s.index("name: 'ci-passed'") \
+        < s.index("unparkLib.deleteParkedRuns(github, {") \
+        < s.index("verdict.conclusion !== 'success'")
+    assert "branch, headSha: head," in s
+    assert "timeoutMs: 60 * 1000" in s
 
 
 def test_prepare_takes_the_release_type_through_env():
@@ -135,7 +155,6 @@ def test_the_rust_lockfile_note_survives():
         encoding="utf-8")
 
 
-OWN = ROOT / ".github/workflows/release-pr.yml"
 
 
 def test_repo_infra_gates_its_release_on_mtuspy():
@@ -151,7 +170,8 @@ def test_repo_infra_gates_its_release_on_mtuspy():
 def test_no_other_job_of_the_release_flow_may_write_actions():
     caller_jobs = caller()["jobs"]
     assert all(job["permissions"].get("actions") != "write"
-               for job_id, job in caller_jobs.items() if job_id != "prepare")
+               for job_id, job in caller_jobs.items() if job_id not in ("prepare", "finish"))
     own_jobs = load(OWN)["jobs"]
     assert all(job["permissions"].get("actions") != "write"
-               for job_id, job in own_jobs.items() if job_id not in ("prepare", "gate"))
+               for job_id, job in own_jobs.items()
+               if job_id not in ("prepare", "gate", "finish"))

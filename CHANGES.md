@@ -38,6 +38,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- The release pull request showed "Approve workflows to run" until it merged. Create release PR now deletes the parked runs behind that banner for up to 60 seconds after it opens the pull request, and only warns when none appear or one cannot be deleted. Its `finish` job now needs `actions: write`, which the shipped `release-pr.yml` grants; a `release-pr.yml` copied before this needs the line too, and `/repo-infra:check` reports it (#58).
+
 ## 1.1.2 - 2026-10-13
 ### New
 - The skill carries mtuspy's callers, config, `nfpm.yaml` and formula under `references/examples/mtuspy/`, the example of a Rust program that publishes to every channel. Onboarding points a Rust program users install to it.

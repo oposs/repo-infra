@@ -1285,3 +1285,13 @@ def test_a_remote_call_without_ref_input_is_a_ref_problem():
     found = consumer(f"  rust:\n    {SKIP_IF}\n    uses: {V2.format('ri-ci-rust')}\n")
     assert any(d.startswith("job rust calls ri-ci-rust.yml, which takes `ref`, without")
                for d in found)
+
+
+def test_a_finish_job_without_actions_write_is_a_problem(tmp_path):
+    """#58: finish deletes the parked runs of the pull request it opens."""
+    grant = "      checks: write\n      actions: write\n    with:\n      version:"
+    text = own("release-pr.yml")
+    assert text.count(grant) == 1
+    found = problems_of(tmp_path, "release-pr.yml",
+                        text.replace(grant, "      checks: write\n    with:\n      version:"))
+    assert any(d.startswith("job finish grants") and "actions: write" in d for d in found), found

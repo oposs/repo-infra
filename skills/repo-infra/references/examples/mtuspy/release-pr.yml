@@ -16,7 +16,8 @@ name: Create release PR
 #   test     .github/workflows/ci.yml on the release branch, beside build
 #   finish   ri-release-finish: commit the declared release files, draft the
 #            release, mark the head, write the two required checks, open the
-#            pull request, then judge it against main
+#            pull request, judge it against main, then delete the
+#            pull request's parked runs
 #
 # main is protected and GITHUB_TOKEN cannot be given a ruleset bypass: the
 # bypass list takes users, teams and GitHub Apps, and the Actions token is
@@ -96,6 +97,7 @@ jobs:
       pull-requests: write
       statuses: write
       checks: write
+      actions: write
     with:
       version: ${{ needs.prepare.outputs.version }}
       date: ${{ needs.prepare.outputs.date }}

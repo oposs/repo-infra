@@ -253,13 +253,18 @@ function parkedRuns(runs, { fullName, branch = null, keep = [] }) {
 // pull_request run of a busy repository would never reach its old parked
 // runs. The listing asks for the bot's runs with one of the two conclusions a
 // parked run has, which leaves the runs of release pull requests only.
-async function fetchParkedRuns(github, { owner, repo, branch = null }) {
+// `headSha` narrows it to the runs of one commit: finish deletes the parked
+// runs of the release pull request it has just opened (#58).
+async function fetchParkedRuns(github, {
+  owner, repo, branch = null, headSha = null,
+}) {
   const listed = [];
   for (const status of ['action_required', 'failure']) {
-    listed.push(...await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+    listed.push(...(await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
       owner, repo, event: 'pull_request', actor: BOT, status,
-      ...(branch === null ? {} : { branch }), per_page: 100,
-    }));
+      ...(branch === null ? {} : { branch }),
+      ...(headSha === null ? {} : { head_sha: headSha }), per_page: 100,
+    })).filter((run) => headSha === null || run.head_sha === headSha));
   }
   const runs = [];
   for (const run of listed) {

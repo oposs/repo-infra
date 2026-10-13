@@ -346,6 +346,18 @@ test('fetchParkedRuns for one branch lists that branch only', async () => {
     ['release/v1.2.0', 'release/v1.2.0']);
 });
 
+test('fetchParkedRuns for one head commit lists and keeps that commit only', async () => {
+  const github = runsGithub([
+    { ...run(1, 'release/v1.2.0'), head_sha: 'aaa' },
+    { ...run(2, 'release/v1.2.0'), head_sha: 'bbb' },
+  ]);
+  const parked = await r.fetchParkedRuns(github, {
+    owner: 'oetiker', repo: 'mdmost', branch: 'release/v1.2.0', headSha: 'aaa',
+  });
+  assert.deepEqual(parked.map((x) => x.id), [1]);
+  assert.deepEqual(github.calls.listed.map((x) => x.head_sha), ['aaa', 'aaa']);
+});
+
 test('fetchParkedRuns does not write the job count into the listed runs', async () => {
   const runs = [run(1, 'release/v1.2.0', { conclusion: 'failure' })];
   await r.fetchParkedRuns(runsGithub(runs), { owner: 'oetiker', repo: 'mdmost' });

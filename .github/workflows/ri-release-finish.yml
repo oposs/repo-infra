@@ -1,6 +1,6 @@
 # repo-infra: ri-release-finish v2
 #
-# Purpose: Draft the release, mark the head, write the two required checks and open the release pull request (D28, D33).
+# Purpose: Draft the release, mark the head, write the two required checks, open the release pull request and delete its parked runs (D28, D33).
 # Choose: Always; release-pr.yml calls it after the build and the CI run.
 # Supplies: release_assets and release_files in .github/repo-infra.json; the build's release-asset-* and release-files artifacts in the same run.
 # Call:
@@ -12,6 +12,7 @@
 #       pull-requests: write
 #       statuses: write
 #       checks: write
+#       actions: write
 #     with:
 #       version: ${{ needs.prepare.outputs.version }}
 #       date: ${{ needs.prepare.outputs.date }}
@@ -46,6 +47,8 @@ permissions:
   statuses: write
   # The two required checks on the head: changelog-updated and ci-passed.
   checks: write
+  # Deleting the parked pull_request runs of the pull request it opens (#58).
+  actions: write
 
 jobs:
   finish:
@@ -96,6 +99,7 @@ jobs:
             const assetsLib = require(`${lib}/assets.js`);
             const changesLib = require(`${lib}/changes.js`);
             const commitLib = require(`${lib}/commit.js`);
+            const unparkLib = require(`${lib}/unpark.js`);
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const config = JSON.parse(
@@ -263,6 +267,18 @@ jobs:
               owner, repo, name: 'ci-passed', head_sha: head,
               status: 'completed', conclusion: verdict.conclusion,
               output: { title: verdict.title, summary: verdict.summary },
+            });
+
+            // 9. GitHub parks the pull request's own pull_request runs, since
+            //    GITHUB_TOKEN opened it, and shows "Approve workflows to run"
+            //    while the head has one (#58). The two required checks are
+            //    written above, so nothing needs approving: delete the parked
+            //    runs as they appear. Warnings only; publish deletes any left.
+            await unparkLib.deleteParkedRuns(github, {
+              owner, repo, branch, headSha: head,
+              sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+              now: () => Date.now(), timeoutMs: 60 * 1000, intervalMs: 5 * 1000,
+              log: { notice: core.notice, warning: core.warning },
             });
             if (verdict.conclusion !== 'success') {
               core.setFailed(`${pr.html_url}: ${verdict.summary}`);

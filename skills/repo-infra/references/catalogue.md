@@ -663,7 +663,7 @@ changelog:
 
 Called as `oposs/repo-infra/.github/workflows/ri-release-finish.yml@v2`.
 
-**Purpose:** Draft the release, mark the head, write the two required checks and open the release pull request (D28, D33).
+**Purpose:** Draft the release, mark the head, write the two required checks, open the release pull request and delete its parked runs (D28, D33).
 
 **Choose it when:** Always; release-pr.yml calls it after the build and the CI run.
 
@@ -676,7 +676,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-finish.yml@v2`.
 | `head` | string | yes |  | The release branch head, from prepare. |
 | `base` | string | yes |  | The dispatched main commit, from prepare. |
 
-**Permissions it needs:** checks: write, contents: write, pull-requests: write, statuses: write
+**Permissions it needs:** actions: write, checks: write, contents: write, pull-requests: write, statuses: write
 
 ```yaml
 finish:
@@ -687,6 +687,7 @@ finish:
     pull-requests: write
     statuses: write
     checks: write
+    actions: write
   with:
     version: ${{ needs.prepare.outputs.version }}
     date: ${{ needs.prepare.outputs.date }}

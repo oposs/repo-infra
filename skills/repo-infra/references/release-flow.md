@@ -55,7 +55,10 @@ repository's own, and a repository may add more between `prepare` and `finish`
   success when the branch is not behind `main`, failure with the stale message
   below when `main` moved after `base`. The pull request is opened before this
   comparison, so a release that went stale while it built is visible and says
-  why.
+  why. Last, for up to 60 seconds, it deletes the `pull_request` runs GitHub
+  parks on the head because `GITHUB_TOKEN` opened the pull request; they are
+  what shows **Approve workflows to run**. This needs `actions: write` on the
+  `finish` job, and a failure to delete is a warning.
 
 The ruleset requires `ci-passed` and `changelog-updated` by context only, with
 no app (`integration_id`), so the two check runs `finish` writes with
