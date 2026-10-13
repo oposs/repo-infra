@@ -112,8 +112,8 @@ async function moveMajorTag(github, { owner, repo, version, tag, sha }) {
   } catch (error) {
     if (!refused(error)) throw error;
     throw new Error(`${major} could not be moved to ${tag}: ${updateError.message}. A tag `
-      + 'ruleset on v* lets only its bypass list move it; pass app-client-id and app-private-key '
-      + 'to ri-publish-tag.');
+      + 'ruleset on v* lets only its bypass list move it; pass RELEASE_APP_CLIENT_ID and '
+      + 'RELEASE_APP_PRIVATE_KEY to ri-publish-tag.');
   }
 }
 

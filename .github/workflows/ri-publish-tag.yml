@@ -26,11 +26,11 @@ name: Tag the release
 on:
   workflow_call:
     secrets:
-      app-client-id:
-        description: A GitHub App's Client ID; with app-private-key, the major tag is moved with the App's token, which a tag ruleset can let through.
+      RELEASE_APP_CLIENT_ID:
+        description: A GitHub App's Client ID; with RELEASE_APP_PRIVATE_KEY, the major tag is moved with the App's token, which a tag ruleset can let through.
         required: false
-      app-private-key:
-        description: The private key of the App with the Client ID in app-client-id.
+      RELEASE_APP_PRIVATE_KEY:
+        description: The private key of the App with the Client ID in RELEASE_APP_CLIENT_ID.
         required: false
     outputs:
       version:
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      HAS_APP: ${{ secrets.app-client-id != '' && secrets.app-private-key != '' }}
+      HAS_APP: ${{ secrets.RELEASE_APP_CLIENT_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}
     outputs:
       version: ${{ steps.publish.outputs.version }}
       tag: ${{ steps.publish.outputs.tag }}
@@ -280,8 +280,8 @@ jobs:
         if: env.HAS_APP == 'true' && steps.publish.outputs.tag != ''
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.app-client-id }}
-          private-key: ${{ secrets.app-private-key }}
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Move the major tag
         if: steps.publish.outputs.tag != ''

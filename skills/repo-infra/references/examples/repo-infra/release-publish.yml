@@ -25,8 +25,8 @@ jobs:
       contents: write
       pull-requests: read
     secrets:
-      app-client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
-      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
   # finalize needs every other job of this file; check verifies it (D30).
   finalize:

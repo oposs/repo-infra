@@ -494,20 +494,20 @@ def test_the_major_tag_moves_with_the_app_token_when_one_is_passed():
     move = next(s for s in steps if s.get("name") == "Move the major tag")
     assert move["with"]["github-token"] == "${{ steps.app.outputs.token || github.token }}"
     assert tag_job()["env"] == {
-        "HAS_APP": "${{ secrets.app-client-id != '' && secrets.app-private-key != '' }}"}
+        "HAS_APP": "${{ secrets.RELEASE_APP_CLIENT_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}"}
 
 
 def test_the_app_secrets_are_optional():
     face = workflow.interface(workflow.load(TAG_PIECE.read_text(encoding="utf-8")))
     assert {k: v["required"] for k, v in face.secrets.items()} == {
-        "app-client-id": False, "app-private-key": False}
+        "RELEASE_APP_CLIENT_ID": False, "RELEASE_APP_PRIVATE_KEY": False}
 
 
 def test_repo_infra_moves_v2_with_its_app():
     publish = yaml.safe_load((ROOT / ".github/workflows/release-publish.yml")
                              .read_text(encoding="utf-8"))["jobs"]["publish"]
     assert publish["secrets"] == {
-        "app-client-id": "${{ secrets.RELEASE_APP_CLIENT_ID }}",
-        "app-private-key": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}
+        "RELEASE_APP_CLIENT_ID": "${{ secrets.RELEASE_APP_CLIENT_ID }}",
+        "RELEASE_APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}
     config = json.loads((ROOT / ".github/repo-infra.json").read_text(encoding="utf-8"))
     assert config["moving_major_tag"] is True

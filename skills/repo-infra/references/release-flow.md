@@ -228,9 +228,9 @@ changes. Two things are added, because consumers run whatever `v2` points at:
   `references/examples/mtuspy/source.json` with the release's own pieces. The
   release pull request does not open unless the gate succeeds.
 - **The moving tag.** `ri-publish-tag` moves `v2` to the release after tagging
-  it, with the token of a GitHub App: the repository secret
-  `RELEASE_APP_CLIENT_ID` (the App's Client ID, not its numeric App ID) is passed
-  as `app-client-id`, and `RELEASE_APP_PRIVATE_KEY` as `app-private-key`. A tag
+  it, with the token of a GitHub App: the repository secrets
+  `RELEASE_APP_CLIENT_ID` (the App's Client ID, not its numeric App ID) and
+  `RELEASE_APP_PRIVATE_KEY` are passed under the same names. A tag
   ruleset on `v*` refuses every other update and every deletion. `RELEASING.md`
   has the rollback.
 

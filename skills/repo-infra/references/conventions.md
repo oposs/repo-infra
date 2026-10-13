@@ -246,8 +246,8 @@ A call of a repo-infra workflow passes each secret by name:
 
 ```yaml
     secrets:
-      app-client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
-      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 ```
 
 `secrets: inherit` on such a call delivers empty secrets, because the called

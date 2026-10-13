@@ -580,8 +580,8 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-tag.yml@v2`.
 
 | Secret | Required | Description |
 |---|---|---|
-| `app-client-id` | no | A GitHub App's Client ID; with app-private-key, the major tag is moved with the App's token, which a tag ruleset can let through. |
-| `app-private-key` | no | The private key of the App with the Client ID in app-client-id. |
+| `RELEASE_APP_CLIENT_ID` | no | A GitHub App's Client ID; with RELEASE_APP_PRIVATE_KEY, the major tag is moved with the App's token, which a tag ruleset can let through. |
+| `RELEASE_APP_PRIVATE_KEY` | no | The private key of the App with the Client ID in RELEASE_APP_CLIENT_ID. |
 
 **Outputs:** `version`, `tag`, `release_id`, `head`
 
