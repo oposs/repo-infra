@@ -94,7 +94,8 @@ that branch, so the gate tests the library and the pieces of one commit.
 
 ## A source input on every piece
 
-Every piece that checks out the source already takes `ref`. It also takes
+Every CI and release-build piece that checks out the source already takes
+`ref`. It also takes
 `repository` (default `${{ github.repository }}`), and each source checkout
 passes both. A piece that derives a URL or a name from `$GITHUB_REPOSITORY`
 uses the input instead; `ri-release-homebrew` builds the bottle `root-url`
@@ -111,8 +112,8 @@ inline in the callers, under their current job ids. The library work moves
 into pieces:
 
 - `ri-release-verdict` computes D28's release mode for a pull request from a
-  `release/*` branch and returns `mode` (`release`, `ordinary`) and `ok` as
-  outputs. On every other event (push, `workflow_dispatch`, `workflow_call`
+  `release/*` branch and returns `mode` (`release`, `ordinary`), `ok` and
+  `message` as outputs. On every other event (push, `workflow_dispatch`, `workflow_call`
   from `release-pr`, an ordinary pull request) it succeeds with
   `mode=ordinary`. The verdict job runs on every event: it is exempt from
   D31's `release-pr-skip` condition, in `assets/callers/` and in `check`,
@@ -128,8 +129,8 @@ into pieces:
   success; `!cancelled()` prevents that without turning a cancelled run red.
   The `ri-changelog` job carries the same label condition, so the
   `no-changelog` label skips both.
-- repo-infra's `ci.yml` calls `ri-changelog` and `ri-release-verdict` through
-  `./`, so both run on every repo-infra pull request before a release moves
+- repo-infra's `changelog.yml` calls `ri-changelog` and its `ci.yml` calls
+  `ri-release-verdict`, both through `./`, so both run on every repo-infra pull request before a release moves
   `v2`.
 
 `assets/callers/ci-passed.yml` and a new `assets/callers/changelog.yml` hold
@@ -203,8 +204,9 @@ builds repo-infra's release.
 - `references/examples/mtuspy/source.json` records the source:
   `repository`, `ref` (a tag) and `version`.
 - A test holds the gate's jobs and inputs equal to the six example caller
-  jobs named above, apart from `repository`, `ref` and the `@v2` versus `./`
-  form of `uses:`. The example's `ci-passed`, verdict job and
+  jobs named above, apart from `repository`, `ref`, `version`, the D31
+  skip condition in `if:`, the `needs:` on the source record, and the `@v2`
+  versus `./` form of `uses:`. The example's `ci-passed`, verdict job and
   `ri-release-pr-current` are not part of the gate.
 - GitHub dispatches only workflows that exist on the default branch, so the
   gate is first run after the 2.0.0 branch is merged and before the 2.0.0
