@@ -4,13 +4,16 @@ import argparse
 import pathlib
 import sys
 
-from . import callers, report
+from . import callers, migrate, report
 from . import check as checking
 from .apply import (
+    MIGRATE_BODY,
+    MIGRATE_SUBJECT,
     ApplyError,
     NeedsMerge,
     apply_admin_item,
     changed,
+    commit_paths,
     commit_piece,
     ensure_branch,
     install_piece,
@@ -69,6 +72,13 @@ def _states(root, pieces, published):
             for name, piece in pieces.items()}
 
 
+def _v1_layout(args):
+    """True when a bare apply migrates (D33): a consumer that still has a
+    file of the v1 layout. --item installs the one piece it names."""
+    return (args.item is None and not checking.is_home(args.root)
+            and bool(checking.layout_items(args.root, load_pieces(ASSETS))))
+
+
 def apply_command(args):
     # The arguments are refused before GitHub is asked anything: a typo
     # should not wait for, or fail on, the network.
@@ -81,22 +91,34 @@ def apply_command(args):
         pieces, published = load_pieces(ASSETS), load_published(ASSETS)
         if args.item is not None and args.item not in pieces:
             raise ApplyError(f"{args.item}: not a piece and not an administration item")
+        if args.item is not None and pieces[args.item].remote:
+            raise ApplyError(f"{args.item} is called, not installed (D33): add its Call: "
+                             "from the catalogue to a caller, as "
+                             f"`uses: {pieces[args.item].uses}`")
     repo = args.repo or Gh().current_repo()
     facts = read_facts(repo)
     if args.item in ADMIN:
         print(apply_admin_item(Gh(), repo, args.item, facts, ASSETS, args.root))
         return 0
-    states = _states(args.root, pieces, published)
-    names = [args.item] if args.item else _pending(args.root, pieces, states, published)
-    if names:
+    # A remote piece is called, never installed (D33); apply writes the
+    # byte pieces only.
+    files = {name: piece for name, piece in pieces.items() if not piece.remote}
+    states = _states(args.root, files, published)
+    names = [args.item] if args.item else _pending(args.root, files, states, published)
+    if names or _v1_layout(args):
         blocker = release_in_progress(args.root, facts)
         if blocker:
             raise ApplyError(f"release-in-progress: {blocker}")
         ensure_branch(args.root)
         # The branch may carry other versions of the files than the one the
         # first look found, so what to install is decided on this one.
-        states = _states(args.root, pieces, published)
-        names = [args.item] if args.item else _pending(args.root, pieces, states, published)
+        if _v1_layout(args):
+            written = changed(args.root, migrate.migrate(args.root, pieces, ASSETS))
+            if written:
+                commit_paths(args.root, written, f"{MIGRATE_SUBJECT}\n\n{MIGRATE_BODY}")
+            print(f"migrated to the v2 layout: {len(written)} files")
+        states = _states(args.root, files, published)
+        names = [args.item] if args.item else _pending(args.root, files, states, published)
     notes, kept = [], []
     try:
         for name in names:

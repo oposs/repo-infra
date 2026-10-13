@@ -1,7 +1,13 @@
+import pathlib
+import shutil
+import subprocess
+
 import pytest
 from piecekit import install, make_assets, workflow_piece
 
+from repo_infra import check as checking
 from repo_infra import cli
+from repo_infra.pieces import ASSETS, load_pieces
 
 
 def test_help_lists_check_and_apply(capsys):
@@ -74,3 +80,80 @@ def test_apply_refuses_bad_arguments_before_asking_github(monkeypatch, tmp_path,
     monkeypatch.setattr(cli, "Gh", no_network)
     assert cli.main(["apply", "--root", str(tmp_path), *args]) == 1
     assert capsys.readouterr().err == f"refused: {said}\n"
+
+
+# --- D33: pieces are called, and a v1 repository is migrated -----------------
+
+V1_MTUSPY = pathlib.Path(__file__).resolve().parent / "fixtures/v1/mtuspy"
+
+
+def git(root, *args):
+    return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True,
+                          text=True).stdout
+
+
+def test_apply_migrates_a_v1_repository_in_one_commit(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "repo"
+    shutil.copytree(V1_MTUSPY, repo)
+    pieces = load_pieces()
+    # The byte pieces as published, so the migration is all apply has to do.
+    for piece in pieces.values():
+        if not piece.remote:
+            for path, text in piece.files.items():
+                install(repo, path, text)
+    (repo / "CHANGES.md").write_text("# Changes\n\n## [Unreleased]\n\n"
+                                     "## 0.3.0 - 2026-09-30\n\n- x\n", encoding="utf-8")
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "v1")
+    facts = cli.CONFORMING_FACTS._replace(release_prs=(), tags=frozenset({"v0.3.0"}))
+    monkeypatch.setattr(cli, "read_facts", lambda repo_name: facts)
+
+    assert cli.main(["apply", "--root", str(repo), "--repo", "o/r"]) == 0
+    assert git(repo, "log", "--format=%s", "main..HEAD").splitlines() == [
+        "Migrate to the repo-infra v2 layout"]
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "repo-infra/apply"
+    assert git(repo, "status", "--porcelain") == ""
+    left = sorted(p.name for p in (repo / ".github/workflows").iterdir())
+    assert left == ["changelog.yml", "ci.yml", "release-build.yml", "release-pr.yml",
+                    "release-publish.yml"]
+    for name in ("changelog.yml", "release-pr.yml"):
+        assert (repo / ".github/workflows" / name).read_text(encoding="utf-8") == (
+            ASSETS / "callers" / name).read_text(encoding="utf-8")
+    assert checking.layout_items(repo, pieces) == []
+    assert "migrated to the v2 layout: " in capsys.readouterr().out
+    # The removals are in the commit, not left in the work tree.
+    removed = git(repo, "show", "--name-status", "--format=", "HEAD").splitlines()
+    assert "D\t.github/workflows/lib/release.js" in removed
+    assert "D\t.github/workflows/ri-ci-rust.yml" in removed
+
+    # A second apply finds nothing to migrate.
+    assert cli.main(["apply", "--root", str(repo), "--repo", "o/r"]) == 0
+    assert len(git(repo, "log", "--format=%s", "main..HEAD").splitlines()) == 1
+
+
+def test_a_release_in_progress_stops_the_migration(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "repo"
+    shutil.copytree(V1_MTUSPY, repo)
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "v1")
+    facts = cli.CONFORMING_FACTS._replace(release_prs=((7, "release/v0.3.1"),))
+    monkeypatch.setattr(cli, "read_facts", lambda repo_name: facts)
+    assert cli.main(["apply", "--root", str(repo), "--repo", "o/r"]) == 1
+    assert capsys.readouterr().err.startswith("refused: release-in-progress: ")
+    assert git(repo, "log", "--format=%s").splitlines() == ["v1"]
+    assert git(repo, "status", "--porcelain") == ""
+
+
+def test_apply_item_refuses_a_remote_piece(tmp_path, monkeypatch, capsys):
+    def no_network(*_):
+        raise AssertionError("asked GitHub before checking the arguments")
+    monkeypatch.setattr(cli, "read_facts", no_network)
+    monkeypatch.setattr(cli, "Gh", no_network)
+    code = cli.main(["apply", "--root", str(tmp_path), "--repo", "o/r", "--item", "ri-ci-rust"])
+    assert code == 1
+    assert capsys.readouterr().err == (
+        "refused: ri-ci-rust is called, not installed (D33): add its Call: from the "
+        "catalogue to a caller, as `uses: oposs/repo-infra/.github/workflows/"
+        "ri-ci-rust.yml@v2`\n")
