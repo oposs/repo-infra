@@ -13,7 +13,8 @@ from repo_infra.pieces import ASSETS, load_pieces
 
 PIECES = load_pieces()
 WORKFLOW_PIECES = sorted((p for p in PIECES.values() if p.workflow), key=lambda p: p.name)
-# changelog and release-pr start runs of their own; every other workflow piece is called.
+# The release pieces are tested by their own files; every other workflow piece is
+# reviewed here as one a caller calls.
 CALLED = [p for p in WORKFLOW_PIECES if p.group != "release"]
 ALL = sorted(PIECES.values(), key=lambda p: p.name)
 ACTIONS = json.loads((ASSETS / "manifest.json").read_text(encoding="utf-8"))["actions"]
@@ -146,3 +147,10 @@ def test_the_library_checkout_follows_every_source_checkout(piece):
 @pytest.mark.parametrize("piece", REMOTE, ids=ids)
 def test_a_remote_piece_needs_no_workflow_lib_piece(piece):
     assert "workflow-lib" not in piece.needs
+
+
+def test_the_library_is_one_copy_and_no_piece():
+    root = ASSETS.parents[2]
+    assert not (ASSETS / "pieces/workflow-lib").exists()
+    for path in (root / ".github/workflows/lib").glob("*.js"):
+        assert "repo-infra: workflow-lib" not in path.read_text(encoding="utf-8"), path.name

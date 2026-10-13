@@ -1,21 +1,9 @@
 {
   "pieces": {
-    "release-pr": {
-      "target": ".github/workflows/release-pr.yml",
-      "group": "release",
-      "core": true
-    },
     "dependabot": {
       "target": ".github/dependabot.yml",
       "group": "release",
       "core": true
-    },
-    "workflow-lib": {
-      "target": ".github/workflows/lib",
-      "group": "release",
-      "core": true,
-      "kind": "dir",
-      "header": "release.js"
     },
     "container": {
       "target": "build/container.mk",
@@ -96,6 +84,16 @@
       "core": true
     },
     "ri-changelog": {
+      "kind": "remote",
+      "group": "release",
+      "core": true
+    },
+    "ri-release-prepare": {
+      "kind": "remote",
+      "group": "release",
+      "core": true
+    },
+    "ri-release-finish": {
       "kind": "remote",
       "group": "release",
       "core": true

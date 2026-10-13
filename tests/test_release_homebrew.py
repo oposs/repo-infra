@@ -13,7 +13,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PIECE = ROOT / ".github/workflows/ri-release-homebrew.yml"
-LIB = ROOT / "skills/repo-infra/assets/pieces/workflow-lib/lib"
+LIB = ROOT / ".github/workflows/lib"
 SHAPE = ROOT / "skills/repo-infra/references/project-shape.md"
 FILLED = {"<Class>": "Tool", "<one-line description>": "A tool", "<owner>": "owner",
           "<repo>": "tool", "<SPDX license>": "MIT", "<bin>": "tool"}

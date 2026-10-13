@@ -4,7 +4,7 @@ import pathlib
 import re
 
 import pytest
-from piecekit import CHANGELOG, CI_PASSED, SKIP_IF, install, make_assets, workflow_piece
+from piecekit import CHANGELOG, CI_PASSED, RELEASE_PR, SKIP_IF, install, make_assets, workflow_piece
 
 from repo_infra import callers, workflow
 from repo_infra.pieces import load_pieces
@@ -112,7 +112,7 @@ jobs:
 
 def problems(tmp_path, store, **files):
     base = {"ci.yml": CI, "release-build.yml": BUILD, "release-publish.yml": PUBLISH,
-            "changelog.yml": CHANGELOG}
+            "changelog.yml": CHANGELOG, "release-pr.yml": RELEASE_PR}
     base.update({k.replace("_", "-") + ".yml": v for k, v in files.items()})
     docs = callers.read_workflows(repo(tmp_path, store, base))
     return [(i.name, i.state, i.detail) for i in
@@ -125,7 +125,7 @@ def test_a_conforming_set_of_callers_has_no_problem(tmp_path, store):
 
 def test_a_missing_core_caller_is_named(tmp_path, store):
     root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
-                                  "changelog.yml": CHANGELOG})
+                                  "changelog.yml": CHANGELOG, "release-pr.yml": RELEASE_PR})
     found = callers.validate(callers.read_workflows(root), load_pieces(store), store)
     assert [(i.name, i.state) for i in found] == [("release-publish.yml", "missing")]
 
@@ -276,7 +276,7 @@ def test_a_changelog_yml_without_always_is_a_problem(guard):
 
 def test_a_repository_without_changelog_yml_is_missing_it(tmp_path, store):
     root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
-                                  "release-publish.yml": PUBLISH})
+                                  "release-publish.yml": PUBLISH, "release-pr.yml": RELEASE_PR})
     found = callers.validate(callers.read_workflows(root), load_pieces(store), store)
     assert [(i.name, i.state) for i in found] == [("changelog.yml", "missing")]
 
@@ -841,7 +841,8 @@ def test_a_call_in_a_comment_of_an_unreadable_file_does_not_count(tmp_path, stor
 
 def with_bytes(tmp_path, store, name, data):
     root = repo(tmp_path, store, {"ci.yml": CI, "release-build.yml": BUILD,
-                                  "release-publish.yml": PUBLISH, "changelog.yml": CHANGELOG})
+                                  "release-publish.yml": PUBLISH, "changelog.yml": CHANGELOG,
+                                  "release-pr.yml": RELEASE_PR})
     (root / ".github/workflows" / name).write_bytes(data)
     docs = callers.read_workflows(root)
     return [(i.name, i.state, i.detail) for i in
@@ -1035,3 +1036,78 @@ def test_the_mtuspy_example_callers_have_no_problem(tmp_path, name):
                                      encoding="utf-8")
     docs = callers.read_workflows(tmp_path)
     assert [i.detail for i in callers.validate(docs, load_pieces()) if i.name == name] == []
+
+
+# --- release-pr.yml (D33) -------------------------------------------------------
+
+
+def release_pr(text):
+    return callers.release_pr_problems({"release-pr.yml": workflow.load(text)}, {})
+
+
+def test_the_shipped_release_pr_has_no_problem():
+    assert release_pr(RELEASE_PR) == []
+
+
+def test_a_job_between_prepare_and_finish_that_finish_needs_is_fine():
+    text = RELEASE_PR.replace(
+        "  finish:\n    needs: [prepare, build, test]",
+        "  gate:\n    needs: prepare\n    runs-on: ubuntu-latest\n    steps:\n"
+        "      - run: 'true'\n\n  finish:\n    needs: [prepare, build, test, gate]")
+    assert release_pr(text) == []
+
+
+def test_finish_that_does_not_need_an_added_job_is_a_problem():
+    text = RELEASE_PR.replace(
+        "  finish:\n", "  gate:\n    needs: prepare\n    runs-on: ubuntu-latest\n"
+        "    steps:\n      - run: 'true'\n\n  finish:\n")
+    assert release_pr(text) == [("release-pr.yml", "finish does not need gate; it would "
+                                 "open the pull request before they finished")]
+
+
+def test_a_release_pr_without_ci_is_a_problem():
+    text = RELEASE_PR.replace("uses: ./.github/workflows/ci.yml", "uses: ./.github/workflows/x.yml")
+    assert ("release-pr.yml", "does not call ci.yml; the release pull request would open "
+            "untested or unbuilt") in release_pr(text)
+
+
+def test_a_release_pr_without_finish_is_a_problem():
+    text = RELEASE_PR.replace("ri-release-finish.yml", "ri-release-other.yml")
+    assert ("release-pr.yml", "calls no ri-release-finish; copy assets/callers/release-pr.yml "
+            "in the repo-infra skill") in release_pr(text)
+
+
+def test_a_build_that_does_not_need_prepare_is_a_problem():
+    text = RELEASE_PR.replace("  build:\n    needs: prepare\n", "  build:\n")
+    assert release_pr(text) == [("release-pr.yml", "job build does not need prepare; it "
+                                 "would build or test before the release branch exists")]
+
+
+def test_a_release_pr_without_workflow_dispatch_is_a_problem():
+    text = RELEASE_PR.replace("  workflow_dispatch:\n", "  workflow_call:\n")
+    assert release_pr(text) == [("release-pr.yml", "has no workflow_dispatch trigger; "
+                                 "nobody can start a release")]
+
+
+def test_no_release_pr_is_no_problem_of_its_own():
+    """CORE_CALLERS reports the missing file; release_pr_problems adds nothing."""
+    assert callers.release_pr_problems({}, {}) == []
+
+
+def test_a_missing_release_pr_is_reported_by_validate(tmp_path):
+    found = problems_of(tmp_path, "ci.yml", own("ci.yml"))
+    assert found == []
+    (tmp_path / ".github/workflows/release-pr.yml").unlink()
+    docs = callers.read_workflows(tmp_path)
+    assert [(i.name, i.state) for i in callers.validate(docs, load_pieces())
+            if i.name == "release-pr.yml"] == [("release-pr.yml", "missing")]
+
+
+def test_validate_reviews_release_pr(tmp_path):
+    text = own("release-pr.yml").replace("  build:\n    needs: prepare\n", "  build:\n")
+    assert "job build does not need prepare; it would build or test before the release " \
+           "branch exists" in problems_of(tmp_path, "release-pr.yml", text)
+
+
+def test_this_repositorys_release_pr_has_no_problem():
+    assert release_pr(own("release-pr.yml")) == []

@@ -19,6 +19,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The reusable workflows load the workflow library from the repo-infra commit they were called from. A repository that calls them needs no `.github/workflows/lib/` of its own.
 - `ci-passed` reads its release-mode verdict from a new job, `release-verdict`, which calls `ri-release-verdict`. Copy both jobs from `assets/callers/ci-passed.yml`; `/repo-infra:check` reports a `ci.yml` without `release-verdict`, and `release-verdict` carries no release pull request skip.
 - `changelog.yml` is a short caller: its job `changelog` calls `ri-changelog`, and `changelog-updated` turns red when that job fails or is cancelled. Copy it from `assets/callers/changelog.yml`; `/repo-infra:check` reports any difference and a repository without `changelog.yml`, and the `changelog` piece is no longer in the catalogue.
+- Create release PR is a short `release-pr.yml` that calls `ri-release-prepare` and `ri-release-finish` from repo-infra and the repository's own `release-build.yml` and `ci.yml` between them. A repository may add jobs between prepare and finish; `/repo-infra:check` reports a `finish` that does not need all of them, and a repository without `release-pr.yml`. Copy it from `assets/callers/release-pr.yml`.
+- `.github/workflows/lib/` is no longer installed in a repository, and `workflow-lib` is no longer in the catalogue.
 
 ### Fixed
 

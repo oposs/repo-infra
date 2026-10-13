@@ -111,7 +111,7 @@ def test_the_release_pr_skip_is_exactly_the_release_pull_request():
 def test_each_term_of_the_skip_is_a_test_of_is_release_pr():
     """The skip and lib/release.js:isReleasePr name the same pull request:
     head ref, head repository and author, field by field."""
-    source = (ASSETS / "pieces/workflow-lib/lib/release.js").read_text(encoding="utf-8")
+    source = (ROOT / ".github/workflows/lib/release.js").read_text(encoding="utf-8")
     assert f"const BOT = '{BOT}';" in source
     body = source.split("function isReleasePr(pr, fullName) {", 1)[1].split("\n}\n", 1)[0]
     assert " ".join(body.split()) == (

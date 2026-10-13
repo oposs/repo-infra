@@ -25,6 +25,7 @@ CORE_CALLERS = {
     "ci.yml": "the ruleset requires its ci-passed check, and Create release PR runs it",
     "release-build.yml": "Create release PR calls it to build the release",
     "release-publish.yml": "it tags and publishes a release once its pull request merges",
+    "release-pr.yml": "Create release PR starts a release",
 }
 # The job that closes each file and what it does wrong when it does not wait
 # for a job. The needs: list used to be generated; now check verifies it.
@@ -214,6 +215,51 @@ def changelog_problems(docs, assets=ASSETS):
     return found
 
 
+PREPARE, FINISH = "ri-release-prepare", "ri-release-finish"
+
+
+def release_pr_problems(docs, pieces):
+    """D33: release-pr.yml calls prepare and finish from repo-infra and the
+    repository's own release-build.yml and ci.yml between them; finish needs
+    every other job, so nothing a repository adds between them is skipped.
+    A missing file is CORE_CALLERS' finding."""
+    doc = docs.get("release-pr.yml")
+    if not isinstance(doc, dict):
+        return []
+    all_jobs = jobs(doc)
+    by_target = {}
+    for job_id, job in all_jobs.items():
+        by_target.setdefault(normal_uses(job.get("uses")), []).append(job_id)
+    found = []
+    for piece in (PREPARE, FINISH):
+        if f"{piece}.yml" not in by_target:
+            found.append(("release-pr.yml", f"calls no {piece}; copy "
+                                            "assets/callers/release-pr.yml in the repo-infra "
+                                            "skill"))
+    for own in ("release-build.yml", "ci.yml"):
+        if own not in by_target:
+            found.append(("release-pr.yml", f"does not call {own}; the release pull request "
+                                            "would open untested or unbuilt"))
+    if found:
+        return found
+    prepare = by_target[f"{PREPARE}.yml"][0]
+    finish = by_target[f"{FINISH}.yml"][0]
+    for own in ("release-build.yml", "ci.yml"):
+        for job_id in by_target[own]:
+            if prepare not in needs(all_jobs[job_id]):
+                found.append(("release-pr.yml", f"job {job_id} does not need {prepare}; it "
+                                                "would build or test before the release "
+                                                "branch exists"))
+    missing = [j for j in all_jobs if j != finish and j not in needs(all_jobs[finish])]
+    if missing:
+        found.append(("release-pr.yml", f"{finish} does not need {', '.join(missing)}; it "
+                                        "would open the pull request before they finished"))
+    if not callers_event(doc, "workflow_dispatch"):
+        found.append(("release-pr.yml", "has no workflow_dispatch trigger; nobody can start "
+                                        "a release"))
+    return found
+
+
 FINALIZE = "ri-publish-finalize"
 _EXPRESSION = re.compile(r"^\$\{\{(.*)\}\}$", re.DOTALL)
 
@@ -356,6 +402,11 @@ def _event(doc, event):
     if isinstance(on, dict) and event in on:
         return True, on[event] if isinstance(on[event], dict) else {}
     return False, {}
+
+
+def callers_event(doc, event):
+    """True when `doc` triggers on `event`."""
+    return _event(doc, event)[0]
 
 
 def _on_main(doc, event):
@@ -629,8 +680,7 @@ def unreadable_concerns(docs, pieces):
 
 def _callable(pieces, file):
     """True when the workflow piece installed as `file` runs only when called:
-    its header carries a Call: snippet. changelog and release-pr start runs
-    of their own."""
+    its header carries a Call: snippet."""
     return any(p.workflow and pathlib.PurePosixPath(p.target).name == file
                and "Call" in p.header for p in pieces.values())
 
@@ -682,6 +732,7 @@ def validate(docs, pieces, assets=ASSETS):
               and not calls(docs, file) and file not in called_by_text]
     found = (closing_problems(docs, assets) + changelog_problems(docs, assets)
              + release_skip_problems(docs, assets)
+             + release_pr_problems(docs, pieces)
              + finalize_problems(docs, pieces)
              + frame_problems(docs, pieces)
              + ref_contract_problems(docs, piece_files)

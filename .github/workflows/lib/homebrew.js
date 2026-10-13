@@ -1,4 +1,3 @@
-// repo-infra: workflow-lib v10
 'use strict';
 
 // ri-release-homebrew (D32): the three formula steps around the bottle

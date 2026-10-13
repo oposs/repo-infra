@@ -16,7 +16,7 @@ from nfpm_facts import facts_diff
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PIECE = ROOT / ".github/workflows/ri-release-nfpm.yml"
-LIB = ROOT / "skills/repo-infra/assets/pieces/workflow-lib/lib"
+LIB = ROOT / ".github/workflows/lib"
 FIXTURE = ROOT / "tests/fixtures/nfpm"
 TARGETS = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
 BOTH = '{"deb": {}, "rpm": {}}'

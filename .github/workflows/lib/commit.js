@@ -1,4 +1,3 @@
-// repo-infra: workflow-lib v10
 'use strict';
 
 // Commits go through the Git Data API rather than `git commit && git push`.

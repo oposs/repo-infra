@@ -401,7 +401,7 @@ def _run_parked(tmp_path, runs, fail_list=False, fail_delete=()):
     if node is None:
         pytest.skip("node is not installed")
     script = _expand_inputs(_parked_step()["with"]["script"])
-    # The helper under test is the installed copy of lib/release.js, driven
+    # The helper under test is lib/release.js of this repository, driven
     # through a fake github: only the listing and the deletion are faked.
     harness = """
 const runs = %s; const failList = %s; const failDelete = %s;

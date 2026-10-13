@@ -1,9 +1,3 @@
-// repo-infra: workflow-lib v10
-//
-// Purpose: The JavaScript the release flow, the publish pieces and the release build pieces run (D8, D32).
-// Choose: Always.
-// Supplies: Nothing.
-
 'use strict';
 
 // Decisions of the release flow that builds and tests a release before its

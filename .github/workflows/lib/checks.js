@@ -1,4 +1,3 @@
-// repo-infra: workflow-lib v10
 'use strict';
 
 // Everything that reported on the commit, whatever workflow produced it. The

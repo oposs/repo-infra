@@ -12,14 +12,13 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "skills/repo-infra/assets"
-RELEASE_PR = ASSETS / "pieces/release-pr/release-pr.yml"
-CHECKS_JS = ASSETS / "pieces/workflow-lib/lib/checks.js"
+PREPARE = ROOT / ".github/workflows/ri-release-prepare.yml"
+CHECKS_JS = ROOT / ".github/workflows/lib/checks.js"
 
 
 @pytest.fixture
 def workflow():
-    return RELEASE_PR.read_text(encoding="utf-8")
+    return PREPARE.read_text(encoding="utf-8")
 
 
 def test_the_guard_gathers_its_ignore_ids_through_the_tested_function(workflow):
@@ -45,7 +44,8 @@ def test_the_guard_passes_the_workflow_ref_it_needs_to_find_earlier_attempts(wor
 
 
 def test_the_workflow_may_read_the_actions_api(workflow):
-    """Listing this workflow's runs and their jobs is `actions: read`; prepare
-    also deletes parked runs, which is `actions: write` on that job (D28)."""
-    permissions = workflow.split("permissions:", 1)[1].split("\njobs:", 1)[0]
-    assert "actions: read" in permissions
+    """Listing the caller's runs and their jobs is `actions: read`; prepare
+    also deletes parked runs, which is `actions: write` (D28). The piece
+    declares the write, which includes the read."""
+    permissions = workflow.split("\npermissions:", 1)[1].split("\njobs:", 1)[0]
+    assert "actions: write" in permissions

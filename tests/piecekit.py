@@ -17,6 +17,7 @@ SKIP_IF = next(line for line in RELEASE_PR_SKIP.splitlines() if line.startswith(
 # test store; a fixture's ci.yml carries them with its own needs: list.
 CI_PASSED = (ASSETS / "callers/ci-passed.yml").read_text(encoding="utf-8")
 CHANGELOG = (ASSETS / "callers/changelog.yml").read_text(encoding="utf-8")
+RELEASE_PR = (ASSETS / "callers/release-pr.yml").read_text(encoding="utf-8")
 
 
 def digest(text):

@@ -599,20 +599,6 @@ Installed at `.github/dependabot.yml`.
 
 **The repository supplies:** The no-changelog label.
 
-### release-pr v6
-
-Installed at `.github/workflows/release-pr.yml`.
-
-**Purpose:** Create release PR: build, test and open the release pull request (D28).
-
-**Choose it when:** Always.
-
-**The repository supplies:** ci.yml and release-build.yml callers that declare the inputs it passes; version_files in .github/repo-infra.json.
-
-**Needs the pieces:** workflow-lib
-
-**Permissions it needs:** actions: write, checks: write, contents: write, pull-requests: write, statuses: write
-
 ### ri-changelog
 
 Called as `oposs/repo-infra/.github/workflows/ri-changelog.yml@v2`.
@@ -641,6 +627,73 @@ changelog:
     statuses: read
 ```
 
+### ri-release-finish
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-finish.yml@v2`.
+
+**Purpose:** Draft the release, mark the head, write the two required checks and open the release pull request (D28, D33).
+
+**Choose it when:** Always; release-pr.yml calls it after the build and the CI run.
+
+**The repository supplies:** release_assets and release_files in .github/repo-infra.json; the build's release-asset-* and release-files artifacts in the same run.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version being released, from prepare. |
+| `date` | string | yes |  | The release date, from prepare. |
+| `head` | string | yes |  | The release branch head, from prepare. |
+| `base` | string | yes |  | The dispatched main commit, from prepare. |
+
+**Permissions it needs:** checks: write, contents: write, pull-requests: write, statuses: write
+
+```yaml
+finish:
+  needs: [prepare, build, test]
+  uses: oposs/repo-infra/.github/workflows/ri-release-finish.yml@v2
+  permissions:
+    contents: write
+    pull-requests: write
+    statuses: write
+    checks: write
+  with:
+    version: ${{ needs.prepare.outputs.version }}
+    date: ${{ needs.prepare.outputs.date }}
+    head: ${{ needs.prepare.outputs.head }}
+    base: ${{ needs.prepare.outputs.base }}
+```
+
+### ri-release-prepare
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-prepare.yml@v2`.
+
+**Purpose:** Prepare the release branch: guard, refusals, stale drafts and parked runs, roll CHANGES.md, set the version files (D28, D33).
+
+**Choose it when:** Always; release-pr.yml calls it.
+
+**The repository supplies:** version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section.
+
+**Produces:** The outputs version, date, head (the release branch head) and base (the dispatched main commit).
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `release_type` | string | yes |  | bugfix, feature or major. |
+
+**Outputs:** `version`, `date`, `head`, `base`
+
+**Permissions it needs:** actions: write, contents: write, checks: read, pull-requests: read
+
+```yaml
+prepare:
+  uses: oposs/repo-infra/.github/workflows/ri-release-prepare.yml@v2
+  permissions:
+    contents: write
+    pull-requests: read
+    checks: read
+    actions: write
+  with:
+    release_type: ${{ inputs.release_type }}
+```
+
 ### ri-release-verdict
 
 Called as `oposs/repo-infra/.github/workflows/ri-release-verdict.yml@v2`.
@@ -665,16 +718,6 @@ release-verdict:
     pull-requests: read
     statuses: read
 ```
-
-### workflow-lib v10
-
-Installed at `.github/workflows/lib`.
-
-**Purpose:** The JavaScript the release flow, the publish pieces and the release build pieces run (D8, D32).
-
-**Choose it when:** Always.
-
-**The repository supplies:** Nothing.
 
 ## Build files
 
