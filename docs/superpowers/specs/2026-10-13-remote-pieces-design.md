@@ -1,7 +1,7 @@
 # Remote pieces: consumers call repo-infra's workflows instead of copying them
 
 Date: 2026-10-13
-Status: draft for review, revised after one pushback review of the same day
+Status: draft for review, revised after two pushback reviews of the same day
 Decision: D33 (replaces D30's rule that pieces are copied byte for byte into
 every repository; keeps D30's split between pieces and callers, D28 and D31's
 release flow and D32's project shape)
@@ -53,11 +53,12 @@ that a test holds equal.
   pieces by group. Remote pieces leave `generations.json`.
 - `ri-ci-lib` tests the library and becomes a repo-infra piece only: it leaves
   the catalogue for consumers.
-- repo-infra's own callers call its pieces as `./.github/workflows/ri-*.yml`,
-  so repo-infra runs each piece from the commit under test. The two judges
-  that D28 loads from the base commit (`changelog-updated` and the release
-  mode of `ci-passed`) call `@v2` instead, so a pull request to repo-infra that
-  changes the library is judged by the released library.
+- repo-infra's own callers call every piece as `./.github/workflows/ri-*.yml`,
+  the two judges (`ri-changelog`, `ri-release-verdict`) included, so repo-infra
+  runs each piece from the commit under test before `v2` moves, and needs no
+  `v2` to release 2.0.0. A pull request to repo-infra that changes the library
+  is therefore judged by its own library; in consumers the judges come from
+  `v2`, which a pull request cannot change.
 
 ## Loading the library
 
@@ -103,7 +104,7 @@ this way. Callers in consumers leave `repository` unset. The gate sets it to
 ## Required checks stay inline
 
 The ruleset requires the contexts `ci-passed` and `changelog-updated`, and
-`release-pr` writes statuses under the same names. A job that calls a
+`release-pr`'s finish writes check runs under the same names. A job that calls a
 reusable workflow reports as `<caller job> / <called job>`, and a called
 workflow cannot read the caller's `needs`. Both required jobs therefore stay
 inline in the callers, under their current job ids. The library work moves
@@ -111,16 +112,25 @@ into pieces:
 
 - `ri-release-verdict` computes D28's release mode for a pull request from a
   `release/*` branch and returns `mode` (`release`, `ordinary`) and `ok` as
-  outputs. The inline `ci-passed` keeps `if: always()`, lists the verdict job
+  outputs. On every other event (push, `workflow_dispatch`, `workflow_call`
+  from `release-pr`, an ordinary pull request) it succeeds with
+  `mode=ordinary`. The verdict job runs on every event: it is exempt from
+  D31's `release-pr-skip` condition, in `assets/callers/` and in `check`,
+  because the bot-opened release pull request is the run where the verdict
+  decides. The inline `ci-passed` keeps `if: always()`, lists the verdict job
   and every other job in `needs:`, and fails when the verdict job did not
   succeed, when `mode` is `release` and `ok` is false, or when `mode` is not
   `release` and a needed job failed or was cancelled.
 - `ri-changelog` checks `CHANGES.md` and returns its verdict as an output. The
   inline `changelog-updated` keeps today's label condition in its `if:`, joined
-  with `always()`, needs the `ri-changelog` job, and fails unless that job
+  with `!cancelled()`, needs the `ri-changelog` job, and fails unless that job
   succeeded. A required job skipped because a needed job failed would report
-  success; `always()` prevents that. The `ri-changelog` job carries the same
-  label condition, so the `no-changelog` label skips both.
+  success; `!cancelled()` prevents that without turning a cancelled run red.
+  The `ri-changelog` job carries the same label condition, so the
+  `no-changelog` label skips both.
+- repo-infra's `ci.yml` calls `ri-changelog` and `ri-release-verdict` through
+  `./`, so both run on every repo-infra pull request before a release moves
+  `v2`.
 
 `assets/callers/ci-passed.yml` and a new `assets/callers/changelog.yml` hold
 the inline jobs word for word; `check` compares them as it does today.
@@ -134,14 +144,23 @@ organisation, and it cannot know each consumer's secrets and permissions.
 `release-pr` therefore splits into two pieces:
 
 - `ri-release-prepare` creates the release branch, rolls `CHANGES.md` and sets
-  the version files; it returns the version and the branch head.
+  the version files; it returns the version, the date, the base commit and
+  the branch head.
 - `ri-release-finish` collects the build artifacts, writes the draft release,
-  sets the `release-built`, `ci-passed` and `changelog-updated` statuses and
+  sets the `release-built` status and the `ci-passed` and
+  `changelog-updated` check runs (`statuses: write`, `checks: write`) and
   opens the pull request.
 
 The consumer's `release-pr.yml` keeps `workflow_dispatch` and wires
-`prepare`, its own `release-build`, its own `ci` and `finish`, passing secrets
-by name. `assets/callers/release-pr.yml` holds it.
+`prepare`, its own `release-build`, its own `ci` and `finish`.
+`assets/callers/release-pr.yml` holds it. Its calls to the consumer's own
+`release-build.yml` and `ci.yml` stay in one repository and keep
+`secrets: inherit`; its calls to repo-infra pieces pass secrets by name.
+
+`check` reviews a repository's `release-pr.yml` by structure (`prepare` and
+`finish` present, `release-build` and `ci` between them, `finish` needing all
+of them), not word for word, so a repository may add jobs between `prepare`
+and `finish`. repo-infra adds its gate there.
 
 `ri-ci-github-action` calls the consumer's `./.github/workflows/action-test.yml`
 with `secrets: inherit` and is restructured the same way: the consumer's
@@ -160,7 +179,8 @@ consumer as callers.
 ## Secrets
 
 `secrets: inherit` works only when caller and called workflow belong to the
-same organisation or enterprise. Every caller passes each secret by name.
+same organisation or enterprise. Every call to a repo-infra piece passes each
+secret by name. Calls inside one repository may keep `inherit`.
 
 ## The release gate
 
@@ -168,20 +188,27 @@ The gate is its own workflow run, so its artifacts never reach the run that
 builds repo-infra's release.
 
 - `.github/workflows/gate-mtuspy.yml` in repo-infra has `workflow_dispatch`
-  with an input `ref`. It runs mtuspy's CI jobs (`ri-ci-rust`,
-  `ri-ci-rust-musl`, `ri-ci-man`) and release-build jobs
-  (`ri-release-rust-binaries`, `ri-release-nfpm`, `ri-release-homebrew`)
-  through `./.github/workflows/ri-*.yml` at that ref, with `repository` and
-  `ref` set from the example's source record. It runs no publish piece and
-  needs no secret.
-- repo-infra's `release-build.yml` dispatches it on the release branch head,
-  finds the run by head commit and creation time, waits for it and fails
-  unless it succeeded. A failed gate stops the release pull request; `v2`
-  does not move.
+  and no inputs. Dispatched on a ref, it runs the pieces of that ref: mtuspy's
+  CI jobs (`ri-ci-rust`, `ri-ci-rust-musl`, `ri-ci-man`) and release-build
+  jobs (`ri-release-rust-binaries`, `ri-release-nfpm`, `ri-release-homebrew`)
+  through `./.github/workflows/ri-*.yml`, with `repository`, `ref` and
+  `version` read from the example's source record. It runs no publish piece
+  and needs no secret.
+- A job `gate` in repo-infra's own `release-pr.yml`, between `prepare` and
+  `finish`, holds `actions: write`. It dispatches the gate on the release
+  branch with `return_run_details` (the dispatch API returns the run id since
+  February 2026), waits for that run and fails unless it succeeded. `finish`
+  needs `gate`, so a failed gate stops the release pull request and `v2`
+  does not move. Consumers' build jobs never get `actions: write`.
 - `references/examples/mtuspy/source.json` records the source:
-  `repository`, `ref` (a tag) and `version`. The gate reads it.
-- A test holds the gate's jobs and inputs equal to the example callers,
-  apart from `repository`, `ref` and the `@v2` versus `./` form of `uses:`.
+  `repository`, `ref` (a tag) and `version`.
+- A test holds the gate's jobs and inputs equal to the six example caller
+  jobs named above, apart from `repository`, `ref` and the `@v2` versus `./`
+  form of `uses:`. The example's `ci-passed`, verdict job and
+  `ri-release-pr-current` are not part of the gate.
+- GitHub dispatches only workflows that exist on the default branch, so the
+  gate is first run after the 2.0.0 branch is merged and before the 2.0.0
+  release is dispatched (see "Order of work").
 
 ## Compatibility within v2
 
@@ -192,23 +219,30 @@ pieces mtuspy uses. Within `v2` a piece may:
 - add a secret only as optional,
 - add an output,
 
-and may not remove or rename an input, secret or output, make one required,
-or widen the `permissions:` of a job (a called workflow cannot raise what its
-caller grants). Any such change waits for `v3`.
+and may not remove a piece, remove or rename an input, secret or output,
+change an input's `type`, make an input or secret required, or widen
+`permissions:` at workflow level, on a job, or through a new job that declares
+them (a called workflow cannot raise what its caller grants). Any such change
+waits for `v3`.
 
-A test compares each piece's `workflow_call` interface and job permissions
-with the same piece at the latest release tag and fails on a change outside
-these rules.
+A test compares the pieces with the commit `v2` points at. It iterates the
+pieces of that commit, so a removed piece fails, and compares each
+`workflow_call` interface and every `permissions:` block. After a rollback
+`v2` points at the previous release, so reverting the bad release passes.
+Before 2.0.0 there is no `v2`, and the test is skipped.
 
 ## The tag
 
 - repo-infra's `.github/repo-infra.json` sets `moving_major_tag: true`;
   `ri-publish-tag` moves `v2` after the release tag.
-- A tag ruleset on `v*` in repo-infra blocks updates and deletion. A GitHub
-  App on the ruleset's bypass list moves the tag. `ri-publish-tag` gets an
-  optional secret for the App's token and uses it to move the major tag when
-  it is set. repo-infra's caller passes it; consumers without it keep today's
-  behaviour.
+- A tag ruleset on `v*` in repo-infra blocks updates and deletion. Its
+  bypass list holds a GitHub App and the Repository admin role.
+- `ri-publish-tag` gets two optional secrets, `app-id` and
+  `app-private-key`. When both are set it mints an installation token with
+  `actions/create-github-app-token` and moves the major tag with it. An
+  installation token lasts one hour, so it cannot be stored as a secret, and
+  a token handed over as a job output is redacted. repo-infra's caller passes
+  both; consumers without them keep today's behaviour.
 - `RELEASING.md` documents the rollback: an admin points `v2` at the previous
   release tag's commit, then the defect is reverted on `main` before the next
   release, which moves `v2` forward again.
@@ -223,7 +257,11 @@ these rules.
   `assets/callers/`, `ci-passed`'s `needs:` names every other job.
 - Each called piece gets the inputs it requires and each secret it declares
   `required: true`. `check` reads the interfaces from the pieces in the
-  installed plugin, whose version is the release `v2` points at.
+  installed plugin.
+- The repo-infra entry in the `oposs/claude-plugins` marketplace sets
+  `"ref": "v2"` in its source, so the installed plugin is the release `v2`
+  points at, and `apply` never writes an input that `v2` does not define.
+  Plugin fixes reach users with a release, as piece fixes do.
 - Fragments are compared by bytes against `generations.json`, as today.
 - The project shape review is unchanged.
 
@@ -242,11 +280,13 @@ these rules.
 2. repo-infra 2.0.0 on one branch: the layout, the split pieces, the inline
    jobs, the gate, the compatibility test, the tag ruleset and App, `check`
    and `apply`. `references/examples/mtuspy/` gets hand-written v2 callers and
-   `source.json` pointing at mtuspy `v0.2.1`, version `0.2.1`; the gate is
-   tested against them.
-3. Release 2.0.0; `v2` appears.
-4. Migrate mtuspy with `apply`; its callers equal the example. Release mtuspy.
-5. Move `source.json` to that mtuspy release.
+   `source.json` pointing at mtuspy `v0.2.1`, version `0.2.1`; the test holds
+   the gate equal to them.
+3. Merge; dispatch the gate on `main` by hand and fix it until it is green.
+   Create the App and the tag ruleset.
+4. Release 2.0.0; `v2` appears. Pin the marketplace entry to `ref: v2`.
+5. Migrate mtuspy with `apply`; its callers equal the example. Release mtuspy.
+6. Move `source.json` to that mtuspy release.
 
 ## Later
 
