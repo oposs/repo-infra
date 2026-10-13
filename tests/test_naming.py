@@ -7,11 +7,11 @@ here stays until v3:
   snake_case;
 - workflow_call secrets and the repository variables a workflow reads:
   UPPER_SNAKE, and a call passes each secret under the name of the
-  repository secret it reads (`RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}`);
+  repository secret it reads (`GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}`);
 - job ids, step ids, artifact names and workflow file names: kebab-case.
 
-Names a third-party action imposes, such as the `client-id` input of
-actions/create-github-app-token, are a step's `with:` and are not checked.
+Names a third-party action imposes, such as the `node-version` input of
+actions/setup-node, are a step's `with:` and are not checked.
 """
 
 import json

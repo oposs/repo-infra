@@ -239,15 +239,13 @@ Before 2.0.0 there is no `v2`, and the test is skipped.
 
 - repo-infra's `.github/repo-infra.json` sets `moving_major_tag: true`;
   `ri-publish-tag` moves `v2` after the release tag.
-- A tag ruleset on `v*` in repo-infra blocks updates and deletion. Its
-  bypass list holds a GitHub App and the Repository admin role.
-- `ri-publish-tag` gets two optional secrets, `RELEASE_APP_CLIENT_ID` (the
-  App's Client ID) and `RELEASE_APP_PRIVATE_KEY`, named like the repository
-  secrets the caller passes. When both are set it mints an installation token with
-  `actions/create-github-app-token` and moves the major tag with it. An
-  installation token lasts one hour, so it cannot be stored as a secret, and
-  a token handed over as a job output is redacted. repo-infra's caller passes
-  both; consumers without them keep today's behaviour.
+- A tag ruleset on `v*` in repo-infra blocks deletion only. Its bypass
+  list holds the Repository admin role, so an admin can delete a wrong tag.
+  The release job needs no bypass, because moving a tag is not a deletion.
+- `ri-publish-tag` moves the major tag with the job's own token
+  (`contents: write`) and takes no secrets. No GitHub App holds the right to
+  move `v2`: write access to repo-infra is a small trusted group, and an
+  accidental move is reset by an admin with the rollback below.
 - `RELEASING.md` documents the rollback: an admin points `v2` at the previous
   release tag's commit, then the defect is reverted on `main` before the next
   release, which moves `v2` forward again.
@@ -283,12 +281,12 @@ Before 2.0.0 there is no `v2`, and the test is skipped.
 
 1. Probe `./` inside a cross-repository call.
 2. repo-infra 2.0.0 on one branch: the layout, the split pieces, the inline
-   jobs, the gate, the compatibility test, the tag ruleset and App, `check`
+   jobs, the gate, the compatibility test, the tag ruleset, `check`
    and `apply`. `references/examples/mtuspy/` gets hand-written v2 callers and
    `source.json` pointing at mtuspy `v0.2.1`, version `0.2.1`; the test holds
    the gate equal to them.
 3. Merge; dispatch the gate on `main` by hand and fix it until it is green.
-   Create the App and the tag ruleset.
+   Create the tag ruleset (deletion only).
 4. Release 2.0.0; `v2` appears. Pin the marketplace entry to `ref: v2`.
 5. Migrate mtuspy with `apply`; its callers equal the example. Release mtuspy.
 6. Move `source.json` to that mtuspy release.

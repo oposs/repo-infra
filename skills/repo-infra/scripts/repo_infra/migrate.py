@@ -150,8 +150,8 @@ def passed_secrets(pieces, used):
     """{piece file: [secret]} for replacing `secrets: inherit` on a call:
     the secrets the piece requires, and the optional ones the repository
     used before. inherit passed every secret; naming an optional one the
-    repository never had, such as ri-publish-tag's RELEASE_APP_CLIENT_ID, would
-    read as a secret it is expected to set."""
+    repository never had, such as ri-publish-gitea's GITEA_PACKAGE_TOKEN,
+    would read as a secret it is expected to set."""
     found = {}
     for piece in pieces.values():
         if not piece.remote:

@@ -578,11 +578,6 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-tag.yml@v2`.
 
 **The repository supplies:** version_files and moving_major_tag in .github/repo-infra.json.
 
-| Secret | Required | Description |
-|---|---|---|
-| `RELEASE_APP_CLIENT_ID` | no | A GitHub App's Client ID; with RELEASE_APP_PRIVATE_KEY, the major tag is moved with the App's token, which a tag ruleset can let through. |
-| `RELEASE_APP_PRIVATE_KEY` | no | The private key of the App with the Client ID in RELEASE_APP_CLIENT_ID. |
-
 **Outputs:** `version`, `tag`, `release_id`, `head`
 
 **Permissions it needs:** contents: write, pull-requests: read

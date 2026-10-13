@@ -25,13 +25,6 @@ name: Tag the release
 
 on:
   workflow_call:
-    secrets:
-      RELEASE_APP_CLIENT_ID:
-        description: A GitHub App's Client ID; with RELEASE_APP_PRIVATE_KEY, the major tag is moved with the App's token, which a tag ruleset can let through.
-        required: false
-      RELEASE_APP_PRIVATE_KEY:
-        description: The private key of the App with the Client ID in RELEASE_APP_CLIENT_ID.
-        required: false
     outputs:
       version:
         description: The released version, from CHANGES.md.
@@ -55,8 +48,6 @@ jobs:
     name: Tag and publish
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      HAS_APP: ${{ secrets.RELEASE_APP_CLIENT_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}
     outputs:
       version: ${{ steps.publish.outputs.version }}
       tag: ${{ steps.publish.outputs.tag }}
@@ -272,17 +263,9 @@ jobs:
             core.setOutput('release_id', String(decision.releaseId));
             core.setOutput('head', head);
 
-      # D33: an installation token lasts one hour, so it cannot be stored as
-      # a secret, and a token handed over as a job output is redacted. It is
-      # minted here, in the job that uses it. Without the App secrets the move
-      # uses GITHUB_TOKEN, which a tag ruleset on v* refuses.
-      - id: app
-        if: env.HAS_APP == 'true' && steps.publish.outputs.tag != ''
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-
+      # The job's own token moves the major tag (contents: write). A tag
+      # ruleset on v* that blocks updates refuses it; repo-infra's own ruleset
+      # blocks deletion only, so it lets the move through.
       - name: Move the major tag
         if: steps.publish.outputs.tag != ''
         uses: actions/github-script@v9
@@ -291,7 +274,6 @@ jobs:
           TAG: ${{ steps.publish.outputs.tag }}
           HEAD: ${{ steps.publish.outputs.head }}
         with:
-          github-token: ${{ steps.app.outputs.token || github.token }}
           script: |
             const fs = require('fs');
             const ws = process.env.GITHUB_WORKSPACE;

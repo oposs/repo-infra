@@ -246,8 +246,7 @@ A call of a repo-infra workflow passes each secret by name:
 
 ```yaml
     secrets:
-      RELEASE_APP_CLIENT_ID: ${{ secrets.RELEASE_APP_CLIENT_ID }}
-      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
 ```
 
 `secrets: inherit` on such a call delivers empty secrets, because the called
@@ -255,9 +254,10 @@ workflow belongs to another organisation. The run starts and a publish fails lat
 so `check` reports the call. `secrets: inherit` is for calls of the repository's own
 `release-build.yml`, `ci.yml` and `action-test.yml`.
 
-The example is repo-infra's own call of `ri-publish-tag`: the repository secret
-`RELEASE_APP_CLIENT_ID` holds the Client ID of its GitHub App (not the numeric App
-ID). A consumer passes both secrets only to move a major tag past a tag ruleset.
+The example is a call of `ri-publish-gitea`, whose optional secret
+`GITEA_PACKAGE_TOKEN` is passed under the name of the repository secret.
+`ri-publish-tag` takes no secrets: it tags and moves a major tag with the job's
+own token.
 
 ## Markers and bytes (D30, D33)
 

@@ -151,15 +151,15 @@ test('moveMajorTag names the ruleset when the move is refused', async () => {
   } } };
   await assert.rejects(
     moveMajorTag(github, { owner: 'o', repo: 'r', version: '2.0.1', tag: 'v2.0.1', sha: 'c1' }),
-    /v2 could not be moved to v2\.0\.1: Repository rule violations found\. A tag ruleset on v\* lets only its bypass list move it; pass RELEASE_APP_CLIENT_ID and RELEASE_APP_PRIVATE_KEY/);
+    /v2 could not be moved to v2\.0\.1: Repository rule violations found\. A tag ruleset on v\* restricts updates; let it restrict deletion only/);
 });
 
-test('moveMajorTag names the secrets when the ruleset answers 403', async () => {
+test('moveMajorTag names the ruleset when it answers 403', async () => {
   const refuse = async () => { const e = new Error('Forbidden by rule'); e.status = 403; throw e; };
   const github = { rest: { git: {
     createTag: async () => ({ data: { sha: 't1' } }), updateRef: refuse, createRef: refuse,
   } } };
   await assert.rejects(
     moveMajorTag(github, { owner: 'o', repo: 'r', version: '2.0.1', tag: 'v2.0.1', sha: 'c1' }),
-    /v2 could not be moved to v2\.0\.1: Forbidden by rule\..*pass RELEASE_APP_CLIENT_ID and RELEASE_APP_PRIVATE_KEY/);
+    /v2 could not be moved to v2\.0\.1: Forbidden by rule\..*restrict deletion only/);
 });

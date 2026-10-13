@@ -486,28 +486,25 @@ def tag_job():
     return yaml.safe_load(TAG_PIECE.read_text(encoding="utf-8"))["jobs"]["publish"]
 
 
-def test_the_major_tag_moves_with_the_app_token_when_one_is_passed():
+def test_the_major_tag_moves_with_the_job_token():
+    """No App and no secret: the job's own token moves the tag, so the
+    piece declares no secrets and its permissions grant contents: write."""
     steps = tag_job()["steps"]
     names = [s.get("name") or s.get("id") or s.get("uses") for s in steps]
-    assert names.index("Tag and create the draft release") < names.index("app") \
-        < names.index("Move the major tag")
+    assert names.index("Tag and create the draft release") < names.index("Move the major tag")
     move = next(s for s in steps if s.get("name") == "Move the major tag")
-    assert move["with"]["github-token"] == "${{ steps.app.outputs.token || github.token }}"
-    assert tag_job()["env"] == {
-        "HAS_APP": "${{ secrets.RELEASE_APP_CLIENT_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}"}
-
-
-def test_the_app_secrets_are_optional():
+    assert "github-token" not in move["with"]
+    assert "env" not in tag_job()
+    piece = yaml.safe_load(TAG_PIECE.read_text(encoding="utf-8"))
+    assert piece["permissions"] == {"contents": "write", "pull-requests": "read"}
     face = workflow.interface(workflow.load(TAG_PIECE.read_text(encoding="utf-8")))
-    assert {k: v["required"] for k, v in face.secrets.items()} == {
-        "RELEASE_APP_CLIENT_ID": False, "RELEASE_APP_PRIVATE_KEY": False}
+    assert face.secrets == {}
 
 
-def test_repo_infra_moves_v2_with_its_app():
+def test_repo_infra_moves_v2_with_the_job_token():
     publish = yaml.safe_load((ROOT / ".github/workflows/release-publish.yml")
                              .read_text(encoding="utf-8"))["jobs"]["publish"]
-    assert publish["secrets"] == {
-        "RELEASE_APP_CLIENT_ID": "${{ secrets.RELEASE_APP_CLIENT_ID }}",
-        "RELEASE_APP_PRIVATE_KEY": "${{ secrets.RELEASE_APP_PRIVATE_KEY }}"}
+    assert "secrets" not in publish
+    assert publish["permissions"] == {"contents": "write", "pull-requests": "read"}
     config = json.loads((ROOT / ".github/repo-infra.json").read_text(encoding="utf-8"))
     assert config["moving_major_tag"] is True
