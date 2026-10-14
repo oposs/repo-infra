@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `ri-release-rust-binaries` takes `targets`, the target triples to build; without it the piece builds all seven as before. A name it does not build fails the run with "targets names <name>, which this piece does not build". A repository that leaves targets out records exceptions in `.github/repo-infra.json`: `native-targets` always, `homebrew` for a missing mac or musl target, and `linux-packages` for a missing musl target.
 
 ### Changed
 - repo-infra's release gate builds mtuspy 0.2.2, the first mtuspy release on the v2 layout.

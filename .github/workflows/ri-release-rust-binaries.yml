@@ -1,10 +1,10 @@
 # repo-infra: ri-release-rust-binaries v2
 #
-# Purpose: Build the release archives of a Rust program for the seven native targets (D32).
-# Choose: The project is a Rust program users install (native-targets in references/project-shape.md).
+# Purpose: Build the release archives of a Rust program for the seven native targets (D32), or for the ones `targets` names (D34).
+# Choose: The project is a Rust program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
 # Supplies: Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, and `make man` writing man/.
 # Pieces: man, man-lua
-# Produces: The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/); list all seven in release_assets.
+# Produces: The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built; list each of them in release_assets.
 # Call:
 #   binaries:
 #     uses: oposs/repo-infra/.github/workflows/ri-release-rust-binaries.yml@v2
@@ -35,6 +35,11 @@ on:
         description: The binary to build; the archives and their top folder are named after it.
         type: string
         required: true
+      targets:
+        description: Space-separated target triples to build (D34); all seven unless set. A name the piece does not build fails the run.
+        type: string
+        required: false
+        default: x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-illumos x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc
 
 permissions:
   contents: read
@@ -68,41 +73,67 @@ jobs:
           path: man/
           if-no-files-found: error
 
+  # The legs of every target the piece knows, cut down to the ones `targets`
+  # names (D34). oxutrm needs a pty, fork and setsid and does not build for
+  # Windows, so with a fixed matrix of seven its release could never pass.
+  plan:
+    name: Choose the targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Choose the targets
+        id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          # illumos has no static C library, so the binary links the base
+          # system's libraries. mtuspy's single-file build passed crt-static
+          # there too.
+          legs='[
+            {"target": "x86_64-unknown-linux-musl", "os": "ubuntu-latest", "cross": true, "static": true},
+            {"target": "aarch64-unknown-linux-musl", "os": "ubuntu-latest", "cross": true, "static": true},
+            {"target": "x86_64-unknown-illumos", "os": "ubuntu-latest", "cross": true},
+            {"target": "x86_64-apple-darwin", "os": "macos-latest"},
+            {"target": "aarch64-apple-darwin", "os": "macos-latest"},
+            {"target": "x86_64-pc-windows-msvc", "os": "windows-latest", "windows": true},
+            {"target": "aarch64-pc-windows-msvc", "os": "windows-latest", "windows": true}
+          ]'
+          known=$(jq -r '[.[].target] | join(" ")' <<< "$legs")
+          # A YAML block scalar in the caller puts one target per line; read
+          # splits only the first line, so the newlines become blanks first.
+          read -ra chosen <<< "${TARGETS//$'\n'/ }"
+          if [ ${#chosen[@]} -eq 0 ]; then
+            echo "::error::targets names no target; leave it out to build all of $known"
+            exit 1
+          fi
+          unknown=()
+          for target in "${chosen[@]}"; do
+            case " $known " in
+              *" $target "*) ;;
+              *) unknown+=("$target") ;;
+            esac
+          done
+          if [ ${#unknown[@]} -gt 0 ]; then
+            echo "::error::targets names ${unknown[*]}, which this piece does not build; it builds $known"
+            exit 1
+          fi
+          matrix=$(jq -c --arg chosen "${chosen[*]}" \
+            '{include: [.[] | select(.target | IN($chosen | split(" ")[]))]}' <<< "$legs")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   binaries:
     name: Build ${{ matrix.target }}
-    needs: man
+    needs: [plan, man]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       # One target failing must not cancel the others: which target broke is
       # the answer, and fail-fast throws the rest of it away.
       fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            cross: true
-            static: true
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            cross: true
-            static: true
-          # illumos has no static C library, so the binary links the base
-          # system's libraries. mtuspy's single-file build passed crt-static
-          # here too.
-          - target: x86_64-unknown-illumos
-            os: ubuntu-latest
-            cross: true
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            windows: true
-          - target: aarch64-pc-windows-msvc
-            os: windows-latest
-            windows: true
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
