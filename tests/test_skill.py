@@ -141,8 +141,11 @@ def test_check_runs_the_shape_review_apart_from_the_exit_code():
         assert state in text
 
 
-def test_onboarding_reviews_the_shape_once_and_release_flow_points_at_the_snippets():
-    assert "project-shape.md" in flat(REFS / "onboarding.md")
+def test_onboarding_reviews_the_shape_first_and_release_flow_points_at_the_snippets():
+    onboarding = flat(REFS / "onboarding.md")
+    assert "project-shape.md" in onboarding
+    assert onboarding.index("**Review the shape before writing anything.**") < onboarding.index(
+        "**Write the callers and install the build files.**")
     release = flat(REFS / "release-flow.md")
     assert "config-manager" not in release
     assert "references/project-shape.md" in release

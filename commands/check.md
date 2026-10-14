@@ -93,5 +93,6 @@ part of the report and does not change the exit code.
    `ri-release-rust-binaries`, paired by the table under "Exceptions" in
    `references/project-shape.md` (D34).
 
-Report a gap; do not close it from here. Onboarding agrees with the owner which
-gaps a run closes (`references/onboarding.md`).
+Report a gap; do not close it from here. Onboarding runs this review before it
+writes anything and turns every gap into an item of its work plan
+(`references/onboarding.md`).
