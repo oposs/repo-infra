@@ -17,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - repo-infra's release gate builds mtuspy 0.2.2, the first mtuspy release on the v2 layout.
 
 ### Fixed
+- `apply` committed on a `repo-infra/apply` branch left over from an earlier, merged run, so its changes sat on an old tree without the commits that came after. A merged `repo-infra/apply` branch now starts again from the current branch; one that has commits the current branch lacks, as after a squash merge, stops `apply` with a message that says to delete or rebase it.
 
 ## 2.0.1 - 2026-10-13
 ### Fixed
