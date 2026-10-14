@@ -277,12 +277,42 @@ def test_a_merged_piece_prints_the_notes_of_every_version_it_crosses(
 
 
 def test_the_states_are_read_on_the_apply_branch(monkeypatch, store, repo):
-    git(repo, "branch", "repo-infra/apply")
     install(repo, ".github/workflows/ri-x.yml", OLD + "# mine\n")
-    git(repo, "commit", "-qam", "an edit that only main has")
+    git(repo, "commit", "-qam", "a local edit")
+    git(repo, "checkout", "-qb", "repo-infra/apply")
+    install(repo, ".github/workflows/ri-x.yml", OLD)
+    git(repo, "commit", "-qam", "an earlier apply took the edit out")
+    git(repo, "checkout", "-q", "main")
     run_apply(monkeypatch, store, repo, "--item", "ri-x")
-    assert git(repo, "log", "-1", "--format=%s").strip() == (
-        "Install ri-x v2 from the repo-infra standard")
+    assert log_subjects(repo)[:2] == ["Install ri-x v2 from the repo-infra standard",
+                                      "an earlier apply took the edit out"]
+
+
+def test_a_merged_apply_branch_starts_again_from_head(monkeypatch, store, repo):
+    # The branch of an earlier apply, merged since: the repository has moved
+    # on, and work on the old branch would undo what came after it.
+    git(repo, "branch", "repo-infra/apply")
+    install(repo, "later.txt", "merged after the earlier apply\n")
+    git(repo, "add", "later.txt")
+    git(repo, "commit", "-qm", "work that came later")
+    run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert log_subjects(repo)[:2] == ["Install ri-x v2 from the repo-infra standard",
+                                      "work that came later"]
+
+
+def test_an_apply_branch_that_diverged_from_head_is_refused(monkeypatch, store, repo):
+    # A squash merge leaves the branch with commits HEAD does not have.
+    git(repo, "checkout", "-qb", "repo-infra/apply")
+    install(repo, "old.txt", "an earlier apply\n")
+    git(repo, "add", "old.txt")
+    git(repo, "commit", "-qm", "an earlier apply")
+    git(repo, "checkout", "-q", "main")
+    install(repo, "later.txt", "the squash of it\n")
+    git(repo, "add", "later.txt")
+    git(repo, "commit", "-qm", "the squash merge")
+    with pytest.raises(apply.ApplyError, match="repo-infra/apply"):
+        run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "main"
 
 
 def test_from_is_refused_for_an_administration_item(monkeypatch, store, repo):

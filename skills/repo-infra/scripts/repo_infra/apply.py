@@ -508,6 +508,23 @@ def ensure_branch(repo_root):
     current = git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     if current == BRANCH:
         return BRANCH
-    existing = git(repo_root, "branch", "--list", BRANCH).strip()
-    git(repo_root, "checkout", BRANCH) if existing else git(repo_root, "checkout", "-b", BRANCH)
+    if not git(repo_root, "branch", "--list", BRANCH).strip():
+        git(repo_root, "checkout", "-b", BRANCH)
+        return BRANCH
+    head = git(repo_root, "rev-parse", "HEAD").strip()
+    branch = git(repo_root, "rev-parse", BRANCH).strip()
+    base = git(repo_root, "merge-base", head, branch).strip()
+    if base == head:
+        # The work of an earlier apply, not merged yet: go on with it.
+        git(repo_root, "checkout", BRANCH)
+    elif base == branch:
+        # An earlier apply, merged since. Work on it would undo everything
+        # that came after; HEAD holds all of its commits, so start again here.
+        git(repo_root, "checkout", "-B", BRANCH)
+    else:
+        raise ApplyError(
+            f"{BRANCH} holds commits that {current} does not have, and {current} holds "
+            f"commits that {BRANCH} does not have. If it was merged (a squash merge "
+            f"looks like this), delete it: git branch -D {BRANCH}. If it holds work "
+            f"not merged yet, rebase it onto {current}. Then run apply again.")
     return BRANCH
