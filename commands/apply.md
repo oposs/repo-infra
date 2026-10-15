@@ -13,7 +13,8 @@ build file reads `edited`, ask the user before acting on it. If the repository
 has no pieces yet, it is an onboarding: follow `references/onboarding.md` in the
 skill, where the callers are written to call the workflows at `@v2`,
 `apply --item <piece>` installs the build files and the shape review runs
-once. An update runs no shape review; `/repo-infra:check` does.
+first, as the work plan, and again before the pull request. An update runs no
+shape review; `/repo-infra:check` does.
 
 Before applying, read the repository's own build, test and release setup and
 compare it to what you are about to install. A need no piece fits is not a

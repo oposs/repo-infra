@@ -8,8 +8,8 @@ on an interpreter.
 
 The script reads none of this. You decide which triggers apply, read the
 README, the manual, the demo and the release build, and report.
-`commands/check.md` has the steps of the review; onboarding runs it once
-(`references/onboarding.md`). `references/examples/mtuspy/` holds the callers,
+`commands/check.md` has the steps of the review; onboarding runs it first, to
+plan the work, and again at the end (`references/onboarding.md`). `references/examples/mtuspy/` holds the callers,
 the config, the nfpm config and the formula of a Rust program with its full
 shape.
 

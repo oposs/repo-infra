@@ -43,10 +43,13 @@ outdated build files on a `repo-infra/apply` branch, prints what the callers
 must change, and stops. `apply --item <piece>` installs one build file, and
 `apply --item <name>` writes one repository setting through the GitHub API.
 
-A repository not yet in the fold is onboarded from the skill: it reads the
-repository, picks pieces from `skills/repo-infra/references/catalogue.md`,
-writes the callers that call them and installs the build files with
-`apply --item` (`skills/repo-infra/references/onboarding.md`).
+A repository not yet in the fold is onboarded from the skill, which brings it
+up to the full shape of the standard. It reads the repository, runs the shape
+review of `skills/repo-infra/references/project-shape.md` first and presents one
+work plan, picks pieces from `skills/repo-infra/references/catalogue.md`, writes
+the callers that call them, installs the build files with `apply --item`, does
+the rest of the plan and reviews the shape again
+(`skills/repo-infra/references/onboarding.md`).
 
 ## Testing
 

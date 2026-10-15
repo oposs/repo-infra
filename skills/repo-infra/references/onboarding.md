@@ -1,8 +1,20 @@
 # Onboarding a repository
 
-How to bring a repository that is not in the fold onto the standard. repo-infra
-does not decide what a repository needs: you read it, choose pieces from
-`references/catalogue.md`, and write the callers that call them. `check`
+How to bring a repository that is not in the fold onto the standard. Onboarding
+brings the project up to its full shape: the CI and the release flow, and every
+rule `references/project-shape.md` sets for a project of its kind. In most
+repositories that is real work: more Unix-like platforms, `.deb` and `.rpm`
+packages in the Gitea registry, a Homebrew formula, a manual, a README with
+badges and install snippets, a demo. The default for every such item is to do
+it. A rule the project does not meet today is an item of that work.
+
+An exception is for what the program cannot do, such as a terminal program
+built on a pty, `fork` and Unix sockets that has no Windows build, or for what
+the owner rules out. It records that reason in `exceptions` in
+`.github/repo-infra.json`.
+
+repo-infra does not decide what a repository needs: you read it, choose pieces
+from `references/catalogue.md`, and write the callers that call them. `check`
 reports what is wrong and never gates the work.
 
 A repository with the v1 layout (copied `ri-*.yml` files, `.github/workflows/lib/`,
@@ -18,13 +30,39 @@ specified actions and reusable workflows".
 ## The procedure
 
 1. **Read the repository's real setup.** The Makefile or build file, the
-   existing workflows, how a release happens today.
-2. **Map each need to a piece.** Show the user the mapping, one line per need:
-   the piece, or "no piece fits".
-3. **For a need no piece fits, ask the user.** That is stage 1 of
-   `references/teaching-the-standard.md`. Never patch the repository around
-   the gap.
-4. **Write the callers and install the build files.** A new repository copies
+   existing workflows, how a release happens today, the README and the docs.
+2. **Review the shape before writing anything.** Run the shape review of
+   `commands/check.md` against `references/project-shape.md`. Every rule that
+   reads `gap` becomes an item of the work plan.
+3. **Find the platforms by trying.** For a program users install, ask which
+   Unix-like systems it runs on (Linux, macOS, illumos) and whether it runs on
+   Windows, and answer by compiling for each target of `native-targets`, for
+   example `cargo check --target x86_64-unknown-illumos` after
+   `rustup target add`. A comment or a README line such as "never tested on a
+   Mac" is not evidence. A target fails only for a reason in the program, an API
+   the system lacks (a pty, `fork`, `setsid`, Unix sockets on Windows); a missing
+   cross linker or C toolchain on the build machine is not one.
+4. **Map each need to a piece.** One line per need: the piece, or "no piece
+   fits". A release built another way today, such as packages from `cargo-deb`,
+   moves to the piece, and the old build goes.
+5. **Present one work plan.** The full difference between the project today and
+   the standard, grouped:
+
+   - CI: the pieces `ci.yml` calls, and the `rust` key or other config they need.
+   - Release targets: every target of `native-targets` the program builds for.
+   - Packages and channels: `.deb` and `.rpm` through `ri-release-nfpm` and
+     `ri-publish-gitea`, the Homebrew formula, crates.io.
+   - Documentation: the manual, the README (`readme-current`, `badges`,
+     `install-text`), the demo or the screenshot, the `writing-style` review.
+
+   Every item reads "do". Below the plan, apart from it, list the real gaps:
+   a need no piece fits, and a target the program cannot run on that the piece
+   cannot leave out. Each is a stage-1 question of
+   `references/teaching-the-standard.md`, put to the owner as a question about
+   the standard. Add the questions of "Questions to ask" below. The owner's
+   answer settles the plan: an item they rule out becomes an exception with
+   their reason.
+6. **Write the callers and install the build files.** A new repository copies
    the five callers (`ci.yml`, `release-build.yml`, `release-publish.yml`,
    `release-pr.yml`, `changelog.yml`) from `references/examples/mtuspy/` and
    adapts them; `assets/callers/` holds the word-for-word parts (`changelog.yml`,
@@ -43,24 +81,41 @@ specified actions and reusable workflows".
    A bare `apply` installs every missing core build file. Write
    `.github/repo-infra.json` from the closest example in
    `references/examples/repo-infra/` or, for a Rust program users install,
-   `references/examples/mtuspy/`.
-5. **Run the script until it exits 0.** It reads the callers against the pieces
+   `references/examples/mtuspy/`, with the `exceptions` the plan agreed.
+7. **Do the rest of the plan.** Write the manual (the `man-pages` skill), the
+   `nfpm.yaml`, the formula from the template in `references/project-shape.md`,
+   the README and the demo. The plan says which pull request carries each item.
+8. **Run the script until it exits 0.** It reads the callers against the pieces
    they call, so a misspelt input or a missing `needs:` entry shows up before
    the first run on GitHub does.
-6. **Review the shape once.** Run the shape review of `commands/check.md`
-   against `references/project-shape.md`, then agree with the owner which gaps
-   this run closes and which become `exceptions` in `.github/repo-infra.json`,
-   each with its reason. After writing `exceptions`, run the script again.
-7. **Open the pull request with the `no-changelog` label at creation.** GitHub
-   keeps only the latest check run per context, so a label added after the
-   changelog check failed produces a green, skipped run and waves the merge
-   through. Apply the administration items in the order below, each one confirmed
-   with the user first: the rename and the label before the push, the rest
-   after the merge.
+9. **Review the shape again.** Every rule now reads `met`, `excepted` or `does
+   not apply`. A `gap` is an item of the plan not yet done, and says so.
+10. **Open the pull request with the `no-changelog` label at creation.** GitHub
+    keeps only the latest check run per context, so a label added after the
+    changelog check failed produces a green, skipped run and waves the merge
+    through. Apply the administration items in the order below, each one confirmed
+    with the user first: the rename and the label before the push, the rest
+    after the merge.
 
 A piece is never edited in the repository, and a called workflow cannot be.
 Whatever the repository needs that the piece does not do goes into a caller,
 into `ci-local.yml`, or into a new piece (`references/teaching-the-standard.md`).
+
+## Known traps
+
+- **A root `Cargo.toml` that is both `[package]` and `[workspace]`.** Its
+  default members differ from its members, and `rust-plan` in `ri-ci-rust`
+  fails on the first CI run unless `"rust"` in `.github/repo-infra.json` names
+  the crates to lint and test. `check` does not see this. Write the key in step
+  6 (`references/conventions.md`, "The `rust` key").
+- **A target the program cannot build and the piece cannot skip.** The
+  exception alone does not help: the release build still fails on that target.
+  The missing input is a gap in the standard; teach it
+  (`references/teaching-the-standard.md`) and pair the input with the
+  exception, as `references/project-shape.md` says under "Exceptions".
+- **Old claims in the code.** A comment in `Cargo.toml` or the README about
+  where the program runs was true once, or never. Step 3 replaces it with a
+  compile attempt.
 
 ## Migrating the v1 layout
 
@@ -335,13 +390,14 @@ Candidates a repository's files suggest but do not decide:
 
 - `docs/manual.md` suggests `ri-ci-man`, with the `man` and `man-lua` pieces
   and `MAN_NAME` plus `include build/man.mk` in the Makefile (the `man-pages`
-  skill has the rest). A program with a command line and no manual gets one:
-  ask for it (`man-page` in `references/project-shape.md`).
+  skill has the rest). A program with a command line and no manual gets one,
+  written during the onboarding (`man-page` in `references/project-shape.md`).
 - `configure.ac` with `cpanfile` suggests `ri-release-source-tarball`, which
   builds the `make dist` tarball before the release pull request exists.
 - `Cargo.toml` with a binary users install suggests `ri-release-rust-binaries`,
   `ri-release-nfpm` with an `nfpm.yaml`, and `ri-release-homebrew` with
-  `Formula/<bin>.rb` from the template in `references/project-shape.md`.
+  `Formula/<bin>.rb` from the template in `references/project-shape.md`, all
+  three also when the release has no archives, packages or formula today.
 - `book.toml` is a documentation site. No piece covers it.
 
 ## Administration items
