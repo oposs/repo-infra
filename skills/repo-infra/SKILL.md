@@ -32,8 +32,7 @@ still has the v1 layout (copied `ri-*.yml`, `.github/workflows/lib/`) runs
 it, review the shape first and present the owner one work plan in which every
 item reads "do", write the callers (the five of `references/examples/mtuspy/` are
 the model), install the build files with `apply --item <piece>`, do the rest of
-the plan, run the script until it exits 0. `references/onboarding.md` has the
-procedure, and `references/project-shape.md` what a released project contains.
+the plan, run the script until it exits 0, following `references/onboarding.md`.
 
 **Updating** a repository already in the fold:
 
