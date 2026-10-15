@@ -12,7 +12,7 @@ from collections import namedtuple
 Facts = namedtuple(
     "Facts",
     "default_branch protected required_contexts labels workflow_permissions can_approve_pr "
-    "strict release_prs tags",
+    "delete_branch_on_merge strict release_prs tags",
     defaults=(False, (), None))
 
 
@@ -171,6 +171,7 @@ class Gh:
             labels=labels,
             workflow_permissions=permissions["default_workflow_permissions"],
             can_approve_pr=permissions["can_approve_pull_request_reviews"],
+            delete_branch_on_merge=repository["delete_branch_on_merge"],
             strict=strict,
             release_prs=release_prs,
             tags=Tags(self, repo),

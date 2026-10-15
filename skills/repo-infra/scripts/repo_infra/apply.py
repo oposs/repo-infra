@@ -381,6 +381,18 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "then retry.")
         return "allowed Actions to create and approve pull requests"
 
+    if name == "delete-merged-branches":
+        gh.run(["gh", "api", "--method", "PATCH", f"repos/{repo}",
+                "-F", "delete_branch_on_merge=true"])
+        after = json.loads(gh.run(["gh", "api", f"repos/{repo}"]))
+        if after.get("delete_branch_on_merge") is not True:
+            raise ApplyError(
+                "delete-merged-branches: wrote the setting and read back "
+                f"delete_branch_on_merge = {after.get('delete_branch_on_merge')!r}. "
+                "Check Settings -> General -> Pull Requests -> \"Automatically "
+                "delete head branches\" by hand, then retry.")
+        return "switched on Automatically delete head branches"
+
     if name in ("required-checks", "branch-protection"):
         # Both names describe facts about the same ruleset -- an unprotected
         # default branch always reads as both missing at once -- so they share

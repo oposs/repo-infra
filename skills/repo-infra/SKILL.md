@@ -96,8 +96,8 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
    it. Rename the default branch, land the files, then enable the ruleset.
 
 3. **Administration items are outward-facing.** `default-branch`,
-   `required-checks`, `no-changelog-label` and `actions-open-pr` change the live
-   repository with no commit. `apply` runs one only with `--item`; confirm each.
+   `required-checks`, `no-changelog-label`, `actions-open-pr` and
+   `delete-merged-branches` change the live repository with no commit. `apply` runs one only with `--item`; confirm each.
 
 4. **A release in progress blocks `apply`.** An open release pull request, or a
    latest released version without a tag, stops every install.

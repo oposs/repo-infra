@@ -28,7 +28,7 @@ from .remote import Facts, Gh, GhError
 # Administration items write repository settings through `remote.Gh`, and
 # each is outward-facing, so apply runs one only when it is named (D30).
 ADMIN = {"default-branch", "branch-protection", "required-checks",
-         "no-changelog-label", "actions-open-pr"}
+         "no-changelog-label", "actions-open-pr", "delete-merged-branches"}
 
 # apply's exit status when it stops for a hand merge. A refusal (ApplyError)
 # exits 1; argparse exits 2 on a usage error.
@@ -38,7 +38,7 @@ EXIT_NEEDS_MERGE = 3
 CONFORMING_FACTS = Facts(default_branch="main", protected=True,
                          required_contexts={"ci-passed", "changelog-updated"},
                          labels={"no-changelog"}, workflow_permissions="write",
-                         can_approve_pr=True, strict=True)
+                         can_approve_pr=True, delete_branch_on_merge=True, strict=True)
 
 
 def read_facts(repo):

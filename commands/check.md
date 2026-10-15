@@ -31,8 +31,8 @@ The report has four sections.
   to one version and downgrade the files already past it. SHA and branch pins
   are not compared.
 - `config`: `.github/repo-infra.json`.
-- `administration`: the default branch, the ruleset, the label and the Actions
-  setting, read from GitHub.
+- `administration`: the default branch, the ruleset, the label, the Actions
+  setting and the deletion of merged branches, read from GitHub.
 
 Every call of a repo-infra workflow must read
 `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`, with each secret passed
