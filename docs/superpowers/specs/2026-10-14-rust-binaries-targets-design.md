@@ -1,7 +1,7 @@
 # Rust binaries: a caller chooses the targets
 
 Date: 2026-10-14
-Status: proving on the branch `feat/rust-binaries-targets` with oxutrm
+Status: released in repo-infra 2.1.0; proven with oxutrm on 2026-10-15
 Decision: D34 (the first piece input that drops a requirement; names the
 pairing D32's "Exceptions" asks of it; changes nothing else in D32 or D33)
 
@@ -71,8 +71,9 @@ build step run once per leg of the default.
 
 ## Proof
 
-oxutrm calls the piece at `@feat/rust-binaries-targets` with
-`targets: x86_64-unknown-linux-musl aarch64-unknown-linux-musl
-x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-illumos`, with the
-paired exceptions recorded, and its release build runs green for the legs it
-keeps.
+oxutrm's proof run of 2026-10-15 (Actions run 38691319427 in oetiker/oxutrm)
+called the piece with `targets: x86_64-unknown-linux-musl
+aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin`. `plan`
+chose those four legs, all four built, and the deb and rpm packages and the
+Homebrew bottle built from their archives. The plan named
+`x86_64-unknown-illumos` as a fifth target; the run left it out.

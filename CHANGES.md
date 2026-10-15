@@ -19,7 +19,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## 2.1.0 - 2026-10-15
 ### New
-- `ri-release-rust-binaries` takes `targets`, the target triples to build; without it the piece builds all seven as before. A name it does not build fails the run with "targets names <name>, which this piece does not build". A repository that leaves targets out records exceptions in `.github/repo-infra.json`: `native-targets` always, `homebrew` for a missing mac or musl target, and `linux-packages` for a missing musl target.
+- `ri-release-rust-binaries` takes `targets`, the target triples to build; without it the piece builds all seven as before. A name it does not build fails the run with "targets names <name>, which this piece does not build". A repository that builds fewer than the seven records exceptions in `.github/repo-infra.json`: `native-targets` always, `homebrew` for a missing mac or musl target, and `linux-packages` for a missing musl target.
 
 ### Changed
 - The onboarding guidance now treats bringing a project up to its full shape as the job: more platforms, `.deb` and `.rpm` packages, a Homebrew formula, a manual, a README with badges and install snippets, a demo. The shape review runs before any caller is written and yields one work plan in which every item reads "do", with the few things the program cannot do or no piece covers asked apart; exceptions are for those and for what the owner rules out. The supported platforms are found by compiling for each target instead of from comments in the code, and the guidance names two traps: a root `Cargo.toml` that is also a workspace needs the `rust` key, and a target the release cannot skip is a gap in the standard.
