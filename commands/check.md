@@ -89,7 +89,9 @@ part of the report and does not change the exit code.
    `.github/repo-infra.json`, or `does not apply` with the kind of program its
    `Requires:` names, which needs no exception.
 4. List the exceptions whose id matches no rule, and the piece inputs that lack
-   their paired exceptions.
+   their paired exceptions. Today that is `targets` of
+   `ri-release-rust-binaries`, paired by the table under "Exceptions" in
+   `references/project-shape.md` (D34).
 
 Report a gap; do not close it from here. Onboarding agrees with the owner which
 gaps a run closes (`references/onboarding.md`).

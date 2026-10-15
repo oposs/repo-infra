@@ -148,7 +148,8 @@ for it; the review says so instead of reporting a gap.
 Verify: `release_assets` lists the seven archives and the latest release
 carries them.
 
-Met by: `ri-release-rust-binaries`. mise's `github:` backend picks an asset by these
+Met by: `ri-release-rust-binaries` without `targets`; with `targets` the rule
+is excepted (see "Exceptions"). mise's `github:` backend picks an asset by these
 names, so `mise use -g github:<owner>/<repo>` works without further setup.
 
 ### `source-archive`
@@ -215,11 +216,19 @@ not know the rule ids. The review reports an exception whose id matches no
 rule, and a gap that has no exception.
 
 A piece input that drops a requirement is allowed only together with the
-exceptions for every rule it weakens, and the review checks the pairing. No
-piece has such an input yet; the spec of the first one names its pairing. A
-skipped target, for example, weakens `native-targets`; a skipped darwin target
-also weakens `homebrew`, and a skipped musl target also `homebrew` and
-`linux-packages`.
+exceptions for every rule it weakens, and the review checks the pairing. One
+piece has such an input (D34): `targets` of `ri-release-rust-binaries`, which
+names the targets to build. A call that sets it needs these exceptions:
+
+| Left out | Exceptions |
+|---|---|
+| any target | `native-targets` |
+| `x86_64-apple-darwin` or `aarch64-apple-darwin` | also `homebrew` |
+| `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` | also `homebrew` and `linux-packages` |
+
+`ri-release-homebrew` refuses to run without both mac archives and both musl
+archives, and `ri-release-nfpm` builds from the musl archives, so a repository
+with these exceptions does not call the piece behind them.
 
 ## Badges
 

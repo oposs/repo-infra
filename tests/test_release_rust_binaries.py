@@ -1,6 +1,8 @@
-"""ri-release-rust-binaries (D32): the seven archives of a Rust program. The
-build and the packing step run here on a fake target tree."""
+"""ri-release-rust-binaries (D32): the seven archives of a Rust program, or the
+ones `targets` chooses (D34). The target choice, the build and the packing step
+run here, the last two on a fake target tree."""
 
+import json
 import os
 import pathlib
 import subprocess
@@ -25,8 +27,30 @@ def step(job, name):
     return next(s for s in doc()["jobs"][job]["steps"] if s.get("name") == name)
 
 
+def plan(targets):
+    """Runs the plan step with `targets`; its output file is stdout."""
+    return subprocess.run(["bash", "-c", step("plan", "Choose the targets")["run"]],
+                          env={"PATH": "/usr/bin:/bin", "TARGETS": targets,
+                               "GITHUB_OUTPUT": "/dev/stdout"},
+                          capture_output=True, text=True)
+
+
+def chosen(targets):
+    done = plan(targets)
+    assert done.returncode == 0, done.stdout + done.stderr
+    lines = done.stdout.splitlines()
+    assert len(lines) == 1 and lines[0].startswith("matrix=")
+    return json.loads(lines[0].removeprefix("matrix="))["include"]
+
+
+def default_targets():
+    # PyYAML reads the key `on` as the boolean true.
+    return doc()[True]["workflow_call"]["inputs"]["targets"]["default"]
+
+
 def legs():
-    return doc()["jobs"]["binaries"]["strategy"]["matrix"]["include"]
+    """The legs a caller gets without `targets`."""
+    return chosen(default_targets())
 
 
 def test_the_matrix_builds_the_seven_native_targets_of_the_shape():
@@ -40,6 +64,54 @@ def test_the_mac_legs_run_on_the_current_image():
     # then waits in `queued` until the run is cancelled.
     assert {leg["target"]: leg["os"] for leg in legs() if "apple" in leg["target"]} == {
         "x86_64-apple-darwin": "macos-latest", "aarch64-apple-darwin": "macos-latest"}
+
+
+def test_targets_is_optional_and_defaults_to_the_seven():
+    spec = doc()[True]["workflow_call"]["inputs"]["targets"]
+    assert spec["type"] == "string" and spec["required"] is False
+    assert sorted(default_targets().split()) == sorted(TARGETS)
+
+
+def test_the_matrix_comes_from_the_plan_job():
+    binaries = doc()["jobs"]["binaries"]
+    assert binaries["strategy"]["matrix"] == "${{ fromJSON(needs.plan.outputs.matrix) }}"
+    assert doc()["jobs"]["plan"]["outputs"] == {"matrix": "${{ steps.plan.outputs.matrix }}"}
+    assert step("plan", "Choose the targets")["env"] == {"TARGETS": "${{ inputs.targets }}"}
+
+
+@pytest.mark.parametrize("targets", [
+    "x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin "
+    "aarch64-apple-darwin x86_64-unknown-illumos",
+    "aarch64-apple-darwin",
+    "  x86_64-pc-windows-msvc\n x86_64-unknown-linux-musl  x86_64-pc-windows-msvc ",
+], ids=["no-windows", "one", "blanks-newlines-repeats"])
+def test_targets_keeps_exactly_the_named_legs_unchanged(targets):
+    full = {leg["target"]: leg for leg in legs()}
+    picked = chosen(targets)
+    assert [leg["target"] for leg in picked] == [
+        t for t in full if t in targets.split()]
+    assert all(leg == full[leg["target"]] for leg in picked)
+
+
+@pytest.mark.parametrize("targets, named", [
+    ("x86_64-unknown-linux-musl i686-pc-windows-gnu", "i686-pc-windows-gnu"),
+    ("x86_64-unknown-linux-gnu riscv64gc-unknown-linux-musl",
+     "x86_64-unknown-linux-gnu riscv64gc-unknown-linux-musl"),
+    ("*", "*"),
+], ids=["one-unknown", "two-unknown", "glob"])
+def test_an_unknown_target_fails_the_run_and_names_it(targets, named):
+    done = plan(targets)
+    assert done.returncode == 1
+    assert done.stdout.splitlines() == [
+        f"::error::targets names {named}, which this piece does not build; it builds "
+        + " ".join(leg["target"] for leg in legs())]
+
+
+@pytest.mark.parametrize("targets", ["", "  \n "], ids=["empty", "blank"])
+def test_targets_naming_nothing_fails_the_run(targets):
+    done = plan(targets)
+    assert done.returncode == 1
+    assert done.stdout.startswith("::error::targets names no target; leave it out")
 
 
 def test_one_target_failing_does_not_cancel_the_others():
@@ -60,7 +132,7 @@ def test_linux_and_illumos_build_with_cross_pinned_by_version():
 
 def test_the_man_pages_are_built_once_on_linux_and_fetched_by_every_leg_but_windows():
     jobs = doc()["jobs"]
-    assert jobs["binaries"]["needs"] == "man"
+    assert jobs["binaries"]["needs"] == ["plan", "man"]
     assert jobs["man"]["runs-on"] == "ubuntu-latest"
     runs = [s.get("run", "") for s in jobs["man"]["steps"]]
     assert any("apt-get install -y pandoc" in r for r in runs)
