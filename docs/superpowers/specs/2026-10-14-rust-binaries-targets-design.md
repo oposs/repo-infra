@@ -76,4 +76,8 @@ called the piece with `targets: x86_64-unknown-linux-musl
 aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin`. `plan`
 chose those four legs, all four built, and the deb and rpm packages and the
 Homebrew bottle built from their archives. The plan named
-`x86_64-unknown-illumos` as a fifth target; the run left it out.
+`x86_64-unknown-illumos` as a fifth target; the run left it out, because
+oxutrm does not build for illumos today (`netdev` 0.46 and `login_tty` of
+`rustix-openpty`, among others). Whether an illumos client can be built is
+open; if it can, oxutrm adds the target and drops illumos from the reason of
+its `native-targets` exception, which Windows still needs.
