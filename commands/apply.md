@@ -28,11 +28,12 @@ reason to edit the repository around it. It is a gap in the standard, and
   commit, every build file as one commit. A workflow piece is called, never
   written. Nothing leaves the machine until you push.
 - **Administration items** (`default-branch`, `branch-protection` /
-  `required-checks`, `no-changelog-label`, `actions-open-pr`) write straight to
-  the live repository through the GitHub API, with no commit, no branch and no
-  review. They run only with `--item`. Confirm each with the user first:
-  renaming a branch, enabling a ruleset and granting Actions permission to open
-  pull requests are all outward-facing.
+  `required-checks`, `no-changelog-label`, `actions-open-pr`,
+  `delete-merged-branches`) write straight to the live repository through the
+  GitHub API, with no commit, no branch and no review. They run only with
+  `--item`. Confirm each with the user first: renaming a branch, enabling a
+  ruleset, granting Actions permission to open pull requests and deleting
+  merged branches are all outward-facing.
 
 ## Bare `apply`
 
@@ -156,6 +157,7 @@ The order is one sequence, the same as in `references/onboarding.md`:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item required-checks
    python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item actions-open-pr
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item delete-merged-branches
    ```
 
    `required-checks` (alias `branch-protection`) turns on the ruleset, which is

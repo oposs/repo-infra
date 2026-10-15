@@ -175,7 +175,7 @@ def test_a_required_workflow_with_a_paths_filter_is_a_conflict():
 CONFORMING = Facts(default_branch="main", protected=True,
                    required_contexts={"ci-passed", "changelog-updated"},
                    labels={"no-changelog"}, workflow_permissions="write",
-                   can_approve_pr=True, strict=True)
+                   can_approve_pr=True, delete_branch_on_merge=True, strict=True)
 
 
 def test_administration_items_are_their_own_section():
@@ -221,7 +221,7 @@ def remote(**overrides):
     base = dict(default_branch="main", protected=True,
                 required_contexts={"ci-passed", "changelog-updated"},
                 labels={"no-changelog"}, workflow_permissions="write", can_approve_pr=True,
-                strict=True)
+                delete_branch_on_merge=True, strict=True)
     base.update(overrides)
     return check.classify_remote(Facts(**base))
 
@@ -251,6 +251,17 @@ def test_a_missing_label_is_reported_because_dependabot_will_not_create_it():
 
 def test_actions_that_cannot_open_a_pull_request_is_missing():
     assert remote_states(remote(can_approve_pr=False))["actions-open-pr"] == "missing"
+
+
+def test_merged_branches_left_behind_are_missing():
+    item = next(i for i in remote(delete_branch_on_merge=False)
+                if i.name == "delete-merged-branches")
+    assert (item.section, item.state) == ("administration", "missing")
+    assert "delete_branch_on_merge" in item.detail
+
+
+def test_merged_branches_deleted_automatically_are_ok():
+    assert remote_states(remote())["delete-merged-branches"] == "ok"
 
 
 def test_a_ruleset_without_the_up_to_date_rule_is_outdated():

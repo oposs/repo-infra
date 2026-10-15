@@ -42,7 +42,8 @@ class Recorder:
 
 def facts(**overrides):
     base = dict(default_branch="main", protected=False, required_contexts=set(),
-                labels=set(), workflow_permissions="read", can_approve_pr=False)
+                labels=set(), workflow_permissions="read", can_approve_pr=False,
+                delete_branch_on_merge=False)
     base.update(overrides)
     return Facts(**base)
 
@@ -124,6 +125,22 @@ def test_workflow_permissions_that_do_not_stick_are_an_error(tmp_path):
         {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False})})
     with pytest.raises(ApplyError, match="read back"):
         apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+
+
+def test_deleting_merged_branches_is_switched_on_and_read_back(tmp_path):
+    recorder = Recorder({"api repos/o/r": json.dumps({"delete_branch_on_merge": True})})
+    apply_admin_item(Gh(run=recorder), "o/r", "delete-merged-branches", facts(), ASSETS,
+                     tmp_path)
+    assert ["gh", "api", "--method", "PATCH", "repos/o/r",
+            "-F", "delete_branch_on_merge=true"] in recorder.calls
+    assert ["gh", "api", "repos/o/r"] in recorder.calls
+
+
+def test_deleting_merged_branches_that_does_not_stick_is_an_error(tmp_path):
+    recorder = Recorder({"api repos/o/r": json.dumps({"delete_branch_on_merge": False})})
+    with pytest.raises(ApplyError, match="read back"):
+        apply_admin_item(Gh(run=recorder), "o/r", "delete-merged-branches", facts(), ASSETS,
+                         tmp_path)
 
 
 def test_the_ruleset_is_refused_while_the_workflows_are_not_on_the_default_branch(tmp_path):

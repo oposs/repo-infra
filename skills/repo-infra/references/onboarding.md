@@ -421,6 +421,9 @@ review, and each is outward-facing. Apply them one at a time with `apply
    that would install it.
 5. **`actions-open-pr`**: lets Actions create and approve pull requests, which
    Create release PR needs.
+6. **`delete-merged-branches`**: switches on "Automatically delete head
+   branches", so a merged release pull request does not leave its
+   `release/vX.Y.Z` branch behind.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item required-checks

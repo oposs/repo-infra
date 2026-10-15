@@ -64,6 +64,9 @@ def test_a_broken_asset_store_is_a_message_not_a_traceback(monkeypatch, tmp_path
     (["--item", "no-changelog-label", "--from", "m.js"],
      "--from takes the merged file of a piece, not of the administration item "
      "no-changelog-label"),
+    (["--item", "delete-merged-branches", "--from", "m.js"],
+     "--from takes the merged file of a piece, not of the administration item "
+     "delete-merged-branches"),
     (["--item", "nothing-like-it"], "nothing-like-it: not a piece and not an administration "
                                     "item"),
 ])

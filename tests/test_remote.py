@@ -72,6 +72,11 @@ def test_reads_the_workflow_permissions():
     assert facts().can_approve_pr is True
 
 
+def test_reads_whether_merged_branches_are_deleted():
+    # The recording is of oposs/repo-infra with the setting off.
+    assert facts().delete_branch_on_merge is False
+
+
 def test_a_failing_gh_call_raises_rather_than_returning_a_default():
     def angry(args):
         raise GhError("gh: HTTP 404")

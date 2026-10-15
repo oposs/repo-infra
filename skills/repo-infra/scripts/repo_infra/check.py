@@ -430,6 +430,11 @@ def classify_remote(facts):
     items.append(Item("administration", "actions-open-pr", "ok" if ok else "missing",
         "" if ok else f"can_approve_pull_request_reviews = {facts.can_approve_pr}, "
                       f"default_workflow_permissions = {facts.workflow_permissions}"))
+
+    deletes = facts.delete_branch_on_merge
+    items.append(Item("administration", "delete-merged-branches", "ok" if deletes else "missing",
+        "" if deletes else "delete_branch_on_merge = False: every merged release pull "
+                           "request leaves its release/vX.Y.Z branch behind"))
     return items
 
 
