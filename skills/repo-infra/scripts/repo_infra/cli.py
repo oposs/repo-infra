@@ -115,7 +115,7 @@ def apply_command(args):
         blocker = release_in_progress(args.root, facts)
         if blocker:
             raise ApplyError(f"release-in-progress: {blocker}")
-        ensure_branch(args.root)
+        ensure_branch(args.root, facts.default_branch)
         # The branch may carry other versions of the files than the one the
         # first look found, so what to install is decided on this one.
         if _v1_layout(args):

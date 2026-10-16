@@ -315,6 +315,27 @@ def test_an_apply_branch_that_diverged_from_head_is_refused(monkeypatch, store, 
     assert git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "main"
 
 
+def test_apply_says_which_branch_it_left(monkeypatch, capsys, store, repo):
+    run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert "switched from main to repo-infra/apply" in capsys.readouterr().out
+
+
+def test_apply_from_a_feature_branch_is_refused(monkeypatch, store, repo):
+    # #87: apply switched a feature-branch worktree to repo-infra/apply, and
+    # the commits made afterwards landed on the wrong branch.
+    git(repo, "checkout", "-qb", "feature")
+    with pytest.raises(apply.ApplyError, match="git switch main"):
+        run_apply(monkeypatch, store, repo, "--item", "ri-x")
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip() == "feature"
+    assert "repo-infra/apply" not in git(repo, "branch", "--list")
+
+
+def test_apply_goes_on_from_its_own_branch(monkeypatch, capsys, store, repo):
+    git(repo, "checkout", "-qb", "repo-infra/apply")
+    assert run_apply(monkeypatch, store, repo, "--item", "ri-x") == 0
+    assert "switched from" not in capsys.readouterr().out
+
+
 def test_from_is_refused_for_an_administration_item(monkeypatch, store, repo):
     with pytest.raises(apply.ApplyError, match="--from"):
         run_apply(monkeypatch, store, repo, "--item", "required-checks", "--from", "x")
@@ -445,7 +466,7 @@ def test_a_failed_git_command_says_what_git_printed_on_stdout(tmp_path):
 def test_the_log_is_read_in_a_linked_worktree_and_from_a_relative_root(
         monkeypatch, store, repo, tmp_path):
     linked = tmp_path / "linked"
-    git(repo, "worktree", "add", "-q", "-b", "other", str(linked))
+    git(repo, "worktree", "add", "-q", "-b", "repo-infra/apply", str(linked))
     install(linked, ".github/workflows/ri-x.yml", OLD + "# mine\n")
     git(linked, "commit", "-qam", "edit in the worktree")
     monkeypatch.chdir(tmp_path)

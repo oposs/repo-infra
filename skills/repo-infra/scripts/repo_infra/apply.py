@@ -516,10 +516,20 @@ BRANCH = "repo-infra/apply"
 TRAILER = "Co-Authored-By: Claude <noreply@anthropic.com>"
 
 
-def ensure_branch(repo_root):
+def ensure_branch(repo_root, default_branch):
     current = git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").strip()
     if current == BRANCH:
         return BRANCH
+    # apply checks out its branch in this worktree. Run from a feature branch
+    # in shadcn-egui, it left the worktree on repo-infra/apply, and the commits
+    # made afterwards landed there and had to be moved back by hand. Its pull
+    # request goes to the default branch, so that is the only other start.
+    if current != default_branch:
+        raise ApplyError(
+            f"this worktree is on {current}. apply checks out {BRANCH} here and opens "
+            f"its pull request against {default_branch}, so run it from "
+            f"{default_branch}: git switch {default_branch}")
+    print(f"switched from {current} to {BRANCH}")
     if not git(repo_root, "branch", "--list", BRANCH).strip():
         git(repo_root, "checkout", "-b", BRANCH)
         return BRANCH
