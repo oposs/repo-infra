@@ -191,7 +191,9 @@ Both **Re-run failed jobs** and a whole-workflow re-run finish a stopped
 publish. The publish pieces skip what an earlier attempt uploaded:
 `ri-publish-crates-io` asks crates.io and publishes only the workspace crates
 whose version is not there yet, and `ri-publish-gitea` counts a file Gitea
-already holds as uploaded (below). A whole-workflow re-run finishes a stopped
+already holds as uploaded (below). `ri-publish-crates-io` also re-runs its
+own publish, up to four times, when cargo times out waiting for the crates.io
+index or crates.io answers HTTP 429. A whole-workflow re-run finishes a stopped
 release only when every publish job the repository wrote itself does the
 same.
 

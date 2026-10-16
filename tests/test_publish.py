@@ -299,62 +299,82 @@ CRATES = {"packages": [
 ]}
 
 
-def _run_crates_publish(tmp_path, on_crates_io, status_other="404"):
+def _run_crates_publish(tmp_path, on_crates_io, status_other=None, attempts=(),
+                        new_crates=()):
     """Run the block's own shell for the crates.io check and the publish.
 
-    A fake cargo prints metadata and records `cargo publish` arguments; a fake
-    curl answers 200 for every name/version in `on_crates_io`.
+    A fake curl answers from a list of published name/version pairs, which
+    starts as `on_crates_io`; `new_crates` are names crates.io has never seen,
+    and `status_other` replaces every 404. A fake cargo prints metadata and
+    records `cargo publish` arguments. Its n-th publish follows `attempts[n]`,
+    a tuple (crates it uploads, exit code, message on stderr); past the end of
+    `attempts` it uploads every crate not excluded and succeeds. A fake sleep
+    records its argument.
     """
     if shutil.which("jq") is None:
         pytest.skip("jq is not installed")
     steps = _crates_io_job()["steps"]
-    pending = next(s for s in steps if s.get("id") == "pending")["run"]
-    publish = next(s for s in steps if "cargo publish" in s.get("run", ""))["run"]
+    publish = next(s for s in steps if s.get("id") == "publish")["run"]
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "log"
+    published = tmp_path / "published"
+    published.write_text("".join(f"{c}\n" for c in on_crates_io))
     (tmp_path / "metadata.json").write_text(json.dumps(CRATES), encoding="utf-8")
+    plan = tmp_path / "plan"
+    plan.write_text("".join(f"{' '.join(up)}|{rc}|{msg}\n" for up, rc, msg in attempts))
     (bin_dir / "cargo").write_text(
-        '#!/bin/sh\n'
+        '#!/bin/bash\n'
         f'if [ "$1" = metadata ]; then cat {tmp_path}/metadata.json; exit 0; fi\n'
-        f'echo "cargo $*" >> {log}\n', encoding="utf-8")
+        f'echo "cargo $*" >> {log}\n'
+        f'n=$(grep -c "^cargo publish" {log})\n'
+        f'line=$(sed -n "${{n}}p" {plan})\n'
+        'if [ -z "$line" ]; then\n'
+        f'  for c in core-a app-b; do [[ " $* " == *" $c "* ]] || echo "$c/1.2.3" >> {published}; done\n'
+        '  exit 0\n'
+        'fi\n'
+        'IFS="|" read -r up rc msg <<< "$line"\n'
+        f'for c in $up; do echo "$c/1.2.3" >> {published}; done\n'
+        'echo "$msg" >&2\n'
+        'exit "$rc"\n', encoding="utf-8")
     (bin_dir / "curl").write_text(
         '#!/bin/bash\n'
         'url="${@: -1}"\n'
         f'echo "curl $url" >> {log}\n'
-        'case " $ON_CRATES_IO " in *" ${url#https://crates.io/api/v1/crates/} "*) '
-        'printf 200;; *) printf "$STATUS_OTHER";; esac\n', encoding="utf-8")
-    for tool in ("cargo", "curl"):
+        'path=${url#https://crates.io/api/v1/crates/}\n'
+        'if [ -n "$STATUS_OTHER" ]; then other=$STATUS_OTHER; else other=404; fi\n'
+        'if [[ $path == */* ]]; then\n'
+        f'  grep -qx "$path" {published} && printf 200 || printf "$other"\n'
+        'else\n'
+        '  case " $NEW_CRATES " in *" $path "*) printf "$other";; *) printf 200;; esac\n'
+        'fi\n', encoding="utf-8")
+    (bin_dir / "sleep").write_text(f'#!/bin/sh\necho "sleep $*" >> {log}\n',
+                                   encoding="utf-8")
+    for tool in ("cargo", "curl", "sleep"):
         (bin_dir / tool).chmod(0o755)
-    output = tmp_path / "github_output"
-    output.write_text("")
-    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "GITHUB_OUTPUT": str(output),
-           "ON_CRATES_IO": " ".join(on_crates_io), "STATUS_OTHER": status_other}
+    env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "RUNNER_TEMP": str(tmp_path),
+           "STATUS_OTHER": status_other or "", "NEW_CRATES": " ".join(new_crates)}
+    run = subprocess.run(["bash", "-c", publish], cwd=tmp_path, env=env,
+                         capture_output=True, text=True)
+    return {"rc": run.returncode, "stdout": run.stdout, "stderr": run.stderr,
+            "log": log.read_text().splitlines() if log.exists() else []}
 
-    first = subprocess.run(["bash", "-c", pending], cwd=tmp_path, env=env,
-                           capture_output=True, text=True)
-    result = {"pending_rc": first.returncode, "stdout": first.stdout, "stderr": first.stderr}
-    if first.returncode == 0:
-        outputs = dict(line.split("=", 1) for line in output.read_text().splitlines())
-        second = subprocess.run(
-            ["bash", "-c", publish], cwd=tmp_path, capture_output=True, text=True,
-            env={**env, "PENDING": outputs["pending"], "EXCLUDE": outputs["exclude"]})
-        result.update(publish_rc=second.returncode, publish_stdout=second.stdout)
-    result["log"] = log.read_text().splitlines() if log.exists() else []
-    return result
+
+def _publishes(out):
+    return [line for line in out["log"] if line.startswith("cargo publish")]
 
 
 def test_the_crates_io_addon_publishes_every_crate_on_a_first_run(tmp_path):
     out = _run_crates_publish(tmp_path, [])
-    assert out["publish_rc"] == 0
-    assert "cargo publish --workspace --locked" in out["log"]
+    assert out["rc"] == 0
+    assert _publishes(out) == ["cargo publish --workspace --locked"]
 
 
 def test_the_crates_io_addon_excludes_a_crate_an_earlier_attempt_published(tmp_path):
     out = _run_crates_publish(tmp_path, ["core-a/1.2.3"])
-    assert out["publish_rc"] == 0
-    assert "cargo publish --workspace --locked --exclude core-a" in out["log"]
+    assert out["rc"] == 0
+    assert _publishes(out) == ["cargo publish --workspace --locked --exclude core-a"]
     assert "core-a 1.2.3 is already on crates.io" in out["stdout"]
     # publish = false is cargo's to skip; crates.io is never asked about it.
     assert not any("helper" in line for line in out["log"])
@@ -362,15 +382,64 @@ def test_the_crates_io_addon_excludes_a_crate_an_earlier_attempt_published(tmp_p
 
 def test_the_crates_io_addon_skips_the_publish_when_every_crate_is_there(tmp_path):
     out = _run_crates_publish(tmp_path, ["core-a/1.2.3", "app-b/1.2.3"])
-    assert out["publish_rc"] == 0
-    assert not any(line.startswith("cargo publish") for line in out["log"])
-    assert "already on crates.io" in out["publish_stdout"]
+    assert out["rc"] == 0
+    assert _publishes(out) == []
+    assert "Every crate of this release is already on crates.io" in out["stdout"]
 
 
 def test_the_crates_io_addon_fails_when_crates_io_does_not_answer(tmp_path):
     out = _run_crates_publish(tmp_path, [], status_other="503")
-    assert out["pending_rc"] != 0
+    assert out["rc"] != 0
     assert "HTTP 503" in out["stderr"]
+    assert _publishes(out) == []
+
+
+TIMEOUT = ("error: unable to publish app-b v1.2.3 due to a timeout while waiting "
+           "for published dependencies to be available.")
+
+
+def test_the_crates_io_addon_publishes_the_rest_after_an_index_timeout(tmp_path):
+    # shadcn-egui v0.5.0: the base crate went up, cargo timed out waiting for
+    # it in the index, and every crate depending on it stayed unpublished.
+    out = _run_crates_publish(tmp_path, [], attempts=[(["core-a"], 101, TIMEOUT)])
+    assert out["rc"] == 0
+    assert _publishes(out) == ["cargo publish --workspace --locked",
+                               "cargo publish --workspace --locked --exclude core-a"]
+    assert "sleep 60" in out["log"]
+
+
+def test_the_crates_io_addon_waits_longer_on_a_rate_limit(tmp_path):
+    limit = ("Caused by: the remote server responded with an error "
+             "(status 429 Too Many Requests): You have published too many versions")
+    out = _run_crates_publish(tmp_path, [], attempts=[(["core-a"], 101, limit)])
+    assert out["rc"] == 0
+    assert "sleep 300" in out["log"]
+
+
+def test_the_crates_io_addon_gives_up_after_four_attempts(tmp_path):
+    out = _run_crates_publish(tmp_path, [], attempts=[([], 101, TIMEOUT)] * 5)
+    assert out["rc"] != 0
+    assert len(_publishes(out)) == 4
+    assert [line for line in out["log"] if line.startswith("sleep")] == ["sleep 60"] * 3
+    assert "after 4 attempts" in out["stdout"]
+
+
+def test_the_crates_io_addon_does_not_retry_any_other_failure(tmp_path):
+    out = _run_crates_publish(
+        tmp_path, [], attempts=[([], 101, "error: could not compile `core-a`")])
+    assert out["rc"] != 0
+    assert len(_publishes(out)) == 1
+    assert not any(line.startswith("sleep") for line in out["log"])
+
+
+def test_the_crates_io_addon_stops_before_uploading_when_a_crate_is_new(tmp_path):
+    # #86: crates.io registers a Trusted Publisher only for a crate that exists.
+    out = _run_crates_publish(tmp_path, [], new_crates=["app-b"])
+    assert out["rc"] != 0
+    assert _publishes(out) == []
+    assert "app-b is not on crates.io yet" in out["stdout"]
+    assert "core-a is not" not in out["stdout"]
+    assert "Trusted Publisher of app-b" in out["stderr"]
 
 
 def test_the_finalize_piece_refuses_an_asset_whose_upload_did_not_finish(tmp_path):
