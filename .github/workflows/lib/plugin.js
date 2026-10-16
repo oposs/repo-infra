@@ -61,13 +61,20 @@ function clean(path) {
   return path.replace(/^(\.\/)+/, '').replace(/\/+$/, '').replace(/^\.$/, '');
 }
 
-// The directory an entry's plugin lives in, '' for the root, or null when
-// the entry is fetched from somewhere other than this repository.
+// A relative source Claude Code refuses with `must start with "./"`: neither
+// "." nor "./...", and not a bare name it can resolve under pluginRoot.
+const UNPREFIXED = Symbol('unprefixed');
+
+// The directory an entry's plugin lives in, '' for the root, null when the
+// entry is fetched from somewhere other than this repository, undefined for
+// a git-subdir source without a path, or UNPREFIXED.
 function entryDirectory(source, self, pluginRoot) {
   if (typeof source === 'string') {
-    if (source === '.' || source.startsWith('./') || !pluginRoot) return clean(source);
-    if (source.includes('/')) return clean(source);
-    return clean(`${clean(pluginRoot)}/${source}`);
+    if (source === '.' || source.startsWith('./')) return clean(source);
+    if (pluginRoot && !source.includes('/')) {
+      return [clean(pluginRoot), source].filter(Boolean).join('/');
+    }
+    return UNPREFIXED;
   }
   if (source === null || typeof source !== 'object' || !self) return null;
   if (source.source === 'github' && githubRepo(source.repo) === self) return '';
@@ -88,6 +95,10 @@ function marketplaceProblems(tracked, read, self) {
     const label = `${MARKETPLACE}: plugin ${JSON.stringify((entry || {}).name || `#${index}`)}`;
     const dir = entryDirectory((entry || {}).source, self, pluginRoot);
     if (dir === null) return;
+    if (dir === UNPREFIXED) {
+      found.push(`${label} has source ${JSON.stringify(entry.source)}, which must start with "./"`);
+      return;
+    }
     if (dir === undefined) {
       found.push(`${label} has a git-subdir source without a path`);
       return;

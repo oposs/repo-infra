@@ -126,6 +126,36 @@ test('a bare name resolves under metadata.pluginRoot', () => {
   assert.deepEqual(check(tree).problems, []);
 });
 
+test('a source without ./ and without pluginRoot fails as Claude Code refuses it', () => {
+  const tree = {
+    '.claude-plugin/marketplace.json': marketplace(
+      { name: 'demo', source: 'plugin' },
+      { name: 'nested', source: 'plugins/demo' },
+    ),
+    'plugin/.claude-plugin/plugin.json': GOOD,
+    'plugins/demo/.claude-plugin/plugin.json': GOOD,
+  };
+  assert.deepEqual(check(tree).problems, [
+    '.claude-plugin/marketplace.json: plugin "demo" has source "plugin", which must start with "./"',
+    '.claude-plugin/marketplace.json: plugin "nested" has source "plugins/demo", '
+      + 'which must start with "./"',
+  ]);
+});
+
+test('a bare name with pluginRoot passes, a path with a slash still needs ./', () => {
+  const tree = {
+    '.claude-plugin/marketplace.json': JSON.stringify({
+      name: 'm', owner: { name: 'o' }, metadata: { pluginRoot: '.' },
+      plugins: [{ name: 'demo', source: 'plugin' }, { name: 'n', source: 'plugins/demo' }],
+    }),
+    'plugin/.claude-plugin/plugin.json': GOOD,
+    'plugins/demo/.claude-plugin/plugin.json': GOOD,
+  };
+  assert.deepEqual(check(tree).problems, [
+    '.claude-plugin/marketplace.json: plugin "n" has source "plugins/demo", which must start with "./"',
+  ]);
+});
+
 test('a github entry for this repository needs the root plugin', () => {
   // shadcn-egui today: moving the plugin to plugin/ without changing this
   // entry would leave the marketplace pointing at nothing.
