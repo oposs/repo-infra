@@ -111,6 +111,15 @@ Trusted Publisher per publishable crate before the first converted release, or
 the release stays a draft and the crate never ships. `check` queries GitHub, not
 crates.io, and cannot see this.
 
+A crate new to crates.io has the same prerequisite, one step earlier: crates.io
+registers a Trusted Publisher only for a crate that exists, so Trusted
+Publishing cannot create one. When a release adds a crate, `ri-publish-crates-io`
+stops before it uploads anything and names the new crates. Publish that release
+once by hand with an API token (`cargo publish --workspace --locked` on the
+release commit), register the Trusted Publisher for each new crate, then re-run
+the failed jobs; the re-run finds every crate on crates.io and finishes the
+release.
+
 ## The Containerfile contract (D18)
 
 repo-infra owns the *shape* of the build environment; the project owns its
