@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `apply` run from a feature branch switched that worktree to `repo-infra/apply` without a word, so later commits landed on the wrong branch. It now refuses to start anywhere but the default branch or `repo-infra/apply`, with "this worktree is on <branch>" and the `git switch` to run, and prints "switched from main to repo-infra/apply" when it changes the branch. (#87)
 
 ## 2.3.0 - 2026-10-16
 ### New

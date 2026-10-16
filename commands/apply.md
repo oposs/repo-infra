@@ -26,7 +26,9 @@ reason to edit the repository around it. It is a gap in the standard, and
 - **Files** (every row of the `pieces` section of `check`) are written to the
   working tree of the local `repo-infra/apply` branch: the migration as one
   commit, every build file as one commit. A workflow piece is called, never
-  written. Nothing leaves the machine until you push.
+  written. Nothing leaves the machine until you push. `apply` checks out that
+  branch in the current worktree and runs only from the default branch or
+  from `repo-infra/apply` itself; switch to the default branch first.
 - **Administration items** (`default-branch`, `branch-protection` /
   `required-checks`, `no-changelog-label`, `actions-open-pr`,
   `delete-merged-branches`) write straight to the live repository through the
