@@ -13,11 +13,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
-- Every merged release pull request left its `release/vX.Y.Z` branch behind. `check` now reports the GitHub setting "Automatically delete head branches" as the administration item `delete-merged-branches`, and `apply --item delete-merged-branches` switches it on.
-
 ### Changed
 
 ### Fixed
+
+## 2.2.0 - 2026-10-16
+### New
+- Every merged release pull request left its `release/vX.Y.Z` branch behind. `check` now reports the GitHub setting "Automatically delete head branches" as the administration item `delete-merged-branches`, and `apply --item delete-merged-branches` switches it on.
 
 ## 2.1.0 - 2026-10-15
 ### New
