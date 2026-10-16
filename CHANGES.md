@@ -12,11 +12,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
-- `ri-ci-claude-plugin` checks every `.claude-plugin/plugin.json` in the repository, so a plugin can live in a subdirectory such as `plugin/` and a marketplace entry with a `git-subdir` source installs that directory alone instead of the whole repository. Each message names the file it is about, and a repository without any `plugin.json` fails with "no tracked .claude-plugin/plugin.json in this repository". When the root has a `.claude-plugin/marketplace.json`, every entry that installs from this repository must point at a directory holding a `.claude-plugin/plugin.json`; entries for other repositories are not checked. (#82)
 
 ### Changed
 
 ### Fixed
+
+## 2.3.0 - 2026-10-16
+### New
+- `ri-ci-claude-plugin` checks every `.claude-plugin/plugin.json` in the repository, so a plugin can live in a subdirectory such as `plugin/` and a marketplace entry with a `git-subdir` source installs that directory alone instead of the whole repository. Each message names the file it is about, and a repository without any `plugin.json` fails with "no tracked .claude-plugin/plugin.json in this repository". When the root has a `.claude-plugin/marketplace.json`, every entry that installs from this repository must point at a directory holding a `.claude-plugin/plugin.json`; entries for other repositories are not checked. (#82)
 
 ## 2.2.0 - 2026-10-16
 ### New
