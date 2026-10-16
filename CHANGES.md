@@ -16,6 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- A workspace release on crates.io no longer stops at "timed out waiting for <crate> to be available in registry `crates-io`" with the remaining crates unpublished. `ri-publish-crates-io` waits a minute and publishes what crates.io does not have yet, up to four attempts, and waits five minutes when crates.io answers HTTP 429 (Too Many Requests). (#85)
+- A release that adds a crate crates.io has never seen used to fail inside `cargo publish`, since Trusted Publishing cannot create a crate. `ri-publish-crates-io` now stops before uploading anything, names each new crate in "<crate> is not on crates.io yet", and says to publish once by hand, register the Trusted Publisher and re-run the failed jobs. (#86)
 
 ## 2.3.0 - 2026-10-16
 ### New

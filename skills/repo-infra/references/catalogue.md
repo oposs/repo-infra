@@ -481,7 +481,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-crates-io.yml@v2`.
 
 **Choose it when:** The crate is published on crates.io.
 
-**The repository supplies:** The trusted publisher configured on crates.io for this workflow.
+**The repository supplies:** The trusted publisher configured on crates.io for this workflow, for every crate. A crate new to crates.io is published once by hand first.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
