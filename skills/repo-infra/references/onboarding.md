@@ -310,6 +310,25 @@ repository has.
 }
 ```
 
+A plugin in a subdirectory, which a marketplace entry with a `git-subdir`
+source installs without the rest of the repository, takes the same entry with
+its own path, for example `"path": "plugin/.claude-plugin/plugin.json"`; one
+entry per plugin. `ri-ci-claude-plugin` finds every tracked
+`.claude-plugin/plugin.json` and needs no input for it. When the root holds a
+`.claude-plugin/marketplace.json`, its entries for this repository must point
+at a directory with a `.claude-plugin/plugin.json`:
+
+```json
+{
+  "name": "my-plugin",
+  "source": {
+    "source": "git-subdir",
+    "url": "https://github.com/owner/repo.git",
+    "path": "plugin"
+  }
+}
+```
+
 `pyproject.toml` and `Cargo.toml`:
 
 ```json

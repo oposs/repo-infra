@@ -39,11 +39,11 @@ checkmk:
 
 Called as `oposs/repo-infra/.github/workflows/ri-ci-claude-plugin.yml@v2`.
 
-**Purpose:** Check that .claude-plugin/plugin.json is valid.
+**Purpose:** Check every .claude-plugin/plugin.json in the repository, and that each entry of a root .claude-plugin/marketplace.json for this repository points at one.
 
-**Choose it when:** The repository has .claude-plugin/plugin.json.
+**Choose it when:** The repository has .claude-plugin/plugin.json, at the root or in a subdirectory.
 
-**The repository supplies:** .claude-plugin/plugin.json.
+**The repository supplies:** One or more .claude-plugin/plugin.json; .claude-plugin/marketplace.json at the root, when the repository is also a marketplace.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
