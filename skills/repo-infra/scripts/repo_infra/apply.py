@@ -16,6 +16,7 @@ import json
 import pathlib
 import re
 import subprocess
+import time
 from collections import namedtuple
 
 from .check import unstamped
@@ -333,6 +334,42 @@ def release_in_progress(repo_root, facts):
     return None
 
 
+# GitHub can answer a read with the value from before a write that already
+# landed. On oetiker/tvision-rs, plugin 2.3.1 refused actions-open-pr with
+# "wrote the setting and read back {'default_workflow_permissions': 'read',
+# 'can_approve_pull_request_reviews': False}", and a few minutes later the same
+# read said write and True (#93). So a read-back is repeated before it counts
+# as a refusal.
+READ_BACK_TRIES = 5
+READ_BACK_DELAY = 2
+_sleep = time.sleep
+
+
+def _read_back(read, landed):
+    """Call `read` until `landed` accepts its value, at most READ_BACK_TRIES
+    times and READ_BACK_DELAY seconds apart. Returns the last value and
+    whether it was accepted."""
+    for attempt in range(READ_BACK_TRIES):
+        if attempt:
+            _sleep(READ_BACK_DELAY)
+        value = read()
+        if landed(value):
+            return value, True
+    return value, False
+
+
+_READ_BACK_SPAN = (f"{READ_BACK_TRIES} times over "
+                   f"{(READ_BACK_TRIES - 1) * READ_BACK_DELAY} seconds")
+
+
+def _owner_type(gh, repo):
+    """'User', 'Organization', or None when the lookup fails."""
+    try:
+        return json.loads(gh.run(["gh", "api", f"repos/{repo}"]))["owner"]["type"]
+    except (GhError, KeyError, TypeError, ValueError):
+        return None
+
+
 def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
     """Write one repository-administration setting and read it back.
 
@@ -356,13 +393,15 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
         # `gh label create` prints nothing on success, which looks exactly like
         # a silent failure, and Dependabot ignores a label that does not exist
         # without saying so. Read it back.
-        labels = {entry["name"]
-                 for entry in json.loads(gh.run(["gh", "api", f"repos/{repo}/labels"]))}
-        if "no-changelog" not in labels:
+        _, landed = _read_back(
+            lambda: {entry["name"] for entry in
+                     json.loads(gh.run(["gh", "api", f"repos/{repo}/labels"]))},
+            lambda labels: "no-changelog" in labels)
+        if not landed:
             raise ApplyError(
-                f"no-changelog-label: created it but could not read back the "
-                f"label list from repos/{repo}/labels; check the label by hand "
-                "before retrying.")
+                f"no-changelog-label: created it but did not find it in the "
+                f"label list from repos/{repo}/labels, read back {_READ_BACK_SPAN}; "
+                "check the label by hand before retrying.")
         return "created the no-changelog label"
 
     if name == "actions-open-pr":
@@ -370,25 +409,38 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 f"repos/{repo}/actions/permissions/workflow",
                 "-f", "default_workflow_permissions=write",
                 "-F", "can_approve_pull_request_reviews=true"])
-        after = json.loads(
-            gh.run(["gh", "api", f"repos/{repo}/actions/permissions/workflow"]))
-        if not (after["can_approve_pull_request_reviews"]
-                and after["default_workflow_permissions"] == "write"):
+        after, landed = _read_back(
+            lambda: json.loads(
+                gh.run(["gh", "api", f"repos/{repo}/actions/permissions/workflow"])),
+            lambda after: (after["can_approve_pull_request_reviews"]
+                           and after["default_workflow_permissions"] == "write"))
+        if not landed:
+            # The 2.3.1 hint named an organisation policy for oetiker/tvision-rs,
+            # which a user owns and which therefore has none (#93).
+            owner = _owner_type(gh, repo)
+            lag = ("GitHub may still be answering with the value from before the "
+                   "write; re-running this item is safe.")
+            policy = ("An organisation policy may be overriding it: check "
+                      "Settings -> Actions -> General at the organisation level, "
+                      "then retry.")
+            hint = {"User": lag, "Organization": policy}.get(
+                owner, f"{lag} If the repository belongs to an organisation: {policy}")
             raise ApplyError(
-                f"actions-open-pr: wrote the setting and read back {after!r}. "
-                "An organisation policy may be overriding it -- check "
-                "Settings -> Actions -> General at the organisation level, "
-                "then retry.")
+                f"actions-open-pr: wrote the setting and read back {after!r}, "
+                f"{_READ_BACK_SPAN}. {hint}")
         return "allowed Actions to create and approve pull requests"
 
     if name == "delete-merged-branches":
         gh.run(["gh", "api", "--method", "PATCH", f"repos/{repo}",
                 "-F", "delete_branch_on_merge=true"])
-        after = json.loads(gh.run(["gh", "api", f"repos/{repo}"]))
-        if after.get("delete_branch_on_merge") is not True:
+        after, landed = _read_back(
+            lambda: json.loads(gh.run(["gh", "api", f"repos/{repo}"])),
+            lambda after: after.get("delete_branch_on_merge") is True)
+        if not landed:
             raise ApplyError(
                 "delete-merged-branches: wrote the setting and read back "
-                f"delete_branch_on_merge = {after.get('delete_branch_on_merge')!r}. "
+                f"delete_branch_on_merge = {after.get('delete_branch_on_merge')!r}, "
+                f"{_READ_BACK_SPAN}. "
                 "Check Settings -> General -> Pull Requests -> \"Automatically "
                 "delete head branches\" by hand, then retry.")
         return "switched on Automatically delete head branches"
