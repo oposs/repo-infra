@@ -5,7 +5,8 @@ import subprocess
 
 import pytest
 
-from repo_infra.apply import ApplyError, apply_admin_item
+from repo_infra import check
+from repo_infra.apply import BRANCH, ApplyError, apply_admin_item
 from repo_infra.remote import Facts, Gh, GhError
 
 ASSETS = pathlib.Path(__file__).resolve().parents[1] / "skills/repo-infra/assets"
@@ -23,6 +24,8 @@ class Recorder:
     An answer that is an exception is raised instead of returned, so a test
     can script a failed `gh` call -- a 404, or anything else -- the same way
     `Gh.run` actually fails (module docstring: `GhError` on a non-zero exit).
+    An answer that is a list is handed out one entry per call, and its last
+    entry repeats, so a test can script a read-back that is stale at first.
     """
 
     def __init__(self, answers):
@@ -34,10 +37,21 @@ class Recorder:
         joined = " ".join(args)
         for fragment, answer in self.answers.items():
             if fragment in joined:
+                if isinstance(answer, list):
+                    answer = answer.pop(0) if len(answer) > 1 else answer[0]
                 if isinstance(answer, BaseException):
                     raise answer
                 return answer
         return "{}"
+
+
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch):
+    """The read-back poll waits between reads. The tests record the waits
+    instead of sleeping through them."""
+    waited = []
+    monkeypatch.setattr("repo_infra.apply._sleep", waited.append)
+    return waited
 
 
 def facts(**overrides):
@@ -125,6 +139,94 @@ def test_workflow_permissions_that_do_not_stick_are_an_error(tmp_path):
         {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False})})
     with pytest.raises(ApplyError, match="read back"):
         apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+
+
+WORKFLOW = "api repos/o/r/actions/permissions/workflow"
+STALE = json.dumps({"default_workflow_permissions": "read",
+                    "can_approve_pull_request_reviews": False})
+WRITTEN = json.dumps({"default_workflow_permissions": "write",
+                      "can_approve_pull_request_reviews": True})
+
+
+def reads_of(recorder, path):
+    return [c for c in recorder.calls if c == ["gh", "api", path]]
+
+
+def test_workflow_permissions_that_read_back_stale_at_first_are_accepted(tmp_path, sleeps):
+    # oetiker/tvision-rs, plugin 2.3.1: the first read after the PUT still said
+    # read/False, and a minute later GitHub said write/True.
+    recorder = Recorder({WORKFLOW: [STALE, STALE, WRITTEN]})
+    message = apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS,
+                               tmp_path)
+    assert message == "allowed Actions to create and approve pull requests"
+    assert len(reads_of(recorder, "repos/o/r/actions/permissions/workflow")) == 3
+    assert len(sleeps) == 2
+
+
+def test_workflow_permissions_are_read_back_five_times_before_refusing(tmp_path, sleeps):
+    recorder = Recorder({WORKFLOW: STALE,
+                         "api repos/o/r": json.dumps({"owner": {"type": "User"}})})
+    with pytest.raises(ApplyError):
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+    assert len(reads_of(recorder, "repos/o/r/actions/permissions/workflow")) == 5
+    assert len(sleeps) == 4
+
+
+def test_a_user_owned_repository_is_not_told_about_an_organisation_policy(tmp_path):
+    recorder = Recorder({WORKFLOW: STALE,
+                         "api repos/o/r": json.dumps({"owner": {"type": "User"}})})
+    with pytest.raises(ApplyError) as refused:
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+    assert "organisation" not in str(refused.value)
+    assert "re-run" in str(refused.value)
+
+
+def test_an_organisation_owned_repository_is_pointed_at_the_organisation_policy(tmp_path):
+    recorder = Recorder({WORKFLOW: STALE,
+                         "api repos/o/r": json.dumps({"owner": {"type": "Organization"}})})
+    with pytest.raises(ApplyError, match="organisation policy"):
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+
+
+def test_a_failed_owner_lookup_still_refuses_with_the_read_back(tmp_path):
+    recorder = Recorder({WORKFLOW: STALE, "api repos/o/r": GhError("gh: HTTP 502")})
+    with pytest.raises(ApplyError, match="read back"):
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+
+
+def test_deleting_merged_branches_that_reads_back_stale_at_first_is_accepted(tmp_path,
+                                                                              sleeps):
+    recorder = Recorder({"api repos/o/r": [json.dumps({"delete_branch_on_merge": False}),
+                                           json.dumps({"delete_branch_on_merge": True})]})
+    apply_admin_item(Gh(run=recorder), "o/r", "delete-merged-branches", facts(), ASSETS,
+                     tmp_path)
+    assert len(reads_of(recorder, "repos/o/r")) == 2
+    assert len(sleeps) == 1
+
+
+def test_deleting_merged_branches_is_read_back_five_times_before_refusing(tmp_path, sleeps):
+    recorder = Recorder({"api repos/o/r": json.dumps({"delete_branch_on_merge": False})})
+    with pytest.raises(ApplyError):
+        apply_admin_item(Gh(run=recorder), "o/r", "delete-merged-branches", facts(), ASSETS,
+                         tmp_path)
+    assert len(reads_of(recorder, "repos/o/r")) == 5
+    assert len(sleeps) == 4
+
+
+def test_a_label_that_reads_back_missing_at_first_is_accepted(tmp_path, sleeps):
+    # "api repos/o/r/labels" rather than "/labels": the POST that creates the
+    # label must not take the first, stale answer.
+    recorder = Recorder({"api repos/o/r/labels": [json.dumps([]),
+                                                  json.dumps([{"name": "no-changelog"}])]})
+    apply_admin_item(Gh(run=recorder), "o/r", "no-changelog-label", facts(), ASSETS, tmp_path)
+    assert len(reads_of(recorder, "repos/o/r/labels")) == 2
+    assert len(sleeps) == 1
+
+
+def test_a_written_setting_that_reads_back_at_once_does_not_wait(tmp_path, sleeps):
+    recorder = Recorder({WORKFLOW: WRITTEN})
+    apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+    assert sleeps == []
 
 
 def test_deleting_merged_branches_is_switched_on_and_read_back(tmp_path):
@@ -351,3 +453,190 @@ def test_a_ruleset_that_reads_back_without_the_up_to_date_rule_is_refused(tmp_pa
     recorder = Recorder({LIST: EXISTING, "rulesets": json.dumps(lax)})
     with pytest.raises(ApplyError, match="strict_required_status_checks_policy"):
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS, tmp_path)
+
+
+# --- classic branch protection (#91) -------------------------------------
+#
+# oetiker/tvision-rs#29, the onboarding pull request, stayed BLOCKED with
+# every check green: classic protection on main required `test`, a job the
+# onboarding had replaced.
+
+DELETE = "--method DELETE repos/o/r/branches/main/protection"
+PROTECTION = "api repos/o/r/branches/main/protection"
+NOT_PROTECTED = GhError("gh api repos/o/r/branches/main/protection failed: "
+                        "gh: Branch not protected (HTTP 404)")
+
+
+def classic(**overrides):
+    """A repository with classic protection on main and the standard ruleset."""
+    base = dict(protected=True, required_contexts={"ci-passed", "changelog-updated"},
+                strict=True, classic_protection=True, classic_contexts=("test",))
+    base.update(overrides)
+    return facts(**base)
+
+
+def test_classic_protection_is_deleted_and_read_back_as_gone(tmp_path):
+    recorder = Recorder({DELETE: "", PROTECTION: NOT_PROTECTED})
+    apply_admin_item(Gh(run=recorder), "o/r", "classic-protection", classic(), ASSETS, tmp_path)
+    assert ["gh", "api", "--method", "DELETE",
+            "repos/o/r/branches/main/protection"] in recorder.calls
+    assert ["gh", "api", "repos/o/r/branches/main/protection"] in recorder.calls
+
+
+def test_classic_protection_that_reads_back_present_at_first_is_accepted(tmp_path, sleeps):
+    recorder = Recorder({DELETE: "", PROTECTION: [json.dumps({"url": "x"}), NOT_PROTECTED]})
+    apply_admin_item(Gh(run=recorder), "o/r", "classic-protection", classic(), ASSETS,
+                     tmp_path)
+    assert len(sleeps) == 1
+
+
+def test_classic_protection_that_is_still_there_after_the_delete_is_an_error(tmp_path,
+                                                                            sleeps):
+    recorder = Recorder({DELETE: "", PROTECTION: json.dumps({"url": "x"})})
+    with pytest.raises(ApplyError, match="read back"):
+        apply_admin_item(Gh(run=recorder), "o/r", "classic-protection", classic(), ASSETS,
+                         tmp_path)
+    assert len(sleeps) == 4
+
+
+def test_a_read_back_that_fails_otherwise_is_an_error(tmp_path):
+    recorder = Recorder({DELETE: "", PROTECTION: GhError("gh: HTTP 502")})
+    with pytest.raises(ApplyError, match="could not confirm"):
+        apply_admin_item(Gh(run=recorder), "o/r", "classic-protection", classic(), ASSETS,
+                         tmp_path)
+
+
+@pytest.mark.parametrize("ruleset", [
+    dict(protected=False, required_contexts=set()),
+    dict(required_contexts={"ci-passed"}),
+])
+def test_classic_protection_is_kept_until_the_ruleset_requires_both_checks(tmp_path,
+                                                                           ruleset):
+    """Removing it first would leave main without any protection."""
+    recorder = Recorder({})
+    with pytest.raises(ApplyError, match="changelog-updated"):
+        apply_admin_item(Gh(run=recorder), "o/r", "classic-protection", classic(**ruleset),
+                         ASSETS, tmp_path)
+    assert not any("DELETE" in c for c in recorder.calls)
+
+
+def test_no_classic_protection_is_nothing_to_delete(tmp_path):
+    recorder = Recorder({})
+    said = apply_admin_item(Gh(run=recorder), "o/r", "classic-protection",
+                            classic(classic_protection=False, classic_contexts=()),
+                            ASSETS, tmp_path)
+    assert "no classic branch protection" in said
+    assert recorder.calls == []
+
+
+def workflows_on(main=(), apply_branch=()):
+    """`contents/` answers: each required workflow present on the refs named."""
+    answers = {}
+    for name in ("ci.yml", "changelog.yml"):
+        path = f".github/workflows/{name}"
+        for ref, present in (("main", name in main), (BRANCH, name in apply_branch)):
+            if not present:
+                answers[f"contents/{path}?ref={ref}"] = GhError(
+                    f"gh api repos/o/r/contents/{path}?ref={ref} failed: "
+                    "gh: Not Found (HTTP 404)")
+    return answers
+
+
+BOTH = ("ci.yml", "changelog.yml")
+
+
+def test_with_classic_protection_the_ruleset_takes_the_workflows_on_the_apply_branch(tmp_path):
+    """The onboarding pull request cannot merge while classic protection waits
+    for a check nobody produces, and classic protection is not removed before
+    the ruleset exists. The pushed repo-infra/apply branch is that pull
+    request's head, which produces ci-passed and changelog-updated."""
+    recorder = Recorder({**workflows_on(apply_branch=BOTH), LIST: "[]",
+                         "rulesets": faithful_ruleset()})
+    apply_admin_item(Gh(run=recorder), "o/r", "required-checks",
+                     facts(classic_protection=True, classic_contexts=("test",)),
+                     ASSETS, tmp_path)
+    assert any("POST" in " ".join(c) for c in recorder.calls)
+
+
+def test_with_classic_protection_the_ruleset_refusal_says_to_push_the_branch(tmp_path):
+    recorder = Recorder(workflows_on())
+    with pytest.raises(ApplyError, match=f"push {BRANCH}") as raised:
+        apply_admin_item(Gh(run=recorder), "o/r", "required-checks",
+                         facts(classic_protection=True, classic_contexts=("test",)),
+                         ASSETS, tmp_path)
+    assert ".github/workflows/ci.yml" in str(raised.value)
+
+
+def test_without_classic_protection_the_apply_branch_does_not_count(tmp_path):
+    recorder = Recorder(workflows_on(apply_branch=BOTH))
+    with pytest.raises(ApplyError, match="not on main yet"):
+        apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS,
+                         tmp_path)
+    assert not any(f"ref={BRANCH}" in " ".join(c) for c in recorder.calls)
+
+
+class GitHub:
+    """A gh that keeps the rulesets and the classic protection it is asked
+    to write, so facts, check and apply can run in sequence."""
+
+    def __init__(self, classic_contexts, files):
+        self.rulesets = {}
+        checks = [{"context": c, "app_id": 15368} for c in classic_contexts]
+        self.classic = {"required_status_checks": {
+            "strict": True, "contexts": list(classic_contexts), "checks": checks}}
+        self.files = files
+
+    def __call__(self, args):
+        method = args[args.index("--method") + 1] if "--method" in args else "GET"
+        path = next(a for a in args if a.startswith("repos/"))
+
+        def answer(data):
+            return json.dumps([data] if "--paginate" in args else data)
+
+        def not_found():
+            raise GhError(f"gh api {path} failed: gh: Not Found (HTTP 404)")
+
+        if method == "DELETE" and path == "repos/o/r/branches/main/protection":
+            self.classic = None
+            return ""
+        if method == "POST" and path == "repos/o/r/rulesets":
+            ruleset = json.loads(pathlib.Path(args[args.index("--input") + 1]).read_text())
+            self.rulesets[len(self.rulesets) + 1] = ruleset
+            return json.dumps(ruleset)
+        assert method == "GET", args
+        if path == "repos/o/r":
+            return answer({"default_branch": "main", "delete_branch_on_merge": True})
+        if path == "repos/o/r/rulesets":
+            return answer([{"id": i, "name": r["name"], "source_type": "Repository"}
+                           for i, r in self.rulesets.items()])
+        if path.startswith("repos/o/r/rulesets/"):
+            return answer(self.rulesets[int(path.rsplit("/", 1)[1])])
+        if path == "repos/o/r/labels":
+            return answer([{"name": "no-changelog"}])
+        if path == "repos/o/r/actions/permissions/workflow":
+            return answer({"default_workflow_permissions": "write",
+                           "can_approve_pull_request_reviews": True})
+        if path == "repos/o/r/pulls?state=open":
+            return answer([])
+        if path == "repos/o/r/branches/main/protection":
+            return answer(self.classic) if self.classic else not_found()
+        if path.startswith("repos/o/r/contents/"):
+            file, ref = path.removeprefix("repos/o/r/contents/").split("?ref=")
+            return "{}" if file in self.files.get(ref, ()) else not_found()
+        raise AssertionError(f"unexpected gh call: {' '.join(args)}")
+
+
+def test_an_onboarding_blocked_by_classic_protection_gets_unblocked(tmp_path):
+    """tvision-rs#29 end to end: classic protection requires `test`, the
+    workflows are only on the pushed repo-infra/apply branch. required-checks
+    and then classic-protection both go through, and check is clean after."""
+    gh = Gh(run=GitHub(("test",), {BRANCH: {".github/workflows/ci.yml",
+                                            ".github/workflows/changelog.yml"}}))
+    before = {i.name: i for i in check.classify_remote(gh.facts("o/r"))}
+    assert before["classic-protection"].state == "conflict"
+    assert "`test`" in before["classic-protection"].detail
+    apply_admin_item(gh, "o/r", "required-checks", gh.facts("o/r"), ASSETS, tmp_path)
+    apply_admin_item(gh, "o/r", "classic-protection", gh.facts("o/r"), ASSETS, tmp_path)
+    after = gh.facts("o/r")
+    assert after.classic_protection is False
+    assert {i.state for i in check.classify_remote(after)} == {"ok"}

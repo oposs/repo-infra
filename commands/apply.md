@@ -31,11 +31,12 @@ reason to edit the repository around it. It is a gap in the standard, and
   from `repo-infra/apply` itself; switch to the default branch first.
 - **Administration items** (`default-branch`, `branch-protection` /
   `required-checks`, `no-changelog-label`, `actions-open-pr`,
-  `delete-merged-branches`) write straight to the live repository through the
-  GitHub API, with no commit, no branch and no review. They run only with
-  `--item`. Confirm each with the user first: renaming a branch, enabling a
-  ruleset, granting Actions permission to open pull requests and deleting
-  merged branches are all outward-facing.
+  `delete-merged-branches`, `classic-protection`) write straight to the live
+  repository through the GitHub API, with no commit, no branch and no review.
+  They run only with `--item`. Confirm each with the user first: renaming a
+  branch, enabling a ruleset, granting Actions permission to open pull
+  requests, deleting merged branches and removing classic branch protection
+  are all outward-facing.
 
 ## Bare `apply`
 
@@ -165,6 +166,21 @@ The order is one sequence, the same as in `references/onboarding.md`:
    `required-checks` (alias `branch-protection`) turns on the ruleset, which is
    why it waits for the merge. `references/onboarding.md` has the reasons for the
    order.
+
+   When `check` reports `classic-protection`, the pull request of step 2 cannot
+   merge while classic protection waits for a check the onboarding replaced.
+   Run these after step 2 and before step 3 instead, each confirmed with the
+   user; `required-checks` then accepts both workflows on the pushed
+   `repo-infra/apply` branch, and `classic-protection` refuses until the
+   ruleset requires `ci-passed` and `changelog-updated`:
+
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item required-checks
+   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item classic-protection
+   ```
+
+   Other open pull requests stay blocked until they are rebased onto `main`
+   after the merge.
 
 On a repository that is already onboarded, an upgrade has no administration item
 pending: a bare `apply`, the caller changes, a push and the pull request are

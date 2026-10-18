@@ -264,6 +264,29 @@ def test_merged_branches_deleted_automatically_are_ok():
     assert remote_states(remote())["delete-merged-branches"] == "ok"
 
 
+def test_no_classic_protection_is_ok():
+    item = next(i for i in remote() if i.name == "classic-protection")
+    assert (item.section, item.state) == ("administration", "ok")
+
+
+def test_classic_protection_is_a_conflict_that_names_its_required_checks():
+    """oetiker/tvision-rs#29 stayed blocked with every check green: classic
+    protection required `test`, which onboarding had removed, and check said
+    nothing about it."""
+    item = next(i for i in remote(classic_protection=True, classic_contexts=("test", "lint"))
+                if i.name == "classic-protection")
+    assert (item.section, item.state) == ("administration", "conflict")
+    assert "ruleset" in item.detail
+    assert "`test`" in item.detail and "`lint`" in item.detail
+
+
+def test_classic_protection_without_required_checks_is_still_a_conflict():
+    item = next(i for i in remote(classic_protection=True)
+                if i.name == "classic-protection")
+    assert item.state == "conflict"
+    assert "no status checks" in item.detail
+
+
 def test_a_ruleset_without_the_up_to_date_rule_is_outdated():
     item = next(i for i in remote(strict=False) if i.name == "required-checks")
     assert item.state == "outdated"
