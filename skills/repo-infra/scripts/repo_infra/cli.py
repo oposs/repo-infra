@@ -68,6 +68,12 @@ def _pending(root, pieces, states, published):
     return names + [name for name, plan in plans.items() if plan.candidates]
 
 
+def _files(root, pieces):
+    """The pieces apply installs, as the callers of `root` render them (#92)."""
+    rendered = checking.rendered(pieces, callers.read_workflows(root))
+    return {name: piece for name, piece in rendered.items() if not piece.remote}
+
+
 def _states(root, pieces, published):
     return {name: checking.piece_state(root, piece, published.get(name, {}))
             for name, piece in pieces.items()}
@@ -109,7 +115,7 @@ def apply_command(args):
         return 0
     # A remote piece is called, never installed (D33); apply writes the
     # byte pieces only.
-    files = {name: piece for name, piece in pieces.items() if not piece.remote}
+    files = _files(args.root, pieces)
     states = _states(args.root, files, published)
     names = [args.item] if args.item else _pending(args.root, files, states, published)
     if names or _v1_layout(args):
@@ -133,12 +139,13 @@ def apply_command(args):
                 print(f"\n{LOST}")
                 for line in lost:
                     print(f"  {line}")
+        files = _files(args.root, pieces)
         states = _states(args.root, files, published)
         names = [args.item] if args.item else _pending(args.root, files, states, published)
     notes, kept = [], []
     try:
         for name in names:
-            piece, state = pieces[name], states[name]
+            piece, state = files[name], states[name]
             since = plan_piece(args.root, piece, state, published.get(name, {})).since
             written = changed(args.root, install_piece(args.root, piece, state,
                                                        published.get(name, {}),

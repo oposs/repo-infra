@@ -593,15 +593,17 @@ publish:
 
 ## Release flow: called from changelog.yml, ci.yml and release-pr.yml
 
-### dependabot v2
+### dependabot v3
 
 Installed at `.github/dependabot.yml`.
 
-**Purpose:** Keep the pinned GitHub Actions current.
+**Purpose:** Keep the pinned GitHub Actions and the dependencies of the repository's own code current.
 
 **Choose it when:** Always.
 
 **The repository supplies:** The no-changelog label.
+
+**Produces:** Below the github-actions entry, check and apply expect one weekly entry at directory / for each ecosystem the callers' CI pieces build: cargo for ri-ci-rust and ri-ci-rust-musl, npm for ri-ci-node-pnpm, bun for ri-ci-node-bun, pip for ri-ci-python, gomod for ri-ci-go. The other CI pieces add none, and neither does a call that passes `repository`.
 
 ### ri-changelog
 

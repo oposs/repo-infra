@@ -12,7 +12,7 @@ that is merely old from one that was edited.
 import json
 import pathlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .markers import parse_markers
 
@@ -221,6 +221,54 @@ def load_published(assets=ASSETS):
                 continue
             entry[target] = {int(v): digest for v, digest in versions.items()}
     return published
+
+
+# The one piece whose text depends on the repository (#92). Dependabot reads
+# only .github/dependabot.yml, so the ecosystems of the repository's own code
+# cannot be pieces of their own. The asset is the text for a repository that
+# calls none of the CI pieces below; one entry per ecosystem follows it.
+DEPENDABOT = "dependabot"
+ECOSYSTEMS = {"ri-ci-go": "gomod", "ri-ci-node-bun": "bun", "ri-ci-node-pnpm": "npm",
+              "ri-ci-python": "pip", "ri-ci-rust": "cargo", "ri-ci-rust-musl": "cargo"}
+
+
+def dependabot_entry(ecosystem):
+    """The entry for one ecosystem. generations.json records only the asset,
+    and `published_base` finds it by stripping this text, so a change here
+    must keep stripping the old text, or every v3 copy reads edited.
+    tests/fixtures/dependabot/v3-cargo-npm.yml holds a frozen v3 copy."""
+    return (f"  - package-ecosystem: {ecosystem}\n"
+            "    directory: /\n"
+            "    schedule:\n"
+            "      interval: weekly\n"
+            "    labels:\n"
+            "      - dependencies\n"
+            "      - no-changelog\n")
+
+
+def render(piece, called):
+    """`piece` as a repository holds it whose callers call the pieces named
+    in `called`. Only dependabot differs from its asset."""
+    if piece.name != DEPENDABOT:
+        return piece
+    ecosystems = sorted({ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS})
+    text = piece.files[piece.target] + "".join(map(dependabot_entry, ecosystems))
+    return replace(piece, files={piece.target: text})
+
+
+def published_base(name, data):
+    """The bytes of a copy of piece `name` without the entries `render`
+    appends: the text generations.json records a version by."""
+    if name != DEPENDABOT:
+        return data
+    entries = [dependabot_entry(e).encode("utf-8") for e in sorted(set(ECOSYSTEMS.values()))]
+    stripped = True
+    while stripped:
+        stripped = False
+        for entry in entries:
+            if data.endswith(entry):
+                data, stripped = data[:-len(entry)], True
+    return data
 
 
 def changes_sections(text):

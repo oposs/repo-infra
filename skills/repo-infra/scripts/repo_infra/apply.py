@@ -21,6 +21,7 @@ from collections import namedtuple
 
 from .check import unstamped
 from .markers import parse_markers
+from .pieces import published_base
 from .remote import GhError, protects_default_branch
 
 # Below the repository's git dir, which is `.git/` in a plain clone and
@@ -179,7 +180,7 @@ def plan_piece(repo_root, piece, state, history):
         data = unstamped(target.read_bytes())
         if data != piece.files[path].encode("utf-8"):
             write.append(path)
-        digest = hashlib.sha256(data).hexdigest()
+        digest = hashlib.sha256(published_base(piece.name, data)).hexdigest()
         versions += [v for v, d in history.get(path, {}).items() if d == digest]
     dropped = _dropped(repo_root, piece, history)
     # A dropped file counts too: a piece pending only for one has crossed
