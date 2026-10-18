@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- An onboarding pull request stayed blocked with every check green when classic branch protection on `main` required a check the onboarding replaced, such as `test`, and `check` reported only "branch-protection missing". `check` now reports classic protection as the conflict `classic-protection` and names every check it requires, and `apply --item classic-protection` removes it once the ruleset requires `ci-passed` and `changelog-updated`. With classic protection present, `apply --item required-checks` accepts the workflows on the pushed `repo-infra/apply` branch, so the ruleset can go on before the onboarding pull request merges. (#91)
 
 ## 2.3.1 - 2026-10-16
 ### Fixed

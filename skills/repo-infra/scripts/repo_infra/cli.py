@@ -28,7 +28,8 @@ from .remote import Facts, Gh, GhError
 # Administration items write repository settings through `remote.Gh`, and
 # each is outward-facing, so apply runs one only when it is named (D30).
 ADMIN = {"default-branch", "branch-protection", "required-checks",
-         "no-changelog-label", "actions-open-pr", "delete-merged-branches"}
+         "no-changelog-label", "actions-open-pr", "delete-merged-branches",
+         "classic-protection"}
 
 # apply's exit status when it stops for a hand merge. A refusal (ApplyError)
 # exits 1; argparse exits 2 on a usage error.

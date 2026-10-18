@@ -37,7 +37,8 @@ In the repository to bring up to the standard:
 `unknown`, reports the v1 layout and every call of a repo-infra workflow that
 does not read `@v2`, checks the callers against the workflows they call, checks
 `.github/repo-infra.json`, and lists the administration items (default branch,
-ruleset, label, Actions setting, deletion of merged branches). It never writes. `apply` migrates a v1
+ruleset, classic branch protection, label, Actions setting, deletion of merged
+branches). It never writes. `apply` migrates a v1
 repository in one commit named "Migrate to the repo-infra v2 layout", replaces
 outdated build files on a `repo-infra/apply` branch, prints what the callers
 must change, and stops. `apply --item <piece>` installs one build file, and

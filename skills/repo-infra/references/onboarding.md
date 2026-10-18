@@ -431,7 +431,9 @@ review, and each is outward-facing. Apply them one at a time with `apply
 2. **`no-changelog-label`** when `check` reports it missing: creates the label
    the pull request of the next step carries and dependabot requests.
 3. **Land `ci.yml` and `changelog.yml` on `main`**: push `repo-infra/apply`,
-   open the pull request with the label `no-changelog`, and get it merged.
+   open the pull request with the label `no-changelog`, and get it merged. When
+   `check` reports `classic-protection`, follow "A repository with classic
+   branch protection" below instead.
 4. **`required-checks`** (alias `branch-protection`): enables the ruleset that
    requires `ci-passed` and `changelog-updated` and an up-to-date branch. It
    asks GitHub, not the checkout, whether both workflows are on the default
@@ -446,4 +448,32 @@ review, and each is outward-facing. Apply them one at a time with `apply
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item required-checks
+```
+
+### A repository with classic branch protection
+
+The standard protects `main` with a ruleset. Classic branch protection is
+removed, never kept, and `check` reports it as the `classic-protection` conflict
+with every status check it requires. A classic rule that requires a check the
+onboarding replaced blocks the onboarding pull request with every check green:
+oetiker/tvision-rs#29 waited for `test`, which no workflow produced any more.
+The order changes for such a repository:
+
+1. **Push `repo-infra/apply` and open the onboarding pull request**, labelled
+   `no-changelog`. Do not merge it yet.
+2. **`required-checks`**: with classic protection present, it accepts `ci.yml`
+   and `changelog.yml` on the pushed `repo-infra/apply` branch as well as on
+   `main`. The onboarding pull request produces `ci-passed` and
+   `changelog-updated` itself.
+3. **`classic-protection`**: deletes classic protection from the default branch.
+   It refuses until an active ruleset on the default branch requires
+   `ci-passed` and `changelog-updated`, so `main` is never left unprotected.
+4. **Merge the onboarding pull request.**
+
+Every other pull request open at that point stays blocked until it is rebased
+onto `main` after the merge, since its branch has neither workflow.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item required-checks
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item classic-protection
 ```

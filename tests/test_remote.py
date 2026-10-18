@@ -23,6 +23,8 @@ def fake_run(mapping):
         # Match is by suffix to avoid matching repo name in other paths.
         for fragment, filename in sorted(mapping.items(), key=lambda x: len(x[0]), reverse=True):
             if path.endswith(fragment):
+                if isinstance(filename, BaseException):
+                    raise filename
                 # Check if this is a paginated call
                 is_paginated = "--paginate" in args and "--slurp" in args
                 content = (FIX / filename).read_text(encoding="utf-8")
@@ -37,6 +39,12 @@ def fake_run(mapping):
     return run
 
 
+# What `gh api repos/<repo>/branches/main/protection` raises on a branch
+# without classic protection: GitHub answers 404 "Branch not protected".
+NOT_PROTECTED = GhError("gh api repos/oposs/repo-infra/branches/main/protection failed: "
+                        "gh: Branch not protected (HTTP 404)")
+
+
 RECORDED = {
     "rulesets/21037721": "ruleset.json",
     "/rulesets": "rulesets.json",
@@ -44,6 +52,7 @@ RECORDED = {
     "permissions/workflow": "workflow-permissions.json",
     "/pulls?state=open": "pulls-open.json",
     "oposs/repo-infra": "repo.json",
+    "branches/main/protection": NOT_PROTECTED,
 }
 
 
@@ -94,6 +103,7 @@ def test_pagination_labels_includes_items_from_all_pages():
         "permissions/workflow": "workflow-permissions.json",
     "/pulls?state=open": "pulls-open.json",
         "oposs/repo-infra": "repo.json",
+        "branches/main/protection": NOT_PROTECTED,
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
     # Both pages should be included: first-page-label, no-changelog, second-page-label
@@ -111,6 +121,7 @@ def test_ruleset_with_all_scope_protects_default_branch():
         "permissions/workflow": "workflow-permissions.json",
     "/pulls?state=open": "pulls-open.json",
         "oposs/repo-infra": "repo.json",
+        "branches/main/protection": NOT_PROTECTED,
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
     assert result.protected is True
@@ -125,6 +136,7 @@ def test_ruleset_with_explicit_branch_protects_default_branch():
         "permissions/workflow": "workflow-permissions.json",
     "/pulls?state=open": "pulls-open.json",
         "oposs/repo-infra": "repo.json",
+        "branches/main/protection": NOT_PROTECTED,
     }
     result = Gh(run=fake_run(mapping)).facts("oposs/repo-infra")
     assert result.protected is True
@@ -194,3 +206,27 @@ def test_a_tag_lookup_that_fails_otherwise_is_an_error():
     tags = Gh(run=tag_run(status="502")).facts("oposs/repo-infra").tags
     with pytest.raises(GhError, match="502"):
         assert "v9.9.9" not in tags
+
+
+def test_a_branch_without_classic_protection_reads_as_none():
+    assert facts().classic_protection is False
+    assert facts().classic_contexts == ()
+
+
+def test_reads_classic_protection_and_its_required_contexts():
+    """oetiker/tvision-rs#29 stayed blocked with every check green: classic
+    protection on main required `test`, and check read only the rulesets."""
+    result = Gh(run=fake_run({**RECORDED, "branches/main/protection":
+                              "classic-protection.json"})).facts("oposs/repo-infra")
+    assert result.classic_protection is True
+    assert result.classic_contexts == ("test",)
+
+
+def test_classic_protection_that_cannot_be_read_is_an_error():
+    """Only a 404 means no classic protection. A 403 says nothing about the
+    branch, and reading it as unprotected would hide the rule that blocks."""
+    denied = GhError("gh api repos/oposs/repo-infra/branches/main/protection failed: "
+                     "gh: Resource not accessible by integration (HTTP 403)")
+    with pytest.raises(GhError, match="403"):
+        Gh(run=fake_run({**RECORDED, "branches/main/protection": denied})).facts(
+            "oposs/repo-infra")
