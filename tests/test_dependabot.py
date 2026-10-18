@@ -2,6 +2,7 @@
 (#92). Its asset is the text for a repository that calls none of them; check
 and apply append one entry per ecosystem."""
 
+import hashlib
 import pathlib
 import subprocess
 
@@ -141,6 +142,28 @@ def test_an_edited_entry_is_edited(tmp_path):
     root = repo(tmp_path, "ri-ci-rust",
                 dependabot=BASE + entry("cargo").replace("weekly", "daily"))
     assert state(root)[0] == "edited"
+
+
+FROZEN = pathlib.Path(__file__).resolve().parent / "fixtures/dependabot/v3-cargo-npm.yml"
+
+
+def test_a_frozen_v3_file_keeps_its_version():
+    """The bytes v3 wrote for a Rust and pnpm repository, frozen. A change to
+    the entry text that stops published_base stripping this file's entries
+    fails here, before every v3 copy reads edited."""
+    data = FROZEN.read_bytes()
+    base = pieces.published_base("dependabot", data)
+    assert hashlib.sha256(base).hexdigest() == load_published()["dependabot"][TARGET][3]
+
+
+def test_a_frozen_v3_file_reads_current_or_outdated(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", "ri-ci-node-pnpm",
+                dependabot=FROZEN.read_text(encoding="utf-8"))
+    if load_pieces()["dependabot"].version == 3:
+        assert state(root) == ("current", "v3")
+    else:
+        assert state(root)[0] == "outdated"
+        assert state(root)[1].startswith("v3 installed")
 
 
 def test_install_writes_the_rendered_text(tmp_path):

@@ -235,7 +235,8 @@ ECOSYSTEMS = {"ri-ci-go": "gomod", "ri-ci-node-bun": "bun", "ri-ci-node-pnpm": "
 def dependabot_entry(ecosystem):
     """The entry for one ecosystem. generations.json records only the asset,
     and `published_base` finds it by stripping this text, so a change here
-    must keep stripping the old text, or every v3 copy reads edited."""
+    must keep stripping the old text, or every v3 copy reads edited.
+    tests/fixtures/dependabot/v3-cargo-npm.yml holds a frozen v3 copy."""
     return (f"  - package-ecosystem: {ecosystem}\n"
             "    directory: /\n"
             "    schedule:\n"
