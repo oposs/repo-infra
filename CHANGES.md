@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `apply --item actions-open-pr` refused with "wrote the setting and read back {'default_workflow_permissions': 'read', 'can_approve_pull_request_reviews': False}" although the setting had been written, because GitHub still answered with the old value. `actions-open-pr`, `delete-merged-branches` and `no-changelog-label` now read the setting back up to five times over eight seconds before they refuse. The refusal of `actions-open-pr` names an organisation policy only for a repository an organisation owns; for one a user owns it says the read-back may lag and a re-run is safe. (#93)
 
 ## 2.3.1 - 2026-10-16
 ### Fixed
