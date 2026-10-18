@@ -13,7 +13,8 @@
   },
   "pieces/dependabot/dependabot.yml": {
     "1": "1961c1f95daa6c148005abc4d19b3393f3365cf71c90b291de93cb28793f1ec0",
-    "2": "e56ad7bbc9f20bcd58db18f159e1f5ec1fe9ec943956c84a0cd01abfefb50ce9"
+    "2": "e56ad7bbc9f20bcd58db18f159e1f5ec1fe9ec943956c84a0cd01abfefb50ce9",
+    "3": "a9be05636c317f491de3e28e2bb713c13596903b79d8825510e635553a889c5e"
   },
   "pieces/man-lua/man-deflist.lua": {
     "1": "f9f597b3e6a13209fdd4254b73764bb39ed52de7f878d8aa3bc3bbd6adb3beef",

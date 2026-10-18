@@ -17,7 +17,7 @@ from collections import namedtuple
 
 from . import callers
 from .markers import parse_markers
-from .pieces import ASSETS, load_pieces, load_published
+from .pieces import ASSETS, load_pieces, load_published, published_base, render
 from .report import Item
 
 PieceState = namedtuple("PieceState", "state installed edited")
@@ -69,7 +69,8 @@ def piece_state(repo_root, piece, history):
         return PieceState("absent", None, [])
     versions, edited = {}, []
     for path, data in installed.items():
-        matches = [v for v, d in history.get(path, {}).items() if d == _digest(data)]
+        digest = _digest(published_base(piece.name, data))
+        matches = [v for v, d in history.get(path, {}).items() if d == digest]
         if matches:
             versions[path] = max(matches)
         else:
@@ -78,8 +79,12 @@ def piece_state(repo_root, piece, history):
         markers = parse_markers(installed[edited[0]].decode("utf-8", errors="replace"))
         claimed = next((m.version for m in markers if m.asset == piece.name), None)
         return PieceState("edited", claimed, edited)
+    # The bytes too: a dependabot file of the current version can list the
+    # ecosystems of other callers (#92).
     current = (set(installed) == set(piece.files)
-               and all(versions[p] == piece.version for p in piece.files))
+               and all(versions[p] == piece.version
+                       and installed[p] == piece.files[p].encode("utf-8")
+                       for p in piece.files))
     return PieceState("current" if current else "outdated", min(versions.values()), [])
 
 
@@ -186,6 +191,20 @@ def core_call_items(docs, pieces):
             and not callers.calls(docs, pathlib.PurePosixPath(piece.target).name)]
 
 
+def rendered(pieces, docs):
+    """`pieces` as the repository whose workflows are `docs` holds them (#92).
+    A call that passes `repository` builds another repository's code:
+    repo-infra's gate-mtuspy.yml calls ri-ci-rust for mtuspy, and repo-infra
+    has no Cargo.toml for a cargo entry to find."""
+    files = {pathlib.PurePosixPath(piece.target).name: name
+             for name, piece in pieces.items() if piece.remote}
+    called = {files[callers.normal_uses(job.get("uses"))]
+              for doc in docs.values() for job in callers.jobs(doc).values()
+              if callers.normal_uses(job.get("uses")) in files
+              and not (isinstance(job.get("with"), dict) and job["with"].get("repository"))}
+    return {name: render(piece, called) for name, piece in pieces.items()}
+
+
 def piece_items(repo_root, pieces, published):
     states = {name: piece_state(repo_root, piece, published.get(name, {}))
               for name, piece in pieces.items() if not piece.remote}
@@ -202,6 +221,9 @@ def piece_items(repo_root, pieces, published):
             gone = [f for f in piece.files if not (pathlib.Path(repo_root) / f).is_file()]
             if gone and state.installed == piece.version:
                 detail = f"{', '.join(gone)} is missing; apply restores it"
+            elif state.installed == piece.version:
+                detail = (f"{piece.target} lists other ecosystems than the CI pieces the "
+                          "callers call; apply rewrites it")
             else:
                 detail = (f"v{state.installed} installed, v{piece.version} available; "
                           "apply replaces it")
@@ -439,8 +461,8 @@ def classify_remote(facts):
 
 
 def run(repo_root, facts, assets=ASSETS):
-    pieces = load_pieces(assets)
     docs = callers.read_workflows(repo_root)
+    pieces = rendered(load_pieces(assets), docs)
     home = is_home(repo_root)
     return (piece_items(repo_root, pieces, load_published(assets))
             + ([] if home else layout_items(repo_root, pieces))

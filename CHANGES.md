@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `.github/dependabot.yml` (`dependabot` v3) now asks for weekly dependency updates of the repository's own code, not only of the GitHub Actions: `cargo` for `ri-ci-rust` and `ri-ci-rust-musl`, `npm` for `ri-ci-node-pnpm`, `bun` for `ri-ci-node-bun`, `pip` for `ri-ci-python` and `gomod` for `ri-ci-go`, each with the `no-changelog` label. `apply` writes the entries for the CI pieces the callers call, and `check` reports the file `outdated` when the callers change. (#92)
 
 ### Changed
 

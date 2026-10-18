@@ -5,8 +5,8 @@ import subprocess
 import pytest
 from piecekit import install, make_assets, workflow_piece
 
+from repo_infra import callers, cli
 from repo_infra import check as checking
-from repo_infra import cli
 from repo_infra.pieces import ASSETS, load_pieces
 
 
@@ -99,8 +99,9 @@ def test_apply_migrates_a_v1_repository_in_one_commit(tmp_path, monkeypatch, cap
     repo = tmp_path / "repo"
     shutil.copytree(V1_MTUSPY, repo)
     pieces = load_pieces()
-    # The byte pieces as published, so the migration is all apply has to do.
-    for piece in pieces.values():
+    # The byte pieces as published, so the migration is all apply has to do;
+    # dependabot with the cargo entry of its Rust callers (#92).
+    for piece in checking.rendered(pieces, callers.read_workflows(repo)).values():
         if not piece.remote:
             for path, text in piece.files.items():
                 install(repo, path, text)

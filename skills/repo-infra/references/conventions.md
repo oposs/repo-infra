@@ -302,6 +302,20 @@ including one that only lived on a branch; `CHANGES.md` records what a released
 version added, so a version nobody outside this repository received earns no
 entry.
 
+`dependabot.yml` is the one piece whose bytes depend on the repository, an
+exception to D15's rule that assets are literal files (#92). Dependabot reads
+only `.github/dependabot.yml`, so the ecosystem of the repository's own code
+cannot be a piece of its own, and a repository may not edit the piece to add
+it. From v3 on, `check` and `apply` append one entry per ecosystem the callers'
+CI pieces build (the table is `ECOSYSTEMS` in `pieces.py`, the list is in the
+piece's header), and a call that passes `repository` counts for none.
+`generations.json` records the asset, which is the file for a repository that
+calls none of them; `check` strips the appended entries before it looks for the
+version, and the bytes are current only when they equal the file rendered for
+the repository's callers. A v3 file rendered for other callers reads
+`outdated`. A change to the text of an entry must keep the old text
+strippable, or every copy of the older version reads `edited`.
+
 An `edited` piece is merged by hand (`commands/apply.md`). A file whose marker
 claims the current or a newer version than the plugin ships is never written and
 never merged: there is nothing to merge into it, and writing it would be a
