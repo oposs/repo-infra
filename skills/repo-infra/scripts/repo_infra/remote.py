@@ -12,8 +12,8 @@ from collections import namedtuple
 Facts = namedtuple(
     "Facts",
     "default_branch protected required_contexts labels workflow_permissions can_approve_pr "
-    "delete_branch_on_merge strict release_prs tags",
-    defaults=(False, (), None))
+    "delete_branch_on_merge strict release_prs tags classic_protection classic_contexts",
+    defaults=(False, (), None, False, ()))
 
 
 class GhError(Exception):
@@ -114,6 +114,22 @@ class Gh:
                 return False
             raise
 
+    def classic_protection(self, repo, branch):
+        """The classic branch protection on `branch`, or None.
+
+        Read beside the rulesets because oetiker/tvision-rs#29, the
+        onboarding pull request, stayed blocked with every check green:
+        classic protection on main required `test`, a job onboarding had
+        replaced, and `check` read only the rulesets. A 404 means the branch
+        has none; any other failure is raised, never read as unprotected.
+        """
+        try:
+            return self.api(f"repos/{repo}/branches/{branch}/protection")
+        except GhError as error:
+            if "404" in str(error):
+                return None
+            raise
+
     def current_repo(self):
         return self.run(["gh", "repo", "view", "--json", "nameWithOwner",
                          "-q", ".nameWithOwner"]).strip()
@@ -155,6 +171,12 @@ class Gh:
                     for check in parameters["required_status_checks"]:
                         contexts.add(check["context"])
 
+        classic = self.classic_protection(repo, default_branch)
+        checks = (classic or {}).get("required_status_checks") or {}
+        classic_contexts = tuple(sorted(
+            set(checks.get("contexts", []))
+            | {check["context"] for check in checks.get("checks", [])}))
+
         labels = {label["name"] for label in self._api_paginated_list(f"repos/{repo}/labels")}
         permissions = self.api(f"repos/{repo}/actions/permissions/workflow")
         release_prs = tuple(
@@ -175,4 +197,6 @@ class Gh:
             strict=strict,
             release_prs=release_prs,
             tags=Tags(self, repo),
+            classic_protection=classic is not None,
+            classic_contexts=classic_contexts,
         )

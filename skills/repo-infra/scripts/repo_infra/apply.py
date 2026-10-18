@@ -445,6 +445,45 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "delete head branches\" by hand, then retry.")
         return "switched on Automatically delete head branches"
 
+    if name == "classic-protection":
+        branch = facts.default_branch
+        if not facts.classic_protection:
+            return f"no classic branch protection on '{branch}'; nothing to remove"
+        # Removing it before the ruleset guards the branch would leave the
+        # default branch with no protection at all. required_contexts holds
+        # only what active rulesets on the default branch require.
+        absent = REQUIRED_CONTEXTS - facts.required_contexts
+        if absent:
+            raise ApplyError(
+                f"classic-protection: no active ruleset on '{branch}' requires "
+                f"{' and '.join(sorted(absent))} yet, so removing classic protection "
+                "would leave the branch unprotected. Apply required-checks first, "
+                "then this item again.")
+        endpoint = f"repos/{repo}/branches/{branch}/protection"
+        gh.run(["gh", "api", "--method", "DELETE", endpoint])
+
+        def gone():
+            # A 404 is the only answer that says the protection is gone.
+            try:
+                gh.run(["gh", "api", endpoint])
+            except GhError as error:
+                if "404" in str(error):
+                    return True
+                raise
+            return False
+
+        try:
+            _, landed = _read_back(gone, bool)
+        except GhError as error:
+            raise ApplyError(
+                f"classic-protection: deleted it but could not confirm the result: "
+                f"{error}. Check Settings -> Branches on repos/{repo} by hand.") from error
+        if not landed:
+            raise ApplyError(
+                f"classic-protection: deleted it and read back protection on {endpoint}, "
+                f"{_READ_BACK_SPAN}. Check Settings -> Branches by hand, then retry.")
+        return f"removed classic branch protection from '{branch}'"
+
     if name in ("required-checks", "branch-protection"):
         # Both names describe facts about the same ruleset -- an unprotected
         # default branch always reads as both missing at once -- so they share
@@ -465,9 +504,20 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
         # while `main` still has neither workflow, which is exactly the
         # "required check that can never report" failure this item exists
         # to prevent.
+        #
+        # One exception. oetiker/tvision-rs#29, the onboarding pull request,
+        # could not merge: classic protection required `test`, a job the
+        # onboarding had replaced, and classic-protection waits for this
+        # ruleset. That pull request's head, the pushed repo-infra/apply
+        # branch, produces both required checks itself, so with classic
+        # protection present the workflows count there too.
+        refs = (facts.default_branch,) + ((BRANCH,) if facts.classic_protection else ())
         missing, unverified = [], []
         for workflow in REQUIRED_WORKFLOWS:
-            exists = gh.path_exists_on_branch(repo, facts.default_branch, workflow)
+            for ref in refs:
+                exists = gh.path_exists_on_branch(repo, ref, workflow)
+                if exists is not False:
+                    break
             if exists is False:
                 missing.append(workflow)
             elif exists is None:
@@ -481,6 +531,13 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 f"the repos/{repo}/contents endpoint), not a clean 404. "
                 "Refusing rather than guessing either way; check by hand "
                 "and retry.")
+        if missing and facts.classic_protection:
+            raise ApplyError(
+                f"{name}: {', '.join(missing)} on neither "
+                f"'{facts.default_branch}' nor the pushed {BRANCH} branch. Classic "
+                "protection blocks the onboarding pull request, so this ruleset may "
+                f"go on before the merge: push {BRANCH} and open its pull request, "
+                "then apply this item again.")
         if missing:
             raise ApplyError(
                 f"{name}: {', '.join(missing)} not on main yet. A required "

@@ -422,6 +422,19 @@ def classify_remote(facts):
     else:
         items.append(Item("administration", "required-checks", "ok", ""))
 
+    # oetiker/tvision-rs#29 stayed blocked with every check green: classic
+    # protection on main still required `test`, which onboarding had removed,
+    # and nothing here read it.
+    if facts.classic_protection:
+        required = (", ".join(f"`{c}`" for c in facts.classic_contexts)
+                    if facts.classic_contexts else "no status checks")
+        items.append(Item("administration", "classic-protection", "conflict",
+            f"'{facts.default_branch}' has classic branch protection; the standard uses "
+            f"a ruleset. The classic rule requires {required}. A required check that "
+            "no workflow produces blocks every pull request"))
+    else:
+        items.append(Item("administration", "classic-protection", "ok", ""))
+
     has_label = "no-changelog" in facts.labels
     items.append(Item("administration", "no-changelog-label", "ok" if has_label else "missing",
                       "" if has_label else "dependabot requests it; it does not exist"))

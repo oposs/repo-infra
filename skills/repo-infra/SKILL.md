@@ -90,14 +90,14 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
    `assets/callers/release-pr-skip.yml` (D31); `finalize` needs every other job
    of `release-publish.yml`. `check` verifies all three.
 
-2. **The ruleset waits for `main`.** `apply --item required-checks` refuses
-   until `ci.yml` and `changelog.yml` are on the default branch: a required check
+2. **The ruleset waits for `main`.** `apply --item required-checks` refuses until `ci.yml` and `changelog.yml` are on the default branch: a required check
    with no workflow blocks every pull request, including the one that installs
    it. Rename the default branch, land the files, then enable the ruleset.
+   Classic protection (`classic-protection`) changes the order: `references/onboarding.md`.
 
 3. **Administration items are outward-facing.** `default-branch`,
-   `required-checks`, `no-changelog-label`, `actions-open-pr` and
-   `delete-merged-branches` change the live repository with no commit. `apply` runs one only with `--item`; confirm each.
+   `required-checks`, `no-changelog-label`, `actions-open-pr`,
+   `delete-merged-branches` and `classic-protection` change the live repository with no commit. `apply` runs one only with `--item`; confirm each.
 
 4. **A release in progress blocks `apply`.** An open release pull request, or a
    latest released version without a tag, stops every install.
