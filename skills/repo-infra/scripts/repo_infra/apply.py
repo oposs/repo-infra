@@ -461,17 +461,27 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "then this item again.")
         endpoint = f"repos/{repo}/branches/{branch}/protection"
         gh.run(["gh", "api", "--method", "DELETE", endpoint])
+
+        def gone():
+            # A 404 is the only answer that says the protection is gone.
+            try:
+                gh.run(["gh", "api", endpoint])
+            except GhError as error:
+                if "404" in str(error):
+                    return True
+                raise
+            return False
+
         try:
-            gh.run(["gh", "api", endpoint])
+            _, landed = _read_back(gone, bool)
         except GhError as error:
-            if "404" not in str(error):
-                raise ApplyError(
-                    f"classic-protection: deleted it but could not confirm the result: "
-                    f"{error}. Check Settings -> Branches on repos/{repo} by hand.") from error
-        else:
             raise ApplyError(
-                f"classic-protection: deleted it and read back protection on {endpoint}. "
-                "Check Settings -> Branches by hand, then retry.")
+                f"classic-protection: deleted it but could not confirm the result: "
+                f"{error}. Check Settings -> Branches on repos/{repo} by hand.") from error
+        if not landed:
+            raise ApplyError(
+                f"classic-protection: deleted it and read back protection on {endpoint}, "
+                f"{_READ_BACK_SPAN}. Check Settings -> Branches by hand, then retry.")
         return f"removed classic branch protection from '{branch}'"
 
     if name in ("required-checks", "branch-protection"):

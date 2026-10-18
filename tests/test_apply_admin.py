@@ -483,11 +483,20 @@ def test_classic_protection_is_deleted_and_read_back_as_gone(tmp_path):
     assert ["gh", "api", "repos/o/r/branches/main/protection"] in recorder.calls
 
 
-def test_classic_protection_that_is_still_there_after_the_delete_is_an_error(tmp_path):
+def test_classic_protection_that_reads_back_present_at_first_is_accepted(tmp_path, sleeps):
+    recorder = Recorder({DELETE: "", PROTECTION: [json.dumps({"url": "x"}), NOT_PROTECTED]})
+    apply_admin_item(Gh(run=recorder), "o/r", "classic-protection", classic(), ASSETS,
+                     tmp_path)
+    assert len(sleeps) == 1
+
+
+def test_classic_protection_that_is_still_there_after_the_delete_is_an_error(tmp_path,
+                                                                            sleeps):
     recorder = Recorder({DELETE: "", PROTECTION: json.dumps({"url": "x"})})
     with pytest.raises(ApplyError, match="read back"):
         apply_admin_item(Gh(run=recorder), "o/r", "classic-protection", classic(), ASSETS,
                          tmp_path)
+    assert len(sleeps) == 4
 
 
 def test_a_read_back_that_fails_otherwise_is_an_error(tmp_path):
