@@ -23,6 +23,8 @@ class Recorder:
     An answer that is an exception is raised instead of returned, so a test
     can script a failed `gh` call -- a 404, or anything else -- the same way
     `Gh.run` actually fails (module docstring: `GhError` on a non-zero exit).
+    An answer that is a list is handed out one entry per call, and its last
+    entry repeats, so a test can script a read-back that is stale at first.
     """
 
     def __init__(self, answers):
@@ -34,10 +36,21 @@ class Recorder:
         joined = " ".join(args)
         for fragment, answer in self.answers.items():
             if fragment in joined:
+                if isinstance(answer, list):
+                    answer = answer.pop(0) if len(answer) > 1 else answer[0]
                 if isinstance(answer, BaseException):
                     raise answer
                 return answer
         return "{}"
+
+
+@pytest.fixture(autouse=True)
+def sleeps(monkeypatch):
+    """The read-back poll waits between reads. The tests record the waits
+    instead of sleeping through them."""
+    waited = []
+    monkeypatch.setattr("repo_infra.apply._sleep", waited.append)
+    return waited
 
 
 def facts(**overrides):
@@ -125,6 +138,94 @@ def test_workflow_permissions_that_do_not_stick_are_an_error(tmp_path):
         {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False})})
     with pytest.raises(ApplyError, match="read back"):
         apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+
+
+WORKFLOW = "api repos/o/r/actions/permissions/workflow"
+STALE = json.dumps({"default_workflow_permissions": "read",
+                    "can_approve_pull_request_reviews": False})
+WRITTEN = json.dumps({"default_workflow_permissions": "write",
+                      "can_approve_pull_request_reviews": True})
+
+
+def reads_of(recorder, path):
+    return [c for c in recorder.calls if c == ["gh", "api", path]]
+
+
+def test_workflow_permissions_that_read_back_stale_at_first_are_accepted(tmp_path, sleeps):
+    # oetiker/tvision-rs, plugin 2.3.1: the first read after the PUT still said
+    # read/False, and a minute later GitHub said write/True.
+    recorder = Recorder({WORKFLOW: [STALE, STALE, WRITTEN]})
+    message = apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS,
+                               tmp_path)
+    assert message == "allowed Actions to create and approve pull requests"
+    assert len(reads_of(recorder, "repos/o/r/actions/permissions/workflow")) == 3
+    assert len(sleeps) == 2
+
+
+def test_workflow_permissions_are_read_back_five_times_before_refusing(tmp_path, sleeps):
+    recorder = Recorder({WORKFLOW: STALE,
+                         "api repos/o/r": json.dumps({"owner": {"type": "User"}})})
+    with pytest.raises(ApplyError):
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+    assert len(reads_of(recorder, "repos/o/r/actions/permissions/workflow")) == 5
+    assert len(sleeps) == 4
+
+
+def test_a_user_owned_repository_is_not_told_about_an_organisation_policy(tmp_path):
+    recorder = Recorder({WORKFLOW: STALE,
+                         "api repos/o/r": json.dumps({"owner": {"type": "User"}})})
+    with pytest.raises(ApplyError) as refused:
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+    assert "organisation" not in str(refused.value)
+    assert "re-run" in str(refused.value)
+
+
+def test_an_organisation_owned_repository_is_pointed_at_the_organisation_policy(tmp_path):
+    recorder = Recorder({WORKFLOW: STALE,
+                         "api repos/o/r": json.dumps({"owner": {"type": "Organization"}})})
+    with pytest.raises(ApplyError, match="organisation policy"):
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+
+
+def test_a_failed_owner_lookup_still_refuses_with_the_read_back(tmp_path):
+    recorder = Recorder({WORKFLOW: STALE, "api repos/o/r": GhError("gh: HTTP 502")})
+    with pytest.raises(ApplyError, match="read back"):
+        apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+
+
+def test_deleting_merged_branches_that_reads_back_stale_at_first_is_accepted(tmp_path,
+                                                                              sleeps):
+    recorder = Recorder({"api repos/o/r": [json.dumps({"delete_branch_on_merge": False}),
+                                           json.dumps({"delete_branch_on_merge": True})]})
+    apply_admin_item(Gh(run=recorder), "o/r", "delete-merged-branches", facts(), ASSETS,
+                     tmp_path)
+    assert len(reads_of(recorder, "repos/o/r")) == 2
+    assert len(sleeps) == 1
+
+
+def test_deleting_merged_branches_is_read_back_five_times_before_refusing(tmp_path, sleeps):
+    recorder = Recorder({"api repos/o/r": json.dumps({"delete_branch_on_merge": False})})
+    with pytest.raises(ApplyError):
+        apply_admin_item(Gh(run=recorder), "o/r", "delete-merged-branches", facts(), ASSETS,
+                         tmp_path)
+    assert len(reads_of(recorder, "repos/o/r")) == 5
+    assert len(sleeps) == 4
+
+
+def test_a_label_that_reads_back_missing_at_first_is_accepted(tmp_path, sleeps):
+    # "api repos/o/r/labels" rather than "/labels": the POST that creates the
+    # label must not take the first, stale answer.
+    recorder = Recorder({"api repos/o/r/labels": [json.dumps([]),
+                                                  json.dumps([{"name": "no-changelog"}])]})
+    apply_admin_item(Gh(run=recorder), "o/r", "no-changelog-label", facts(), ASSETS, tmp_path)
+    assert len(reads_of(recorder, "repos/o/r/labels")) == 2
+    assert len(sleeps) == 1
+
+
+def test_a_written_setting_that_reads_back_at_once_does_not_wait(tmp_path, sleeps):
+    recorder = Recorder({WORKFLOW: WRITTEN})
+    apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr", facts(), ASSETS, tmp_path)
+    assert sleeps == []
 
 
 def test_deleting_merged_branches_is_switched_on_and_read_back(tmp_path):
