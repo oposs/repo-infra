@@ -12,9 +12,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
-- `.github/dependabot.yml` (`dependabot` v3) now asks for weekly dependency updates of the repository's own code, not only of the GitHub Actions: `cargo` for `ri-ci-rust` and `ri-ci-rust-musl`, `npm` for `ri-ci-node-pnpm`, `bun` for `ri-ci-node-bun`, `pip` for `ri-ci-python` and `gomod` for `ri-ci-go`, each with the `no-changelog` label. `apply` writes the entries for the CI pieces the callers call, and `check` reports the file `outdated` when the callers change. (#92)
 
 ### Changed
+
+### Fixed
+
+## 2.4.0 - 2026-10-19
+### New
+- `.github/dependabot.yml` (`dependabot` v3) now asks for weekly dependency updates of the repository's own code, not only of the GitHub Actions: `cargo` for `ri-ci-rust` and `ri-ci-rust-musl`, `npm` for `ri-ci-node-pnpm`, `bun` for `ri-ci-node-bun`, `pip` for `ri-ci-python` and `gomod` for `ri-ci-go`, each with the `no-changelog` label. `apply` writes the entries for the CI pieces the callers call, and `check` reports the file `outdated` when the callers change. (#92)
 
 ### Fixed
 - An onboarding pull request stayed blocked with every check green when classic branch protection on `main` required a check the onboarding replaced, such as `test`, and `check` reported only "branch-protection missing". `check` now reports classic protection as the conflict `classic-protection` and names every check it requires, and `apply --item classic-protection` removes it once the ruleset requires `ci-passed` and `changelog-updated`. With classic protection present, `apply --item required-checks` accepts the workflows on the pushed `repo-infra/apply` branch, so the ruleset can go on before the onboarding pull request merges. (#91)
