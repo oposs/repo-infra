@@ -61,7 +61,7 @@ A new piece needs:
   file, a folder under `skills/repo-infra/assets/pieces/<name>/` holding the file
   with the marker `# repo-infra: <name> v1`;
 - the header block after the marker: `Purpose`, `Choose` and `Supplies`;
-  `Pieces` naming the pieces it needs (for a build file, the only way `apply`
+  `Pieces` naming the pieces it needs, `a or b` when either will do (for a build file, the only way `apply`
   knows to install them with it; on a workflow it installs nothing); `Produces` for the assets it makes; and `Call`, the caller job,
   for every workflow a caller calls;
 - for a build file, a `CHANGES.md` in that folder with a `## v1` section: the

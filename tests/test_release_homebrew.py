@@ -71,7 +71,7 @@ def test_no_formula_logic_is_left_in_shell():
 
 def test_the_piece_names_the_library_it_runs():
     header = PIECE.read_text(encoding="utf-8").split("\n\n", 1)[0]
-    assert "# Pieces: ri-release-rust-binaries" in header
+    assert "# Pieces: ri-release-rust-binaries or ri-release-go-binaries\n" in header
 
 
 def test_the_library_tests_use_the_template_of_the_shape_reference():

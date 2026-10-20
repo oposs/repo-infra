@@ -100,9 +100,11 @@ def missing_dependencies(pieces, states):
     for name, state in sorted(states.items()):
         if state.state == "absent":
             continue
-        for dep in pieces[name].needs:
-            if dep in states and states[dep].state == "absent":
-                found.setdefault(dep, name)
+        for alternatives in pieces[name].requires:
+            # A remote alternative has no state; whether a caller calls it is
+            # not known here, so the requirement counts as met.
+            if all(dep in states and states[dep].state == "absent" for dep in alternatives):
+                found.setdefault(alternatives[0], name)
     return sorted(found.items())
 
 

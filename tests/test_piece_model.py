@@ -143,6 +143,14 @@ def test_needs_and_core_come_from_the_header_and_the_manifest(tmp_path):
     assert (loaded["ri-x"].core, loaded["lib-x"].core) == (False, True)
 
 
+def test_pieces_joined_by_or_are_one_requirement_met_by_either(tmp_path):
+    header = "# Pieces: lib-x, ri-y or ri-z\n"
+    assets = make_assets(tmp_path, {"ri-x": workflow_piece("ri-x", 1, header=header)})
+    loaded = pieces.load_pieces(assets)["ri-x"]
+    assert loaded.requires == [["lib-x"], ["ri-y", "ri-z"]]
+    assert loaded.needs == ["lib-x", "ri-y", "ri-z"]
+
+
 def test_published_maps_the_files_of_a_directory_piece(tmp_path):
     assets = make_assets(tmp_path, {"lib-x": {"a.js": lib_file("lib-x", 2, "a2")}},
                          history=[("lib-x", "a.js", lib_file("lib-x", 1, "a1")),

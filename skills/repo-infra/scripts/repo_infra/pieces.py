@@ -67,8 +67,15 @@ class Piece:
         return f"{HOME_REPO}/{self.target}@{MAJOR}"
 
     @property
+    def requires(self):
+        """`Pieces:` as a list of requirements, each a list of the pieces
+        that meet it: `a or b` is met by either (D35)."""
+        return [[name.strip() for name in entry.split(" or ")]
+                for entry in self.header.get("Pieces", "").split(",") if entry.strip()]
+
+    @property
     def needs(self):
-        return [p.strip() for p in self.header.get("Pieces", "").split(",") if p.strip()]
+        return [name for alternatives in self.requires for name in alternatives]
 
 
 def comment_of(path):

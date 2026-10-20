@@ -417,6 +417,9 @@ Candidates a repository's files suggest but do not decide:
   `ri-release-nfpm` with an `nfpm.yaml`, and `ri-release-homebrew` with
   `Formula/<bin>.rb` from the template in `references/project-shape.md`, all
   three also when the release has no archives, packages or formula today.
+- `go.mod` with a main package users install suggests `ri-release-go-binaries`
+  with `package` naming that main package, and `ri-release-nfpm` and
+  `ri-release-homebrew` as for Rust.
 - `book.toml` is a documentation site. No piece covers it.
 
 ## Administration items

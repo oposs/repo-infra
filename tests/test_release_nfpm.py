@@ -74,7 +74,7 @@ def test_the_inputs_reach_the_library_through_env():
 
 def test_the_piece_names_the_library_it_runs():
     header = PIECE.read_text(encoding="utf-8").split("\n\n", 1)[0]
-    assert "# Pieces: ri-release-rust-binaries" in header
+    assert "# Pieces: ri-release-rust-binaries or ri-release-go-binaries\n" in header
     assert (LIB / "nfpm.js").is_file() and (LIB / "nfpm.test.js").is_file()
 
 
