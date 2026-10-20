@@ -90,8 +90,8 @@ part of the report and does not change the exit code.
    `Requires:` names, which needs no exception.
 4. List the exceptions whose id matches no rule, and the piece inputs that lack
    their paired exceptions. Today that is `targets` of
-   `ri-release-rust-binaries`, paired by the table under "Exceptions" in
-   `references/project-shape.md` (D34).
+   `ri-release-rust-binaries` and of `ri-release-go-binaries`, paired by the
+   table under "Exceptions" in `references/project-shape.md` (D34, D35).
 
 Report a gap; do not close it from here. Onboarding runs this review before it
 writes anything and turns every gap into an item of its work plan

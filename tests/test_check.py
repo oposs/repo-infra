@@ -109,6 +109,23 @@ def test_a_dependency_that_is_absent_is_missing(tmp_path):
     assert ("ri-x", "missing", "ri-y needs it") in rows(root, store)
 
 
+@pytest.mark.parametrize("installed, missing", [
+    ([], [("ri-x", "missing", "ri-y needs it")]),
+    (["ri-z"], []),
+], ids=["neither", "the-second"])
+def test_a_dependency_with_alternatives_is_met_by_either(tmp_path, installed, missing):
+    """`Pieces: ri-x or ri-z` (D35): ri-release-nfpm runs on the archives of
+    either binaries piece."""
+    needy = workflow_piece("ri-y", 1, header="# Pieces: ri-x or ri-z\n")
+    store = make_assets(tmp_path / "assets", {"ri-x": NEW, "ri-y": needy,
+                                              "ri-z": workflow_piece("ri-z", 1)})
+    root = tmp_path / "repo"
+    install(root, ".github/workflows/ri-y.yml", needy)
+    for name in installed:
+        install(root, f".github/workflows/{name}.yml", workflow_piece(name, 1))
+    assert [r for r in rows(root, store) if r[1] == "missing"] == missing
+
+
 def test_an_assembled_file_is_unknown_and_points_at_onboarding(tmp_path, store):
     root = tmp_path / "repo"
     install(root, ".github/workflows/ci.yml", "name: CI\n# repo-infra: ci v2\n"

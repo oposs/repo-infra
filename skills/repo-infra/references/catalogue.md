@@ -340,17 +340,54 @@ release-pr-current:
 
 ## Release build: called from release-build.yml
 
+### ri-release-go-binaries
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2`.
+
+**Purpose:** Build the release archives of a Go program for the seven native targets (D32), or for the ones `targets` names (D34), under the target names of ri-release-rust-binaries (D35).
+
+**Choose it when:** The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
+
+**The repository supplies:** go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, and `make man` writing man/.
+
+**Needs the pieces:** man, man-lua
+
+**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built; list each of them in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
+| `package` | string | no | `.` | The main package that builds `bin`, as go build takes it, for example ./cmd/mytool. |
+| `version_var` | string | no | `''` | A string variable the build sets to the version with -ldflags -X, for example main.version; empty sets none. |
+| `targets` | string | no | `x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-illumos x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc` | Space-separated target triples to build (D34); all seven unless set. A name the piece does not build fails the run. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+binaries:
+  uses: oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    bin: mytool
+    package: ./cmd/mytool
+    version_var: main.version
+```
+
 ### ri-release-homebrew
 
 Called as `oposs/repo-infra/.github/workflows/ri-release-homebrew.yml@v2`.
 
 **Purpose:** Bottle the formula on macOS and rewrite Formula/<bin>.rb for the release (D32).
 
-**Choose it when:** The project is a Rust program users install with Homebrew (homebrew in references/project-shape.md).
+**Choose it when:** The project is a Rust or Go program users install with Homebrew (homebrew in references/project-shape.md).
 
 **The repository supplies:** Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
 
-**Needs the pieces:** ri-release-rust-binaries
+**Needs the pieces:** ri-release-rust-binaries or ri-release-go-binaries
 
 **Produces:** The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
 
@@ -379,11 +416,11 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-nfpm.yml@v2`.
 
 **Purpose:** Build .deb and .rpm packages with nfpm from the musl archives, and read each back (D32).
 
-**Choose it when:** The project is a Rust program users install on Linux (linux-packages in references/project-shape.md).
+**Choose it when:** The project is a Rust or Go program users install on Linux (linux-packages in references/project-shape.md).
 
 **The repository supplies:** An nfpm config whose contents take their sources from STAGE and name the man pages with .gz (the piece gzips them); the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, TARGET, STAGE and ARCH, packagers sets every other dollar-brace name.
 
-**Needs the pieces:** ri-release-rust-binaries
+**Needs the pieces:** ri-release-rust-binaries or ri-release-go-binaries
 
 **Produces:** The artifact release-asset-packages, <name>_<version>-<release>_<amd64|arm64>.deb and <name>-<version>-<release>.<x86_64|aarch64>.rpm, with name and release from the config; list them in release_assets.
 

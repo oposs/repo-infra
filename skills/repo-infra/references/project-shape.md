@@ -137,19 +137,22 @@ Met by: A committed image under `docs/`.
 
 Trigger: is installed by users.
 
-Requires: For a Rust program, archives for `x86_64-unknown-linux-musl`,
+Requires: For a Rust or Go program, archives for `x86_64-unknown-linux-musl`,
 `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`,
 `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` and
 `x86_64-unknown-illumos`, named `<bin>-<version>-<target>.tar.gz` (`.zip` for
-Windows), with the layout under "Archive layout". A program in another
-compiled language has no `native-targets` rule until a binaries piece exists
-for it; the review says so instead of reporting a gap.
+Windows), with the layout under "Archive layout". A Go program carries the
+same target names: built without cgo, its Linux binary is as static as a musl
+build (D35). A program in another compiled language has no `native-targets`
+rule until a binaries piece exists for it; the review says so instead of
+reporting a gap.
 
 Verify: `release_assets` lists the seven archives and the latest release
 carries them.
 
-Met by: `ri-release-rust-binaries` without `targets`; with `targets` the rule
-is excepted (see "Exceptions"). mise's `github:` backend picks an asset by these
+Met by: `ri-release-rust-binaries` for a Rust program and
+`ri-release-go-binaries` for a Go program, without `targets`; with `targets`
+the rule is excepted (see "Exceptions"). mise's `github:` backend picks an asset by these
 names, so `mise use -g github:<owner>/<repo>` works without further setup.
 
 ### `source-archive`
@@ -176,8 +179,8 @@ registry.
 
 Met by:
 
-- a Rust program: amd64 and arm64 packages built from the musl archives by
-  `ri-release-nfpm`;
+- a Rust or Go program: amd64 and arm64 packages built from the musl archives
+  by `ri-release-nfpm`;
 - an interpreted program that bundles native modules (SmokePing's
   `thirdparty/` compiles XS modules such as `FCGI` and `Socket6`): packages per
   architecture;
@@ -193,7 +196,7 @@ Requires: `Formula/<bin>.rb` in the repository, which is its own tap.
 Verify: The formula exists, `release_files` lists it, its version is the
 latest release and no `sha256` line is all zeros.
 
-Met by: For a Rust program, `ri-release-homebrew`, which bottles the formula
+Met by: For a Rust or Go program, `ri-release-homebrew`, which bottles the formula
 and rewrites it on each release from the template under "Formula template".
 For an interpreted program, a formula that builds from the source archive.
 
@@ -216,9 +219,10 @@ not know the rule ids. The review reports an exception whose id matches no
 rule, and a gap that has no exception.
 
 A piece input that drops a requirement is allowed only together with the
-exceptions for every rule it weakens, and the review checks the pairing. One
-piece has such an input (D34): `targets` of `ri-release-rust-binaries`, which
-names the targets to build. A call that sets it needs these exceptions:
+exceptions for every rule it weakens, and the review checks the pairing. Two
+pieces have such an input: `targets` of `ri-release-rust-binaries` (D34) and of
+`ri-release-go-binaries` (D35), which names the targets to build. A call of
+either that sets it needs these exceptions:
 
 | Left out | Exceptions |
 |---|---|

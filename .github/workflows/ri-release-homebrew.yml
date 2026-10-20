@@ -1,9 +1,9 @@
 # repo-infra: ri-release-homebrew v2
 #
 # Purpose: Bottle the formula on macOS and rewrite Formula/<bin>.rb for the release (D32).
-# Choose: The project is a Rust program users install with Homebrew (homebrew in references/project-shape.md).
+# Choose: The project is a Rust or Go program users install with Homebrew (homebrew in references/project-shape.md).
 # Supplies: Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
-# Pieces: ri-release-rust-binaries
+# Pieces: ri-release-rust-binaries or ri-release-go-binaries
 # Produces: The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
 # Call:
 #   homebrew:

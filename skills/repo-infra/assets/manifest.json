@@ -112,6 +112,10 @@
       "kind": "remote",
       "group": "release-build"
     },
+    "ri-release-go-binaries": {
+      "kind": "remote",
+      "group": "release-build"
+    },
     "ri-release-nfpm": {
       "kind": "remote",
       "group": "release-build"

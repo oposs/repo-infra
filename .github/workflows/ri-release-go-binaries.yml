@@ -1,0 +1,228 @@
+# repo-infra: ri-release-go-binaries v2
+#
+# Purpose: Build the release archives of a Go program for the seven native targets (D32), or for the ones `targets` names (D34), under the target names of ri-release-rust-binaries (D35).
+# Choose: The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
+# Supplies: go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, and `make man` writing man/.
+# Pieces: man, man-lua
+# Produces: The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built; list each of them in release_assets.
+# Call:
+#   binaries:
+#     uses: oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2
+#     with:
+#       version: ${{ inputs.version }}
+#       ref: ${{ inputs.ref }}
+#       bin: mytool
+#       package: ./cmd/mytool
+#       version_var: main.version
+
+name: Build the Go release archives
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version the release builds, from release-build.yml.
+        type: string
+        required: true
+      ref:
+        description: The release branch commit to build, from release-build.yml (D28).
+        type: string
+        required: true
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
+      bin:
+        description: The binary to build; the archives and their top folder are named after it.
+        type: string
+        required: true
+      package:
+        description: The main package that builds `bin`, as go build takes it, for example ./cmd/mytool.
+        type: string
+        required: false
+        default: .
+      version_var:
+        description: A string variable the build sets to the version with -ldflags -X, for example main.version; empty sets none.
+        type: string
+        required: false
+        default: ''
+      targets:
+        description: Space-separated target triples to build (D34); all seven unless set. A name the piece does not build fails the run.
+        type: string
+        required: false
+        default: x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-illumos x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc
+
+permissions:
+  contents: read
+
+jobs:
+  man:
+    name: Build the man pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+
+      # The pages are built once, with the pandoc ri-ci-man checks them with,
+      # and every archive of the release carries the same files.
+      - name: Install pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+
+      - name: Build the man pages
+        run: make man
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: man-pages
+          path: man/
+          if-no-files-found: error
+
+  # The legs of every target the piece knows, cut down to the ones `targets`
+  # names (D34), with the same names and messages as ri-release-rust-binaries.
+  plan:
+    name: Choose the targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Choose the targets
+        id: plan
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          # The targets keep the Rust triples, because ri-release-nfpm,
+          # ri-release-homebrew and mise's github: backend find the archives
+          # by them (D35). A Go binary built with CGO_ENABLED=0 links no C
+          # library at all, so it is as static as the musl build and carries
+          # the musl name by right.
+          legs='[
+            {"target": "x86_64-unknown-linux-musl", "goos": "linux", "goarch": "amd64"},
+            {"target": "aarch64-unknown-linux-musl", "goos": "linux", "goarch": "arm64"},
+            {"target": "x86_64-unknown-illumos", "goos": "illumos", "goarch": "amd64"},
+            {"target": "x86_64-apple-darwin", "goos": "darwin", "goarch": "amd64"},
+            {"target": "aarch64-apple-darwin", "goos": "darwin", "goarch": "arm64"},
+            {"target": "x86_64-pc-windows-msvc", "goos": "windows", "goarch": "amd64", "windows": true},
+            {"target": "aarch64-pc-windows-msvc", "goos": "windows", "goarch": "arm64", "windows": true}
+          ]'
+          known=$(jq -r '[.[].target] | join(" ")' <<< "$legs")
+          # A YAML block scalar in the caller puts one target per line; read
+          # splits only the first line, so the newlines become blanks first.
+          read -ra chosen <<< "${TARGETS//$'\n'/ }"
+          if [ ${#chosen[@]} -eq 0 ]; then
+            echo "::error::targets names no target; leave it out to build all of $known"
+            exit 1
+          fi
+          unknown=()
+          for target in "${chosen[@]}"; do
+            case " $known " in
+              *" $target "*) ;;
+              *) unknown+=("$target") ;;
+            esac
+          done
+          if [ ${#unknown[@]} -gt 0 ]; then
+            echo "::error::targets names ${unknown[*]}, which this piece does not build; it builds $known"
+            exit 1
+          fi
+          matrix=$(jq -c --arg chosen "${chosen[*]}" \
+            '{include: [.[] | select(.target | IN($chosen | split(" ")[]))]}' <<< "$legs")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  # Every leg runs on Linux: without cgo, go build cross-compiles to each
+  # target with the one toolchain, so no leg needs a mac or Windows runner.
+  binaries:
+    name: Build ${{ matrix.target }}
+    needs: [plan, man]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One target failing must not cancel the others: which target broke is
+      # the answer, and fail-fast throws the rest of it away.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+
+      # The toolchain go.mod names, as ri-ci-go tests with.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Fetch the man pages
+        if: ${{ !matrix.windows }}
+        uses: actions/download-artifact@v8
+        with:
+          name: man-pages
+          path: man
+
+      # -trimpath and -buildvcs=false keep the build paths and the checkout's
+      # git state out of the binary, so the same commit builds the same bytes.
+      - name: Build
+        env:
+          BIN: ${{ inputs.bin }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          VERSION_VAR: ${{ inputs.version_var }}
+          TARGET: ${{ matrix.target }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          WINDOWS: ${{ matrix.windows }}
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=0
+          exe=""
+          if [ "$WINDOWS" = true ]; then
+            exe=.exe
+          fi
+          ldflags=()
+          if [ -n "$VERSION_VAR" ]; then
+            ldflags=(-ldflags "-X $VERSION_VAR=$VERSION")
+          fi
+          go build -trimpath -buildvcs=false "${ldflags[@]}" \
+            -o "release-bin/$TARGET/$BIN$exe" "$PACKAGE"
+
+      # The archive layout is the contract the packaging and Homebrew pieces
+      # read (D32): <bin>/<bin>, <bin>/man/<every page>, README.md, LICENSE.
+      # The Windows .zip has the same layout without man/ and the binary
+      # <bin>.exe, as ri-release-rust-binaries packs it.
+      - name: Pack the archive
+        env:
+          BIN: ${{ inputs.bin }}
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+          WINDOWS: ${{ matrix.windows }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist "staging/$BIN"
+          cp README.md LICENSE "staging/$BIN/"
+          if [ "$WINDOWS" = true ]; then
+            cp "release-bin/$TARGET/$BIN.exe" "staging/$BIN/"
+            (cd staging && zip -qr "../dist/$BIN-$VERSION-$TARGET.zip" "$BIN")
+            exit 0
+          fi
+          shopt -s nullglob
+          pages=(man/*.[1-9]*)
+          if [ ${#pages[@]} -eq 0 ]; then
+            echo "::error::no man page under man/; the man job uploads what make man built"
+            exit 1
+          fi
+          mkdir -p "staging/$BIN/man"
+          cp "release-bin/$TARGET/$BIN" "staging/$BIN/"
+          cp "${pages[@]}" "staging/$BIN/man/"
+          tar -czf "dist/$BIN-$VERSION-$TARGET.tar.gz" -C staging "$BIN"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-asset-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
