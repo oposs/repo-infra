@@ -12,11 +12,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
-- A Go program can now be released with the same seven archives as a Rust program: `ri-release-go-binaries` builds them under the same target names, so `ri-release-nfpm`, `ri-release-homebrew` and `mise use -g github:<owner>/<repo>` work for it unchanged. The optional `package` names the main package to build (default `.`), and `version_var`, for example `main.version`, puts the release version into the binary. `targets` and its exceptions work as in `ri-release-rust-binaries`.
 
 ### Changed
 
 ### Fixed
+
+## 2.5.0 - 2026-10-20
+### New
+- A Go program can now be released with the same seven archives as a Rust program: `ri-release-go-binaries` builds them under the same target names, so `ri-release-nfpm`, `ri-release-homebrew` and `mise use -g github:<owner>/<repo>` work for it unchanged. The optional `package` names the main package to build (default `.`), and `version_var`, for example `main.version`, puts the release version into the binary. `targets` and its exceptions work as in `ri-release-rust-binaries`.
 
 ## 2.4.0 - 2026-10-19
 ### New
