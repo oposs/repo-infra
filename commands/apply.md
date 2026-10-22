@@ -249,3 +249,11 @@ pull request that installs `ci.yml` and `changelog.yml` and retry. "could not
 confirm" means the check against GitHub itself failed (network, permissions). It
 is not evidence either way, so retry rather than assuming the workflow is or
 is not there.
+
+On a private repository of a free account GitHub offers no branch protection:
+it answers both protection endpoints with HTTP 403 "Upgrade to GitHub Pro or
+make this repository public to enable this feature". `check` then reports
+`branch-protection` and `required-checks` as `problem` with that cause, and
+`required-checks`, `branch-protection` and `classic-protection` refuse before
+they write anything. The release flow relies on the ruleset, so the repository
+has to become public or its owner has to move to a paid plan.

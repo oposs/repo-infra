@@ -389,6 +389,18 @@ def test_branch_protection_is_the_same_refusal_as_required_checks(tmp_path):
         apply_admin_item(Gh(run=recorder), "o/r", "branch-protection", facts(), ASSETS, tmp_path)
 
 
+@pytest.mark.parametrize("item", ["branch-protection", "required-checks",
+                                  "classic-protection"])
+def test_protection_is_refused_where_the_plan_offers_none(tmp_path, item):
+    recorder = Recorder({})
+    cause = ("gh: Upgrade to GitHub Pro or make this repository public to enable "
+             "this feature. (HTTP 403)")
+    with pytest.raises(ApplyError, match="Make the repository public"):
+        apply_admin_item(Gh(run=recorder), "o/r", item,
+                         facts(protection_unavailable=cause), ASSETS, tmp_path)
+    assert recorder.calls == []
+
+
 def test_an_unknown_admin_item_is_an_error(tmp_path):
     with pytest.raises(ApplyError, match="not an administration item"):
         apply_admin_item(Gh(run=Recorder({})), "o/r", "something-else", facts(), ASSETS, tmp_path)

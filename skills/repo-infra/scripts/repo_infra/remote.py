@@ -12,12 +12,24 @@ from collections import namedtuple
 Facts = namedtuple(
     "Facts",
     "default_branch protected required_contexts labels workflow_permissions can_approve_pr "
-    "delete_branch_on_merge strict release_prs tags classic_protection classic_contexts",
-    defaults=(False, (), None, False, ()))
+    "delete_branch_on_merge strict release_prs tags classic_protection classic_contexts "
+    "protection_unavailable",
+    defaults=(False, (), None, False, (), None))
 
 
 class GhError(Exception):
     """A `gh` invocation failed. Never swallowed, never defaulted."""
+
+
+def plan_refuses_protection(error):
+    """True when GitHub refused a protection endpoint because the repository's
+    plan has no branch protection: a private repository of a free account
+    answers rulesets and classic protection alike with HTTP 403 "Upgrade to
+    GitHub Pro or make this repository public to enable this feature". That
+    is a fact about the repository, not a failed read, so `check` reports it
+    instead of stopping."""
+    text = str(error)
+    return "403" in text and "make this repository public to enable this feature" in text
 
 
 def protects_default_branch(ruleset, default_branch):
@@ -156,7 +168,16 @@ class Gh:
         protected = False
         contexts = set()
         strict = False
-        for summary in self._api_paginated_list(f"repos/{repo}/rulesets"):
+        try:
+            rulesets = self._api_paginated_list(f"repos/{repo}/rulesets")
+        except GhError as error:
+            if not plan_refuses_protection(error):
+                raise
+            unavailable = str(error).rsplit("failed: ", 1)[-1]
+            rulesets = []
+        else:
+            unavailable = None
+        for summary in rulesets:
             ruleset = self.api(f"repos/{repo}/rulesets/{summary['id']}")
             if ruleset.get("enforcement") != "active":
                 continue
@@ -171,7 +192,9 @@ class Gh:
                     for check in parameters["required_status_checks"]:
                         contexts.add(check["context"])
 
-        classic = self.classic_protection(repo, default_branch)
+        # The plan that refuses rulesets refuses classic protection too, so
+        # there is none to read.
+        classic = None if unavailable else self.classic_protection(repo, default_branch)
         checks = (classic or {}).get("required_status_checks") or {}
         classic_contexts = tuple(sorted(
             set(checks.get("contexts", []))
@@ -199,4 +222,5 @@ class Gh:
             tags=Tags(self, repo),
             classic_protection=classic is not None,
             classic_contexts=classic_contexts,
+            protection_unavailable=unavailable,
         )

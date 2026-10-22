@@ -430,34 +430,48 @@ def classify_remote(facts):
             f"run on main, so on '{facts.default_branch}' every required check stays "
             "pending forever. Renaming breaks links, forks and clones that pin it."))
 
-    items.append(Item("administration", "branch-protection", "ok" if facts.protected else "missing",
-                      "" if facts.protected else "the default branch is unprotected"))
-
-    wanted = {"ci-passed", "changelog-updated"}
-    missing = sorted(wanted - facts.required_contexts)
-    if missing:
-        items.append(Item("administration", "required-checks", "missing",
-                          "the ruleset does not require " + " or ".join(missing)))
-    elif not facts.strict:
-        items.append(Item("administration", "required-checks", "outdated",
-            "the ruleset lets a pull request merge while its branch is behind main "
-            "(strict_required_status_checks_policy is off); a release built from an "
-            "older main could then merge (D28)"))
+    if facts.protection_unavailable:
+        # A private repository of a free account (GitHub answers HTTP 403).
+        # The release flow needs the ruleset, so this is a problem, not a
+        # state apply can change.
+        items.append(Item("administration", "branch-protection", "problem",
+            "GitHub offers no branch protection on this repository "
+            f"({facts.protection_unavailable}). The standard needs a ruleset on "
+            "main: make the repository public or move its owner to a paid plan"))
+        items.append(Item("administration", "required-checks", "problem",
+            "needs the ruleset that branch-protection cannot have"))
+        items.append(Item("administration", "classic-protection", "ok",
+            "none; the plan offers no branch protection"))
     else:
-        items.append(Item("administration", "required-checks", "ok", ""))
+        items.append(Item("administration", "branch-protection",
+                          "ok" if facts.protected else "missing",
+                          "" if facts.protected else "the default branch is unprotected"))
 
-    # oetiker/tvision-rs#29 stayed blocked with every check green: classic
-    # protection on main still required `test`, which onboarding had removed,
-    # and nothing here read it.
-    if facts.classic_protection:
-        required = (", ".join(f"`{c}`" for c in facts.classic_contexts)
-                    if facts.classic_contexts else "no status checks")
-        items.append(Item("administration", "classic-protection", "conflict",
-            f"'{facts.default_branch}' has classic branch protection; the standard uses "
-            f"a ruleset. The classic rule requires {required}. A required check that "
-            "no workflow produces blocks every pull request"))
-    else:
-        items.append(Item("administration", "classic-protection", "ok", ""))
+        wanted = {"ci-passed", "changelog-updated"}
+        missing = sorted(wanted - facts.required_contexts)
+        if missing:
+            items.append(Item("administration", "required-checks", "missing",
+                              "the ruleset does not require " + " or ".join(missing)))
+        elif not facts.strict:
+            items.append(Item("administration", "required-checks", "outdated",
+                "the ruleset lets a pull request merge while its branch is behind main "
+                "(strict_required_status_checks_policy is off); a release built from an "
+                "older main could then merge (D28)"))
+        else:
+            items.append(Item("administration", "required-checks", "ok", ""))
+
+        # oetiker/tvision-rs#29 stayed blocked with every check green: classic
+        # protection on main still required `test`, which onboarding had removed,
+        # and nothing here read it.
+        if facts.classic_protection:
+            required = (", ".join(f"`{c}`" for c in facts.classic_contexts)
+                        if facts.classic_contexts else "no status checks")
+            items.append(Item("administration", "classic-protection", "conflict",
+                f"'{facts.default_branch}' has classic branch protection; the standard uses "
+                f"a ruleset. The classic rule requires {required}. A required check that "
+                "no workflow produces blocks every pull request"))
+        else:
+            items.append(Item("administration", "classic-protection", "ok", ""))
 
     has_label = "no-changelog" in facts.labels
     items.append(Item("administration", "no-changelog-label", "ok" if has_label else "missing",
