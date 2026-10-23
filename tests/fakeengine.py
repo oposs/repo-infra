@@ -8,6 +8,7 @@ Behaviour is steered by environment variables:
 
 - FAKE_BUILD_FAIL_PULL=1: `build` fails when it carries a `--pull*` argument.
 - FAKE_PODMAN_INFO: what `info` prints (default `false crun`).
+- FAKE_PODMAN_INFO_FAIL=1: `info` exits 1.
 - FAKE_VOLUME=1: `volume inspect` succeeds, otherwise it fails.
 - FAKE_RUN_STATUS: the exit status of `run` (default 0).
 - FAKE_EXEC=1: `run` emulates the container: the `-v host:/src` mount maps
@@ -42,6 +43,8 @@ if sub == "build":
     pulling = any(a.startswith("--pull") for a in argv)
     sys.exit(1 if os.environ.get("FAKE_BUILD_FAIL_PULL") == "1" and pulling else 0)
 if sub == "info":
+    if os.environ.get("FAKE_PODMAN_INFO_FAIL") == "1":
+        sys.exit(1)
     print(os.environ.get("FAKE_PODMAN_INFO", "false crun"))
     sys.exit(0)
 if sub == "volume" and argv[1:2] == ["inspect"]:

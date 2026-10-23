@@ -86,7 +86,10 @@ pick_engine() {
 }
 locate() {
 	top=$$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)
-	common=$$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || :)
+	# No --path-format: git before 2.31 prints an unknown flag back and exits 0,
+	# which made a garbage -v mount and a catatonit hint in every checkout.
+	# The directory is relative to the current directory when git prints it so.
+	common=$$(git rev-parse --git-common-dir 2>/dev/null) && common=$$(cd "$$common" && pwd -P) || common=
 	case $$REPO_INFRA_CM_CURDIR in
 	"$$top") rel= ;;
 	"$$top"/*) rel=$${REPO_INFRA_CM_CURDIR#"$$top"/} ;;
@@ -127,7 +130,7 @@ locate
 if [ "$$engine" = podman ]; then
 	"$$engine" build --pull=newer -t "$$tag" - < "$$REPO_INFRA_CM_CURDIR/Containerfile"
 elif ! "$$engine" build --pull -t "$$tag" - < "$$REPO_INFRA_CM_CURDIR/Containerfile"; then
-	note "pulling the base image failed, building again on the local copy"
+	note "the build with --pull failed; building again without it"
 	"$$engine" build -t "$$tag" - < "$$REPO_INFRA_CM_CURDIR/Containerfile"
 fi
 set -- run --rm --init --security-opt label=disable
@@ -145,7 +148,7 @@ for d in $$REPO_INFRA_CM_DEVICES; do
 	fi
 done
 if [ -n "$$have_device" ] && [ "$$engine" = podman ]; then
-	info=$$(podman info --format '{{.Host.ServiceIsRemote}} {{.Host.OCIRuntime.Name}}')
+	info=$$(podman info --format '{{.Host.ServiceIsRemote}} {{.Host.OCIRuntime.Name}}') || info=unknown
 	if [ "$$info" = "false crun" ]; then
 		set -- "$$@" --group-add keep-groups
 	else
@@ -177,7 +180,7 @@ rc=0
 "$$engine" "$$@" || rc=$$?
 case $$rc in
 125|126|127)
-	note "the engine could not start the container (status $$rc). Podman needs catatonit for --init; install it, or check that the image has a shell"
+	note "the engine could not start the container (status $$rc). If the message above is about the init process, install the catatonit package or run the checks on this machine with REPO_INFRA_USE_CONTAINER=no"
 	;;
 esac
 exit "$$rc"
@@ -197,7 +200,8 @@ endef
 # build leaves the most root-owned files behind.
 define _repo_infra_cm_wrapper
 set -u
-owner=$$(stat -c %u "$$1") && group=$$(stat -c %g "$$1") || exit 125
+# Status 2, not 125: the driver reads 125 to 127 as the engine's own refusal.
+owner=$$(stat -c %u "$$1") && group=$$(stat -c %g "$$1") || { echo "build/container-make.mk: cannot stat the checkout at $$1" >&2; exit 2; }
 handback() {
 	find "$$@" ! -user "$$owner" -exec chown -h "$$owner:$$group" {} + 2>/dev/null || :
 	count=$$(find "$$@" ! -user "$$owner" -print 2>/dev/null | wc -l)
@@ -240,7 +244,7 @@ check container-clean: export REPO_INFRA_CM_TAG = $(CONTAINER_TAG)
 check container-clean: export REPO_INFRA_CM_CURDIR = $(CURDIR)
 check: export REPO_INFRA_CM_DEVICES = $(CONTAINER_DEVICES)
 check: export REPO_INFRA_CM_OPTS = $(CONTAINER_OPTS)
-check: export REPO_INFRA_CM_OVERRIDES = $(filter-out REPO_INFRA_USE_CONTAINER=%,$(MAKEOVERRIDES))
+check: export REPO_INFRA_CM_OVERRIDES = $(filter-out REPO_INFRA_USE_CONTAINER=% REPO_INFRA_USE_CONTAINER:=% REPO_INFRA_USE_CONTAINER::=%,$(MAKEOVERRIDES))
 check: export REPO_INFRA_CM_SCRIPT = $(_repo_infra_cm_check)
 check: export REPO_INFRA_WRAPPER = $(_repo_infra_cm_wrapper)
 container-clean: export REPO_INFRA_CM_SCRIPT = $(_repo_infra_cm_clean)

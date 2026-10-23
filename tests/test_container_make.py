@@ -88,6 +88,8 @@ def make(root, *args, engines=("podman", "docker"), env=None,
                  "FAKE_ENGINE_LOG": str(log_of(root)),
                  "GIT_CEILING_DIRECTORIES": str(root.parent)})
     full.update(env or {})
+    if "PATH_PREFIX" in full:
+        full["PATH"] = f"{full.pop('PATH_PREFIX')}:{full['PATH']}"
     return subprocess.run(["make", *args], cwd=root, env=full, stdin=stdin,
                           capture_output=True, text=True, timeout=120)
 
@@ -220,7 +222,7 @@ def test_a_failed_docker_pull_builds_again_on_the_local_copy(tmp_path):
     builds = [c["argv"] for c in recorded if c["argv"][0] == "build"]
     assert len(builds) == 2
     assert "--pull" in builds[0] and not any(a.startswith("--pull") for a in builds[1])
-    assert "pull" in done.stderr
+    assert "building again without it" in done.stderr
     assert [c["argv"][0] for c in recorded][-1] == "run"
 
 
@@ -318,6 +320,31 @@ def test_a_worktree_mounts_the_common_dir_and_shares_the_main_volume(tmp_path):
     assert pairs(argv, "-v", f"{feature.resolve()}:/src")
 
 
+def test_a_worktree_needs_no_path_format_support_from_git(tmp_path):
+    main = project(tmp_path / "main")
+    git_commit(main)
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q",
+                    str(tmp_path / "feature"), "-b", "feat"], check=True)
+    feature = tmp_path / "feature"
+    # Git before 2.31 prints an unknown flag back and exits 0.
+    old = tmp_path / "oldgit"
+    old.mkdir()
+    wrapper = old / "git"
+    wrapper.write_text(
+        '#!/bin/sh\n'
+        'for a in "$@"; do\n'
+        '  case $a in --path-format*) echo "$@"; exit 0 ;; esac\n'
+        'done\n'
+        f'exec {shutil.which("git")} "$@"\n', encoding="utf-8")
+    wrapper.chmod(0o755)
+    done = make(feature, "check", env={"PATH_PREFIX": str(old)})
+    assert done.returncode == 0, done.stderr
+    argv = argv_of(engine_calls(feature), "run")
+    common = str((main / ".git").resolve())
+    assert pairs(argv, "-v", f"{common}:{common}")
+    assert not any("--path-format" in a for a in argv)
+
+
 def test_outside_git_the_top_level_is_makes_directory(tmp_path):
     root = project(tmp_path / "p", git=False)
     argv = run_argv(root, "check")
@@ -371,6 +398,15 @@ def test_podman_remote_or_without_crun_leaves_keep_groups_out_with_a_notice(
     assert done.returncode == 0, done.stderr
     assert "--group-add" not in argv_of(engine_calls(root), "run")
     assert "keep-groups" in done.stderr
+
+
+def test_a_failing_podman_info_takes_the_notice_path(tmp_path):
+    root, _, _ = device_project(tmp_path)
+    done = make(root, "check", env={"FAKE_PODMAN_INFO_FAIL": "1"})
+    assert done.returncode == 0, done.stderr
+    assert "--group-add" not in argv_of(engine_calls(root), "run")
+    assert "keep-groups" in done.stderr
+    assert engine_calls(root)[-1]["argv"][0] == "run"
 
 
 def test_no_device_no_keep_groups(tmp_path):
@@ -431,6 +467,10 @@ def test_use_container_on_the_command_line_does_not_reach_the_inner_make(tmp_pat
     argv = run_argv(root, "check", "REPO_INFRA_USE_CONTAINER=yes", "TEST=a")
     assert pairs(argv, "-e", "MAKEFLAGS=-- TEST=a")
 
+    root = project(tmp_path / "q")
+    argv = run_argv(root, "check", "REPO_INFRA_USE_CONTAINER:=yes", "TEST=a")
+    assert pairs(argv, "-e", "MAKEFLAGS=-- TEST=a")
+
 
 # --- status and cleanup -------------------------------------------------------
 
@@ -448,6 +488,7 @@ def test_an_engine_failure_names_catatonit(tmp_path, status):
     done = make(root, "check", env={"FAKE_RUN_STATUS": str(status)})
     assert done.returncode != 0
     assert "catatonit" in done.stderr
+    assert "REPO_INFRA_USE_CONTAINER=no" in done.stderr
 
 
 def test_container_clean_removes_the_volume(tmp_path):

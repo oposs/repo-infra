@@ -299,7 +299,6 @@ that directory is `modules`, so the volume reads `modules-ci-home`; set
 
 ### Host requirements
 
-- The host needs git 2.31 or newer, for `git rev-parse --path-format=absolute`.
 - With docker, the image must land in the local image store. A buildx builder
   with the `docker-container` driver does not load it, and the run then fails
   with "Unable to find image". `docker buildx ls` shows the driver; switch to
