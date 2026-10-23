@@ -560,7 +560,7 @@ def classify_remote(facts):
         items.append(Item("administration", "default-branch", "ok", "main"))
     else:
         items.append(Item("administration", "default-branch", "conflict",
-            f"'{facts.default_branch}' -- the standard is 'main'. Rename before anything "
+            f"'{facts.default_branch}'; the standard is 'main'. Rename before anything "
             "else is applied: the ruleset targets the default branch while the workflows "
             f"run on main, so on '{facts.default_branch}' every required check stays "
             "pending forever. Renaming breaks links, forks and clones that pin it."))

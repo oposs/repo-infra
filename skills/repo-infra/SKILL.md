@@ -5,11 +5,10 @@ description: Use when bringing a repository onto the shared infrastructure stand
 
 # repo-infra
 
-repo-infra is a toolbox for one repository at a time: the one you are standing
-in. A caller calls each workflow at
-`uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`, and each release of
-repo-infra moves `v2`, so a fix reaches every repository without a pull request.
-Build files (`build/man.mk`, `build/man-deflist.lua`, `build/container.mk`,
+repo-infra is a toolbox for one repository at a time: the one you are standing in. A
+caller calls each workflow at `uses: oposs/repo-infra/.github/workflows/<piece>.yml@v2`,
+and each release of repo-infra moves `v2`, so a fix reaches every repository without a
+pull request. Build files (`build/*.mk`, `build/man-deflist.lua`,
 `m4/repo-infra-container.m4`, `.github/dependabot.yml`) are installed by `apply`;
 `check` reviews both. You choose the pieces and write the callers (D30, D33).
 
@@ -73,8 +72,8 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
 - D22, D23: musl and man pages are pieces a caller chooses; D32 makes them rules
   of the shape. `references/catalogue.md`, `project-shape.md`
 - D24: a Rust workspace names its lint and test crates. `conventions.md`
-- D26: folded into D28. D28, D31: every release is built and tested before the merge, and its pull
-  request skips `ci.yml`. `references/release-flow.md`
+- D26, D28, D31: D26 is folded into D28; every release is built and tested before
+  the merge, and its pull request skips `ci.yml`. `references/release-flow.md`
 - D30, D33: pieces and callers instead of detection and assembly; workflows are
   called at `@v2` instead of copied. This file.
 - D32, D34, D35: a project has a shape, with exceptions; an input that drops a
@@ -83,21 +82,22 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
 ## Traps that stay
 
 1. **`ci-passed` is an inline job, word for word.** Copy
-   `assets/callers/ci-passed.yml` (the jobs `release-verdict` and `ci-passed`)
-   and fill in `needs:`. A job that calls a workflow reports as
-   `ci-passed / <job>`, which the ruleset does not match. Its `needs:` lists
-   every other job of `ci.yml`, each with the `if:` of
-   `assets/callers/release-pr-skip.yml` (D31); `finalize` needs every other job
-   of `release-publish.yml`. `check` verifies all three.
+   `assets/callers/ci-passed.yml` (the jobs `release-verdict` and `ci-passed`) and
+   fill in `needs:`. A job that calls a workflow reports as `ci-passed / <job>`, which
+   the ruleset does not match. Its `needs:` lists every other job of `ci.yml`, each
+   with the `if:` of `assets/callers/release-pr-skip.yml` (D31); `finalize` needs
+   every other job of `release-publish.yml`. `check` verifies all three.
 
-2. **The ruleset waits for `main`.** `apply --item required-checks` refuses until `ci.yml` and `changelog.yml` are on the default branch: a required check
-   with no workflow blocks every pull request, including the one that installs
-   it. Rename the default branch, land the files, then enable the ruleset.
-   Classic protection (`classic-protection`) changes the order: `references/onboarding.md`.
+2. **The ruleset waits for `main`.** `apply --item required-checks` refuses until
+   `ci.yml` and `changelog.yml` are on the default branch, since a required check
+   with no workflow blocks every pull request, the installing one too. Rename the
+   default branch and land the files first; classic protection changes the order
+   (`references/onboarding.md`).
 
 3. **Administration items are outward-facing.** `default-branch`,
    `required-checks`, `no-changelog-label`, `actions-open-pr`,
-   `delete-merged-branches` and `classic-protection` change the live repository with no commit. `apply` runs one only with `--item`; confirm each.
+   `delete-merged-branches` and `classic-protection` change the live repository;
+   `apply` runs one only with `--item`, confirm each.
 
 4. **A release in progress blocks `apply`.** An open release pull request, or a
    latest released version without a tag, stops every install.
@@ -116,5 +116,5 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
 - `references/conventions.md`: the house rules that cannot be derived.
 - `references/release-flow.md`: how a release happens, and how to recover one.
 - `references/teaching-the-standard.md`: what to do when no piece fits.
-- The `writing-style` and `man-pages` skills in this plugin: the voice of
-  prose, and how a man page is written and built. They trigger on their own.
+- `writing-style` and `man-pages` skills: the voice of prose, and man pages; they
+  trigger on their own.
