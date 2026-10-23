@@ -320,13 +320,9 @@ def test_a_worktree_mounts_the_common_dir_and_shares_the_main_volume(tmp_path):
     assert pairs(argv, "-v", f"{feature.resolve()}:/src")
 
 
-def test_a_worktree_needs_no_path_format_support_from_git(tmp_path):
-    main = project(tmp_path / "main")
-    git_commit(main)
-    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q",
-                    str(tmp_path / "feature"), "-b", "feat"], check=True)
-    feature = tmp_path / "feature"
-    # Git before 2.31 prints an unknown flag back and exits 0.
+def old_git(tmp_path):
+    """A directory with a git that, like git before 2.31, prints an unknown
+    --path-format flag back and exits 0."""
     old = tmp_path / "oldgit"
     old.mkdir()
     wrapper = old / "git"
@@ -337,11 +333,36 @@ def test_a_worktree_needs_no_path_format_support_from_git(tmp_path):
         'done\n'
         f'exec {shutil.which("git")} "$@"\n', encoding="utf-8")
     wrapper.chmod(0o755)
-    done = make(feature, "check", env={"PATH_PREFIX": str(old)})
+    return str(old)
+
+
+def test_a_worktree_needs_no_path_format_support_from_git(tmp_path):
+    main = project(tmp_path / "main")
+    git_commit(main)
+    subprocess.run(["git", "-C", str(main), "worktree", "add", "-q",
+                    str(tmp_path / "feature"), "-b", "feat"], check=True)
+    feature = tmp_path / "feature"
+    done = make(feature, "check", env={"PATH_PREFIX": old_git(tmp_path)})
     assert done.returncode == 0, done.stderr
     argv = argv_of(engine_calls(feature), "run")
     common = str((main / ".git").resolve())
     assert pairs(argv, "-v", f"{common}:{common}")
+    assert not any("--path-format" in a for a in argv)
+
+
+def test_a_subdirectory_needs_no_path_format_support_from_git(tmp_path):
+    top = project(tmp_path / "top")
+    git_commit(top)
+    sub = top / "sub"
+    sub.mkdir()
+    for name in ("Makefile", "Containerfile"):
+        (sub / name).write_text((top / name).read_text(), encoding="utf-8")
+    (sub / "build").symlink_to(top / "build")
+    done = make(top, "-C", "sub", "check", env={"PATH_PREFIX": old_git(tmp_path)})
+    assert done.returncode == 0, done.stderr
+    argv = argv_of(engine_calls(top), "run")
+    assert pairs(argv, "-v", f"{top.resolve()}:/src")
+    assert pairs(argv, "-w", "/src/sub")
     assert not any("--path-format" in a for a in argv)
 
 
@@ -554,6 +575,20 @@ def test_the_projects_exit_status_survives_the_handback(tmp_path):
     done = make(root, "check", env=exec_env(tmp_path))
     assert done.returncode != 0
     assert "Error 3" in done.stderr
+
+
+def test_the_projects_check_reads_the_runs_stdin(tmp_path):
+    # The check runs as a background job, which a non-interactive shell gives
+    # /dev/null as stdin; the wrapper hands it the run's stdin through fd 3.
+    text = GUARDED.replace("@echo PROJECT_CHECK TEST=[$(TEST)]",
+                           "@read x; echo GOT=$$x")
+    root = project(tmp_path / "p", makefile=text)
+    given = tmp_path / "stdin"
+    given.write_text("hello\n", encoding="utf-8")
+    with given.open() as stdin:
+        done = make(root, "check", env=exec_env(tmp_path), stdin=stdin)
+    assert done.returncode == 0, done.stderr
+    assert "GOT=hello" in done.stdout
 
 
 def test_the_wrapper_trusts_every_repository_for_git(tmp_path):
