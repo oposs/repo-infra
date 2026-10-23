@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `check` now reports a build file that a called workflow piece needs, for example `man missing` with "ri-release-rust-binaries needs it", and a remote alternative counts only when a caller calls it. A bare `apply` installs those local build files, here `man` and `man-lua`, but never a remote piece. (#94)
 
 ### Fixed
+- The `ri-ci-man` job could fail with "The job has exceeded the maximum execution time of 10m0s" while it was still downloading packages from a slow Ubuntu mirror, so `ci-passed` failed although the manual was fine. The job now installs `pandoc`, `groff` and `man-db` without their recommended packages, so it no longer downloads ghostscript, imagemagick and their fonts. (#102)
 
 ## 2.5.0 - 2026-10-20
 ### New
