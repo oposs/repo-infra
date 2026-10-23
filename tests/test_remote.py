@@ -230,3 +230,20 @@ def test_classic_protection_that_cannot_be_read_is_an_error():
     with pytest.raises(GhError, match="403"):
         Gh(run=fake_run({**RECORDED, "branches/main/protection": denied})).facts(
             "oposs/repo-infra")
+
+
+def test_a_branch_name_goes_into_the_api_path_as_one_encoded_segment():
+    """Git allows `#` in a branch name; unencoded, `feat/x#1` would ask about
+    `feat/x` and drop the rest. GitHub reads `feat%2Fx` as `feat/x`."""
+    calls = []
+
+    def run(args):
+        calls.append(args)
+        raise GhError("gh: Branch not protected (HTTP 404)")
+
+    gh = Gh(run=run)
+    assert gh.classic_protection("o/r", "feat/x#1") is None
+    assert gh.path_exists_on_branch("o/r", "feat/x#1", ".github/workflows/ci.yml") is False
+    paths = [args[args.index("api") + 1] for args in calls]
+    assert paths == ["repos/o/r/branches/feat%2Fx%231/protection",
+                     "repos/o/r/contents/.github/workflows/ci.yml?ref=feat%2Fx%231"]

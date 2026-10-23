@@ -383,8 +383,8 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
             f"default-branch: rename '{facts.default_branch}' to 'main' by hand "
             "(repository Settings -> General -> Default branch), then re-run "
             "`check` so it picks up the new default branch. Renaming is "
-            "outward-facing -- it breaks links, forks and clones that pin the "
-            "old name -- so it is never automatic.")
+            "outward-facing (it breaks links, forks and clones that pin the "
+            "old name), so it is never automatic.")
 
     if name == "no-changelog-label":
         gh.run(["gh", "api", "--method", "POST", f"repos/{repo}/labels",
@@ -527,7 +527,7 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
             raise ApplyError(
                 f"{name}: could not confirm whether {', '.join(unverified)} "
                 f"{'is' if len(unverified) == 1 else 'are'} on "
-                f"'{facts.default_branch}' -- the existence check itself "
+                f"'{facts.default_branch}': the existence check itself "
                 "failed (network error, permissions, or something else on "
                 f"the repos/{repo}/contents endpoint), not a clean 404. "
                 "Refusing rather than guessing either way; check by hand "
@@ -543,7 +543,7 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
             raise ApplyError(
                 f"{name}: {', '.join(missing)} not on main yet. A required "
                 "status check whose workflow does not exist blocks every "
-                "pull request in the repository -- including the one that "
+                "pull request in the repository, including the one that "
                 "would install the workflow. Run `apply` with no --item to "
                 "install the missing file items first, merge that to main, "
                 "then apply this item again.")
@@ -575,7 +575,7 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
         if not protects_default_branch(created, facts.default_branch):
             raise ApplyError(
                 f"{name}: created the ruleset but it read back not covering "
-                f"the default branch '{facts.default_branch}' -- conditions "
+                f"the default branch '{facts.default_branch}'; conditions "
                 f"were {created.get('conditions')!r}. Check it in Settings -> "
                 f"Rules -> Rulesets on repos/{repo} by hand.")
         contexts = {check["context"] for rule in created.get("rules", [])
@@ -586,8 +586,8 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
             raise ApplyError(
                 f"{name}: created the ruleset but it read back without "
                 f"{', '.join(sorted(absent))} in required_status_checks. The "
-                f"server may have rejected or altered part of the payload -- "
-                f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
+                f"server may have rejected or altered part of the payload. "
+                f"Check it in Settings -> Rules -> Rulesets on repos/{repo} "
                 "by hand.")
         strict = any(rule.get("parameters", {}).get("strict_required_status_checks_policy")
                      is True for rule in created.get("rules", [])
@@ -602,8 +602,8 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
             raise ApplyError(
                 f"{name}: created the ruleset but it read back with "
                 f"bypass_actors={created['bypass_actors']!r}, not empty. A "
-                "ruleset that grants a bypass is not the one we shipped -- "
-                f"check it in Settings -> Rules -> Rulesets on repos/{repo} "
+                "ruleset that grants a bypass is not the one we shipped. "
+                f"Check it in Settings -> Rules -> Rulesets on repos/{repo} "
                 "by hand.")
         return "enabled the branch ruleset with both required checks and up-to-date branches"
 

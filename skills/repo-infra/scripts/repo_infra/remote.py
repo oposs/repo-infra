@@ -7,6 +7,7 @@ plugin be tested without a GitHub account.
 
 import json
 import subprocess
+import urllib.parse
 from collections import namedtuple
 
 Facts = namedtuple(
@@ -14,6 +15,12 @@ Facts = namedtuple(
     "default_branch protected required_contexts labels workflow_permissions can_approve_pr "
     "delete_branch_on_merge strict release_prs tags classic_protection classic_contexts",
     defaults=(False, (), None, False, ()))
+
+
+def _quote(name):
+    """A branch name as one path segment or query value. Git allows `#`, `?`
+    and `%` in one, and GitHub reads `feat%2Fx` as the branch `feat/x`."""
+    return urllib.parse.quote(name, safe="")
 
 
 class GhError(Exception):
@@ -99,7 +106,7 @@ class Gh:
         "cannot say, so don't proceed."
         """
         try:
-            self.run(["gh", "api", f"repos/{repo}/contents/{path}?ref={ref}"])
+            self.run(["gh", "api", f"repos/{repo}/contents/{path}?ref={_quote(ref)}"])
             return True
         except GhError as error:
             return False if "404" in str(error) else None
@@ -124,7 +131,7 @@ class Gh:
         has none; any other failure is raised, never read as unprotected.
         """
         try:
-            return self.api(f"repos/{repo}/branches/{branch}/protection")
+            return self.api(f"repos/{repo}/branches/{_quote(branch)}/protection")
         except GhError as error:
             if "404" in str(error):
                 return None

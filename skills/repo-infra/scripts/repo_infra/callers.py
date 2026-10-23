@@ -190,6 +190,20 @@ def _normal_job(job):
             for key, value in job.items() if key != "needs"}
 
 
+def after(all_jobs, job_id):
+    """The jobs that run after `job_id`: they need it, directly or through
+    another job. The closing job cannot need them, that would be a cycle,
+    which GitHub refuses."""
+    later, grown = set(), True
+    while grown:
+        grown = False
+        for other, job in all_jobs.items():
+            if other not in later and ({job_id} | later) & set(needs(job)):
+                later.add(other)
+                grown = True
+    return later
+
+
 def closing_problems(docs, assets=ASSETS):
     pattern = jobs(workflow.load(
         (pathlib.Path(assets) / "callers/ci-passed.yml").read_text(encoding="utf-8")))
@@ -203,9 +217,16 @@ def closing_problems(docs, assets=ASSETS):
         if job is None:
             found.append((name, f"has no {closer} job"))
             continue
-        missing = [other for other in all_jobs if other != closer and other not in needs(job)]
+        later = after(all_jobs, closer)
+        missing = [other for other in all_jobs
+                   if other != closer and other not in later and other not in needs(job)]
         if missing:
             found.append((name, f"{closer} does not need {', '.join(missing)}; it would {harm}"))
+        direct = [other for other in all_jobs if closer in needs(all_jobs[other])]
+        if closer == "ci-passed" and direct:
+            verb = "needs" if len(direct) == 1 else "need"
+            found.append((name, f"{', '.join(direct)} {verb} ci-passed, so a failure there "
+                                "would not block the merge; remove that need"))
         if closer != "ci-passed":
             continue
         if job.get("if") != "always()":
@@ -290,7 +311,9 @@ def release_pr_problems(docs, pieces):
                 found.append(("release-pr.yml", f"job {job_id} does not need {prepare}; it "
                                                 "would build or test before the release "
                                                 "branch exists"))
-    missing = [j for j in all_jobs if j != finish and j not in needs(all_jobs[finish])]
+    later = after(all_jobs, finish)
+    missing = [j for j in all_jobs
+               if j != finish and j not in later and j not in needs(all_jobs[finish])]
     if missing:
         found.append(("release-pr.yml", f"{finish} does not need {', '.join(missing)}; it "
                                         "would open the pull request before they finished"))
