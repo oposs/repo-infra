@@ -193,3 +193,18 @@ def test_release_flow_names_the_two_judges_and_the_split():
     for name in ("ri-release-verdict", "ri-changelog", "ri-release-prepare",
                  "ri-release-finish", "release-verdict"):
         assert f"`{name}`" in text, name
+
+
+def test_conventions_states_the_second_containerfile_contract():
+    text = (ROOT / "skills/repo-infra/references/conventions.md").read_text(encoding="utf-8")
+    for needle in ("container-make", "REPO_INFRA_USE_CONTAINER", "CONTAINER_DRIVER", "/root",
+                   "CARGO_TARGET_DIR=/src/target/container", "CARGO_HOME=/root/.cargo",
+                   "GOPATH=/root/go", "rustup toolchain install"):
+        assert needle in text, "conventions.md lacks %s" % needle
+
+
+def test_the_threshold_names_both_drivers():
+    text = (ROOT / "skills/repo-infra/references/teaching-the-standard.md").read_text(encoding="utf-8")
+    section = text.split("## The threshold you will hit most often", 1)[1].split("\n## ", 1)[0]
+    for needle in ("container-m4", "`container`", "container-make", "ri-ci-container"):
+        assert needle in section, "the threshold section lacks %s" % needle

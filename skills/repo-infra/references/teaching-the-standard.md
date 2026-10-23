@@ -95,12 +95,17 @@ it does not decide the outcome. Containerizing is the expected answer, but the
 project dropping the dependency is a real alternative, and so is something
 nobody has thought of.
 
-If containerizing is the answer, what repo-infra ships for it is a pair of
-pieces: `container-m4` (`m4/repo-infra-container.m4`, the `--disable-container`
-switch) and `container` (`build/container.mk`, the driver targets). Install them
-with `apply --item container-m4` and `apply --item container`, and write the
-`Containerfile` the contract in `references/conventions.md` describes. Nothing
-installs them automatically; it is a decision.
+If containerizing is the answer, what repo-infra ships depends on the build.
+An autotools project takes a pair of pieces: `container-m4`
+(`m4/repo-infra-container.m4`, the `--disable-container` switch) and `container`
+(`build/container.mk`, the driver targets). Install them with
+`apply --item container-m4` and `apply --item container`. Every other project
+takes `container-make` (`build/container-make.mk`) with the workflow piece
+`ri-ci-container`: `make check` runs in the image its `Containerfile` builds, on
+a developer machine and in CI. Install the build file with
+`apply --item container-make`. Write the `Containerfile` the matching contract
+in `references/conventions.md` describes. Nothing installs these automatically;
+it is a decision.
 
 What is never available is carrying on natively while installing packages from
 CI. If you find yourself wanting a place to list apt packages, you have hit the

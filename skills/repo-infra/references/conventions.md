@@ -212,6 +212,105 @@ correctly -- native runs the real suite, driver delegates to podman.
 `DESTDIR` refuses with a usage message rather than mounting the host's
 `$(prefix)` read-write into the container.
 
+## The Containerfile contract for container-make (#94)
+
+`container-make` (`build/container-make.mk`) is for a project without autotools.
+`make check` builds the image from the project's `Containerfile` and runs the
+project's own `make check` in it, with the checkout mounted read-write at `/src`.
+Every other target runs on the host. The `Containerfile` stays the project's own
+file, as in the D18 contract. Its points differ, and the autotools points
+(bootstrap, `--disable-container`, `EXTRA_DIST`, GNU tar) do not apply:
+
+1. **Hold the tools only.** No `COPY` of the tree: the checkout is mounted at
+   `/src` at run time.
+2. **Carry `make` and everything `check` needs**, including the ecosystem
+   toolchain, for example `FROM rust:1-trixie`. The driver itself needs `sh`,
+   `find`, `stat` and `chown`.
+3. **Do not set `USER`.** The tests run as root, and the driver hands the
+   checkout back to its owner before and after the run.
+4. **Install the tools the runner image had.** A tool the tests used without
+   saying so, such as `cpio`, shows up as a failure in the minimal image. The
+   fix belongs in the `Containerfile`.
+5. **Keep the container's build output apart from the host's** when both write
+   to the same directory. For Rust: `ENV CARGO_TARGET_DIR=/src/target/container`.
+   Without it the container's `rustc` and the host's overwrite each other's
+   artifacts in `target/`, and every build starts from scratch.
+6. **Keep the download caches under `/root`, and install nothing into `/root`.**
+   The driver mounts a named volume there. The official images put the caches
+   elsewhere, so after the toolchain setup a Rust `Containerfile` sets
+   `ENV CARGO_HOME=/root/.cargo` and a Go one `ENV GOPATH=/root/go`. The
+   tools stay where the base image put them. Changes to `/root` in the image
+   stay hidden behind the volume until `make container-clean`.
+7. **Install a pinned toolchain in the image.** A Rust project with a
+   `rust-toolchain.toml` names the same version in the `Containerfile` with
+   `RUN rustup toolchain install <version>`. Otherwise rustup downloads it into
+   `/usr/local/rustup` on every run, outside the cache volume.
+
+### Detecting the container
+
+"Inside" means that the driver started this run, and nothing else. The driver
+starts the container with `REPO_INFRA_USE_CONTAINER=no`. A developer machine, a
+toolbox, a devcontainer and a CI runner, container-based or not, count as the
+host, so `make check` there builds the image and runs the tests in it.
+
+- `REPO_INFRA_USE_CONTAINER=no`: `CONTAINER_DRIVER` is `no`, the fragment
+  defines nothing, and the project's own `check` runs here. This is also the
+  switch for running the tests natively on the host.
+- `REPO_INFRA_USE_CONTAINER=yes` or unset: `make check` goes through the image.
+- Any other value is an error that names the two.
+
+The variable is not called `REPO_INFRA_CONTAINER`: that is the m4 macro of
+`container-m4`, and m4 expands it inside a `configure.ac` that mentions it.
+
+The project includes the fragment before its first rule and guards its own
+`check:` with the variable the fragment sets:
+
+    include build/container-make.mk
+
+    ifeq ($(CONTAINER_DRIVER),no)
+    check: fmt-check lint test-unit
+    endif
+
+Without the guard, the host defines `check` twice and make warns "overriding
+recipe for target 'check'". The test target is `check`, as the GNU coding
+standards name it. The inner `make check` receives the variable assignments of
+the outer command line, so `make check TEST=foo` reaches the project's `check`.
+`-j` and the jobserver do not cross into the container; a project that wants
+parallel jobs sets them in its own `check`.
+
+### Variables and targets
+
+The project sets these before or after the include:
+
+- `CONTAINER_ENGINE`: `podman` or `docker`. Unset, podman wins when both exist.
+- `CONTAINER_TAG`: The tag of the built image. The default is the checkout's
+  directory name, cleaned to lowercase, plus `-ci:local`. Two checkouts with the
+  same directory name share the tag and the cache volume; this separates them.
+- `CONTAINER_DEVICES`: Host devices to pass in, for example `/dev/kvm`. One that
+  is absent on the host is skipped with a notice.
+- `CONTAINER_OPTS`: Extra engine options, for example `--cpus=4 --memory=6g`. It
+  must not hold `--group-add`.
+
+`make container-clean` removes the cache volume. The volume is named
+`<project>-ci-home`, where `<project>` is the directory name of the main
+checkout, so all worktrees of one project share one cache. In a git submodule
+that directory is `modules`, so the volume reads `modules-ci-home`; set
+`CONTAINER_TAG` to get a distinct name.
+
+### Host requirements
+
+- The host needs git 2.31 or newer, for `git rev-parse --path-format=absolute`.
+- With docker, the image must land in the local image store. A buildx builder
+  with the `docker-container` driver does not load it, and the run then fails
+  with "Unable to find image". `docker buildx ls` shows the driver; switch to
+  the default builder with `docker buildx use default`.
+- Without a container engine, `make check` fails with a message that names
+  `REPO_INFRA_USE_CONTAINER=no`. Every other target works, because the engine is
+  looked up only in the recipes of `check` and `container-clean`.
+
+CI calls `ri-ci-container`, which runs `make check` through the same file under
+docker.
+
 ## Project-owned workflows (D20, D25, D28)
 
 `ci-local.yml`, `release-build-local.yml` and `action-test.yml` belong to the
