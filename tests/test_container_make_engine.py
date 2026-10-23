@@ -56,6 +56,16 @@ def engine(request, require):
         if os.environ.get("CI"):
             pytest.fail("%s info fails (CI is set, so this test must run, not skip)" % name)
         pytest.skip("%s info fails" % name)
+    if name == "docker":
+        components = run(["docker", "version", "--format",
+                          "{{range .Server.Components}}{{.Name}} {{end}}"],
+                         ROOT, check=False, timeout=120).stdout
+        if "Podman" in components:
+            reason = ("docker here is the docker CLI on a Podman Engine socket; "
+                      "real dockerd runs on the CI runner")
+            if os.environ.get("CI"):
+                pytest.fail(reason + " (CI is set, so this test must run, not skip)")
+            pytest.skip(reason)
     return name
 
 
