@@ -11,7 +11,16 @@ from repo_infra import check, workflow
 from repo_infra.pieces import ASSETS, load_pieces
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MAN_TOOLCHAIN_LINE = "          sudo apt-get install -y pandoc groff man-db"
+MAN_DB_LINE = "            sudo apt-get install -y --no-install-recommends man-db"
+PANDOC_PIECES = ("ri-ci-man", "ri-ci-repo-infra-selftest", "ri-release-rust-binaries",
+                 "ri-release-go-binaries")
+
+
+def step(text, name):
+    """The step called `name`, from its `- name:` line to the next blank line."""
+    start = text.index(f"      - name: {name}\n")
+    end = text.find("\n\n", start)
+    return text[start:] if end < 0 else text[start:end]
 
 
 def piece_text(name):
@@ -126,10 +135,10 @@ def test_the_three_pieces_install_a_byte_identical_host_toolchain():
         ".github/workflows/ri-release-source-tarball.yml",
     ):
         text = (ROOT / name).read_text(encoding="utf-8")
-        # The selftest piece also installs the man toolchain for repo-infra-man;
-        # that line is pinned separately, against ri-ci-man.
+        # The selftest piece also installs man-db for repo-infra-man where the
+        # image lacks it; that step is pinned separately, against ri-ci-man.
         lines = [line for line in text.split("\n")
-                 if "apt-get install" in line and line != MAN_TOOLCHAIN_LINE]
+                 if "apt-get install" in line and line != MAN_DB_LINE]
         assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
         assert lines[0] == expected_line, f"{name}: expected {expected_line!r}, got {lines[0]!r}"
 
@@ -162,8 +171,27 @@ def test_the_pytest_pieces_are_among_those_checked():
 def test_the_man_selftest_installs_what_ci_man_installs():
     # repo-infra-man proves the build assets ci-man runs. On a different
     # toolchain it would prove something else, and stay green doing it.
-    for name in ("ri-ci-man", "ri-ci-repo-infra-selftest"):
-        assert piece_text(name).split("\n").count(MAN_TOOLCHAIN_LINE) == 1, name
+    man = step(piece_text("ri-ci-man"), "Install man-db where the image lacks it")
+    assert MAN_DB_LINE in man.split("\n")
+    assert step(piece_text("ri-ci-repo-infra-selftest"),
+                "Install man-db where the image lacks it") == man
+
+
+def test_every_piece_that_runs_pandoc_installs_the_same_pinned_one():
+    # The release pieces build the pages with the pandoc ri-ci-man checks
+    # them with; a bump that reaches one piece only would split them (#102).
+    pandoc = step(piece_text("ri-ci-man"), "Install pandoc")
+    assert "PANDOC_SHA256: " in pandoc and "sha256sum -c -" in pandoc
+    for name in PANDOC_PIECES:
+        assert step(piece_text(name), "Install pandoc") == pandoc, name
+        assert "apt-get install -y pandoc" not in piece_text(name), name
+
+
+def test_no_piece_installs_pandoc_from_the_mirror():
+    for path in sorted((ROOT / ".github/workflows").glob("ri-*.yml")):
+        lines = [line for line in path.read_text(encoding="utf-8").split("\n")
+                 if "apt-get install" in line and "pandoc" in line]
+        assert lines == [], path.name
 
 
 def test_the_man_selftest_runs_the_pandoc_marked_tests():
@@ -185,7 +213,8 @@ def test_the_plain_pytest_run_deselects_the_pandoc_tests():
 def test_every_non_yaml_asset_is_covered_by_a_test():
     # Anything under pieces/ other than YAML, JSON, JavaScript and Markdown needs
     # its own test file, or it ships unchecked.
-    #   .mk  -> tests/test_build_assets.py, tests/test_man_build.py
+    #   .mk  -> tests/test_build_assets.py, tests/test_man_build.py,
+    #           tests/test_container_make.py
     #   .m4  -> tests/test_container_m4.py
     #   .lua -> tests/test_man_build.py
     others = {p.suffix for p in (ASSETS / "pieces").rglob("*") if p.is_file()} - {

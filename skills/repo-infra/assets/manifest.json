@@ -9,6 +9,10 @@
       "target": "build/container.mk",
       "group": "build"
     },
+    "container-make": {
+      "target": "build/container-make.mk",
+      "group": "build"
+    },
     "container-m4": {
       "target": "m4/repo-infra-container.m4",
       "group": "build"
@@ -58,6 +62,10 @@
       "group": "ci"
     },
     "ri-ci-rust-musl": {
+      "kind": "remote",
+      "group": "ci"
+    },
+    "ri-ci-container": {
       "kind": "remote",
       "group": "ci"
     },

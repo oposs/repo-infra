@@ -54,17 +54,21 @@ def check(args):
     return 1 if any(item.state in report.ATTENTION for item in items) else 0
 
 
-def _pending(root, pieces, states, published):
+def _pending(root, pieces, states, published, store):
     """The pieces a bare apply installs: those with a file to write, a file to
     remove or a merge (merges last, so the merge stop leaves the rest
-    installed), absent core pieces, and pieces an installed piece needs."""
+    installed), absent core pieces, and pieces an installed or a called piece
+    needs. `pieces` are the byte pieces apply writes, `store` all of them: a
+    called remote piece's needs are judged as check judges them (D-a), and a
+    remote piece is called, never installed (D33)."""
     plans = {name: plan_piece(root, pieces[name], state, published.get(name, {}))
              for name, state in sorted(states.items()) if state.state != "absent"}
     names = [name for name, plan in plans.items() if pending(plan) and not plan.candidates]
     names += [name for name, state in sorted(states.items())
               if state.state == "absent" and pieces[name].core]
-    names += [dep for dep, _ in checking.missing_dependencies(pieces, states)
-              if dep not in names]
+    called = checking.called_pieces(callers.read_workflows(root), store)
+    names += [dep for dep, _ in checking.missing_dependencies(store, states, called)
+              if dep in pieces and dep not in names]
     return names + [name for name, plan in plans.items() if plan.candidates]
 
 
@@ -117,7 +121,7 @@ def apply_command(args):
     # byte pieces only.
     files = _files(args.root, pieces)
     states = _states(args.root, files, published)
-    names = [args.item] if args.item else _pending(args.root, files, states, published)
+    names = [args.item] if args.item else _pending(args.root, files, states, published, pieces)
     if names or _v1_layout(args):
         blocker = release_in_progress(args.root, facts)
         if blocker:
@@ -141,7 +145,7 @@ def apply_command(args):
                     print(f"  {line}")
         files = _files(args.root, pieces)
         states = _states(args.root, files, published)
-        names = [args.item] if args.item else _pending(args.root, files, states, published)
+        names = [args.item] if args.item else _pending(args.root, files, states, published, pieces)
     notes, kept = [], []
     try:
         for name in names:

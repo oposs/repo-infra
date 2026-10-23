@@ -3,8 +3,8 @@
 The interface of the pieces freezes at 2.0.0, so a name that slips through
 here stays until v3:
 
-- workflow_call inputs and outputs, and keys of .github/repo-infra.json:
-  snake_case;
+- workflow_call inputs and outputs, workflow_dispatch inputs, and keys of
+  .github/repo-infra.json: snake_case;
 - workflow_call secrets and the repository variables a workflow reads:
   UPPER_SNAKE, and a call passes each secret under the name of the
   repository secret it reads (`GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}`);
@@ -48,10 +48,14 @@ def load(path):
     return doc if isinstance(doc, dict) else {}
 
 
-def workflow_call(doc):
+def trigger(doc, event):
     on = doc.get("on", doc.get(True))
-    call = on.get("workflow_call") if isinstance(on, dict) else None
-    return call if isinstance(call, dict) else {}
+    found = on.get(event) if isinstance(on, dict) else None
+    return found if isinstance(found, dict) else {}
+
+
+def workflow_call(doc):
+    return trigger(doc, "workflow_call")
 
 
 def jobs(doc):
@@ -82,6 +86,9 @@ def problems(path):
         for name in call.get(kind) or {}:
             if not rule.fullmatch(name):
                 found.append(f"workflow_call {kind[:-1]} {name}")
+    for name in trigger(doc, "workflow_dispatch").get("inputs") or {}:
+        if not SNAKE.fullmatch(name):
+            found.append(f"workflow_dispatch input {name}")
     for job_id, job in jobs(doc).items():
         if not KEBAB.fullmatch(job_id):
             found.append(f"job id {job_id}")
@@ -128,6 +135,8 @@ def test_the_workflow_set_holds_the_pieces_and_the_callers():
     ("on:\n  workflow_call:\n    outputs:\n      Mode: {value: x}\n", "workflow_call output Mode"),
     ("on:\n  workflow_call:\n    secrets:\n      app-client-id: {required: false}\n",
      "workflow_call secret app-client-id"),
+    ("on:\n  workflow_dispatch:\n    inputs:\n      release-type: {type: choice}\n",
+     "workflow_dispatch input release-type"),
     ("jobs:\n  ci_passed:\n    runs-on: x\n", "job id ci_passed"),
     ("jobs:\n  a:\n    steps:\n      - id: make_plan\n", "job a step id make_plan"),
     ("jobs:\n  a:\n    steps:\n      - uses: actions/upload-artifact@v7\n"

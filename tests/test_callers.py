@@ -248,6 +248,26 @@ def test_ci_passed_must_need_every_other_job(tmp_path, store):
             "ci-passed does not need a; it would report green while that job fails") in found
 
 
+def test_a_job_after_ci_passed_is_told_to_drop_that_need(tmp_path, store):
+    # ci-passed needing it would be a cycle; GitHub refuses the workflow.
+    late = ("  late:\n    needs: ci-passed\n    runs-on: ubuntu-latest\n"
+            "    timeout-minutes: 5\n    steps:\n      - run: echo\n"
+            "  later:\n    needs: late\n    runs-on: ubuntu-latest\n"
+            "    timeout-minutes: 5\n    steps:\n      - run: echo\n")
+    found = problems(tmp_path, store, ci=CI + late)
+    closing = [f for f in found if f[0] == "ci.yml" and "ci-passed" in f[2]]
+    assert closing == [("ci.yml", "problem",
+                        "late needs ci-passed, so a failure there would not block the "
+                        "merge; remove that need")]
+
+
+def test_a_job_after_finalize_is_not_reported(tmp_path, store):
+    extra = PUBLISH + ("  notify:\n    needs: [finalize]\n    runs-on: ubuntu-latest\n"
+                       "    timeout-minutes: 5\n    steps:\n      - run: echo\n")
+    found = problems(tmp_path, store, release_publish=extra)
+    assert not [f for f in found if "finalize does not need" in f[2]], found
+
+
 def test_ci_passed_must_run_always(tmp_path, store):
     found = problems(tmp_path, store, ci=CI.replace("if: always()", "if: success()"))
     assert any("lacks `if: always()`" in d for _, _, d in found)
@@ -1081,6 +1101,13 @@ def test_finish_that_does_not_need_an_added_job_is_a_problem():
         "    steps:\n      - run: 'true'\n\n  finish:\n")
     assert release_pr(text) == [("release-pr.yml", "finish does not need gate; it would "
                                  "open the pull request before they finished")]
+
+
+def test_a_job_after_finish_is_not_reported():
+    # finish needing it would be a cycle; GitHub refuses the workflow.
+    text = RELEASE_PR + ("\n  notify:\n    needs: finish\n    runs-on: ubuntu-latest\n"
+                         "    steps:\n      - run: 'true'\n")
+    assert release_pr(text) == []
 
 
 def test_a_release_pr_without_ci_is_a_problem():

@@ -1,0 +1,61 @@
+# repo-infra: ri-ci-container v2
+#
+# Purpose: Run `make check` in the image the project's Containerfile builds (#94).
+# Choose: The project includes build/container-make.mk.
+# Supplies: A Containerfile and a Makefile that includes build/container-make.mk; `directory` when it is not at the top level.
+# Pieces: container-make
+# Call:
+#   container:
+#     uses: oposs/repo-infra/.github/workflows/ri-ci-container.yml@v2
+#     with:
+#       ref: ${{ inputs.ref }}
+
+name: Container
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to check out; empty takes the commit that triggered the run (D28).
+        type: string
+        required: false
+        default: ''
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
+      directory:
+        description: The directory that holds the Makefile; the top level unless set.
+        type: string
+        required: false
+        default: .
+      timeout_minutes:
+        description: How long the job may run before it is cancelled.
+        type: number
+        required: false
+        default: 60
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    name: make check in the container
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+
+      # Docker, not podman: the runner user is not in the kvm group, so a
+      # rootless podman container cannot open /dev/kvm. Under docker the
+      # container's root is real root and opens it without the group, with no
+      # udev rule and no chmod.
+      - name: Run make check in the container
+        run: make -C "$DIRECTORY" check
+        env:
+          DIRECTORY: ${{ inputs.directory }}
+          CONTAINER_ENGINE: docker

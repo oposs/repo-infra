@@ -239,7 +239,9 @@ def test_two_builds_of_one_source_produce_one_page(tmp_path, require):
     (root / "man/fixture.1").unlink()
     assert make_man(root).returncode == 0
     assert (root / "man/fixture.1").read_bytes() == first
-    assert b'.TH "FIXTURE" "1" "2026-09-23"' in first
+    # pandoc 3.1 writes the date's hyphens bare, 3.7 (Ubuntu 26.04) escapes them.
+    assert (b'.TH "FIXTURE" "1" "2026-09-23"' in first
+            or b'.TH "FIXTURE" "1" "2026\\-09\\-23"' in first), first[:200]
 
 
 def test_bare_make_builds_the_makefiles_own_default_not_the_man_page(tmp_path, require):

@@ -2,6 +2,7 @@
 import json
 import pathlib
 import subprocess
+from urllib.parse import quote, unquote
 
 import pytest
 
@@ -35,14 +36,17 @@ class Recorder:
     def __call__(self, args):
         self.calls.append(args)
         joined = " ".join(args)
-        for fragment, answer in self.answers.items():
-            if fragment in joined:
-                if isinstance(answer, list):
-                    answer = answer.pop(0) if len(answer) > 1 else answer[0]
-                if isinstance(answer, BaseException):
-                    raise answer
-                return answer
-        return "{}"
+        # The longest fragment that matches answers, so "api repos/o/r" never
+        # shadows a more specific path, whatever the order of the answers.
+        matches = [f for f in self.answers if f in joined]
+        if not matches:
+            return "{}"
+        answer = self.answers[max(matches, key=len)]
+        if isinstance(answer, list):
+            answer = answer.pop(0) if len(answer) > 1 else answer[0]
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
 
 
 @pytest.fixture(autouse=True)
@@ -548,6 +552,7 @@ def workflows_on(main=(), apply_branch=()):
         path = f".github/workflows/{name}"
         for ref, present in (("main", name in main), (BRANCH, name in apply_branch)):
             if not present:
+                ref = quote(ref, safe="")
                 answers[f"contents/{path}?ref={ref}"] = GhError(
                     f"gh api repos/o/r/contents/{path}?ref={ref} failed: "
                     "gh: Not Found (HTTP 404)")
@@ -584,7 +589,7 @@ def test_without_classic_protection_the_apply_branch_does_not_count(tmp_path):
     with pytest.raises(ApplyError, match="not on main yet"):
         apply_admin_item(Gh(run=recorder), "o/r", "required-checks", facts(), ASSETS,
                          tmp_path)
-    assert not any(f"ref={BRANCH}" in " ".join(c) for c in recorder.calls)
+    assert not any(f"ref={quote(BRANCH, safe='')}" in " ".join(c) for c in recorder.calls)
 
 
 class GitHub:
@@ -634,6 +639,7 @@ class GitHub:
             return answer(self.classic) if self.classic else not_found()
         if path.startswith("repos/o/r/contents/"):
             file, ref = path.removeprefix("repos/o/r/contents/").split("?ref=")
+            ref = unquote(ref)
             return "{}" if file in self.files.get(ref, ()) else not_found()
         raise AssertionError(f"unexpected gh call: {' '.join(args)}")
 

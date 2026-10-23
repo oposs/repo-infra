@@ -78,6 +78,10 @@ jobs:
       - name: Guard (right branch, no failed check)
         uses: actions/github-script@v9
         with:
+          # The guard only reads. GitHub's API answers 502 in bursts, and one
+          # failed the release run until someone re-ran the job. github-script
+          # retries 5xx and network errors, never 400, 401, 403, 404 or 422.
+          retries: 3
           script: |
             const lib = `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib`;
             const checks = require(`${lib}/checks.js`);
