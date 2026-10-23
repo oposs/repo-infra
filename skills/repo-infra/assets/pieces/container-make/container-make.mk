@@ -3,6 +3,7 @@
 # Purpose: Run `make check` in the image the project's Containerfile builds, for a project without autotools (#94).
 # Choose: The tests need tools or root beyond the runner image (D16) and the build is not autotools.
 # Supplies: A Containerfile (contract in references/conventions.md) and a Makefile that includes this file first and guards its own `check:` with `ifeq ($(CONTAINER_DRIVER),no)`.
+# Pieces: ri-ci-container
 #
 # `make check` builds the image from the Containerfile and runs the project's
 # own `make check` in it, with the checkout mounted at /src. Every other target

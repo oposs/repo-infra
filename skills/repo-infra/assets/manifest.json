@@ -65,6 +65,10 @@
       "kind": "remote",
       "group": "ci"
     },
+    "ri-ci-container": {
+      "kind": "remote",
+      "group": "ci"
+    },
     "ri-ci-man": {
       "kind": "remote",
       "group": "ci"
