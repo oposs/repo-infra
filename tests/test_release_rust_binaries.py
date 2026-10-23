@@ -135,7 +135,7 @@ def test_the_man_pages_are_built_once_on_linux_and_fetched_by_every_leg_but_wind
     assert jobs["binaries"]["needs"] == ["plan", "man"]
     assert jobs["man"]["runs-on"] == "ubuntu-latest"
     runs = [s.get("run", "") for s in jobs["man"]["steps"]]
-    assert any("apt-get install -y pandoc" in r for r in runs)
+    assert any("sha256sum -c -" in r and "dpkg -i" in r for r in runs)
     assert "make man" in [r.strip() for r in runs]
     assert jobs["man"]["steps"][-1]["with"]["name"] == "man-pages"
     fetch = step("binaries", "Fetch the man pages")
