@@ -40,12 +40,30 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
-      # pandoc converts the manual; groff and man-db render the result, which
-      # is the only way to find out whether roff can lay the page out.
-      - name: Install pandoc and the man toolchain
+      # pandoc converts the manual; man-db and groff-base render the result,
+      # which is the only way to find out whether roff can lay the page out.
+      # pandoc comes pinned from its GitHub release, not from the Ubuntu
+      # mirror: on a slow Azure mirror the 27 MB package took longer than the
+      # job's 10 minutes (#102). Bump PANDOC_VERSION and PANDOC_SHA256 together,
+      # in every piece that carries this step; a test pins them equal.
+      - name: Install pandoc
+        env:
+          PANDOC_VERSION: 3.12.1
+          PANDOC_SHA256: b4217ac7c54067c442f9d4cd38bcd0c184a43f3e7053431a12263a6f92a33ba2
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pandoc groff man-db
+          deb="$RUNNER_TEMP/pandoc-$PANDOC_VERSION-1-amd64.deb"
+          curl -fsSL --retry 5 -o "$deb" \
+            "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-1-amd64.deb"
+          echo "$PANDOC_SHA256  $deb" | sha256sum -c -
+          sudo dpkg -i "$deb"
+
+      # man-db, and groff-base with it, is on the runner image.
+      - name: Install man-db where the image lacks it
+        run: |
+          if ! dpkg-query -W -f '${Status}' man-db 2>/dev/null | grep -qx 'install ok installed'; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends man-db
+          fi
 
       - name: Build the man page
         run: make man
