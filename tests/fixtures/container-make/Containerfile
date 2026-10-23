@@ -1,0 +1,5 @@
+FROM docker.io/library/alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+# alpine 3.24.1. The digest pins the image; this comment tells a reader
+# whether the pin is still in support. It is the autotools fixture's pin, so
+# both fixtures share one cached base image.
+RUN apk add --no-cache make git

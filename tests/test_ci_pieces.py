@@ -185,7 +185,8 @@ def test_the_plain_pytest_run_deselects_the_pandoc_tests():
 def test_every_non_yaml_asset_is_covered_by_a_test():
     # Anything under pieces/ other than YAML, JSON, JavaScript and Markdown needs
     # its own test file, or it ships unchecked.
-    #   .mk  -> tests/test_build_assets.py, tests/test_man_build.py
+    #   .mk  -> tests/test_build_assets.py, tests/test_man_build.py,
+    #           tests/test_container_make.py
     #   .m4  -> tests/test_container_m4.py
     #   .lua -> tests/test_man_build.py
     others = {p.suffix for p in (ASSETS / "pieces").rglob("*") if p.is_file()} - {

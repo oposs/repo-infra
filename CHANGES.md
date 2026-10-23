@@ -12,8 +12,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- A project without autotools can now run `make check` in the image its `Containerfile` builds, on a developer machine with podman or docker and in CI: include `build/container-make.mk` (`container-make`) and call `ri-ci-container`. `REPO_INFRA_USE_CONTAINER=no` runs the tests natively. `check` reports either piece alone, `container-make` next to `container` or `container-m4` or a `ri-ci-perl-*` piece, a `check:` outside `ifeq ($(CONTAINER_DRIVER),no)`, and a `rust-toolchain.toml` pin that the `Containerfile` does not install. (#94)
 
 ### Changed
+- `check` now reports a build file that a called workflow piece needs, for example `man missing` with "ri-release-rust-binaries needs it", and a remote alternative counts only when a caller calls it. A bare `apply` installs those local build files, here `man` and `man-lua`, but never a remote piece. (#94)
 
 ### Fixed
 - The `ri-ci-man` job could fail with "The job has exceeded the maximum execution time of 10m0s" while it was still downloading packages from a slow Ubuntu mirror, so `ci-passed` failed although the manual was fine. The job now installs `pandoc`, `groff` and `man-db` without their recommended packages, so it no longer downloads ghostscript, imagemagick and their fonts. (#102)

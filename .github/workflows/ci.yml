@@ -53,6 +53,13 @@ jobs:
     with:
       ref: ${{ inputs.ref }}
 
+  container:
+    if: ${{ !(github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'github-actions[bot]') }}
+    uses: ./.github/workflows/ri-ci-container.yml
+    with:
+      ref: ${{ inputs.ref }}
+      directory: tests/fixtures/container-make
+
   # D33: within v2 a piece keeps its interface and its permissions. The tag
   # v2 is only in a full clone, so this job fetches the history and tags; the
   # pytest job's shallow clone skips the test. Once a 2.x release tag exists
@@ -105,7 +112,7 @@ jobs:
   # PR tested exactly the head that carries the release-built status.
   ci-passed:
     if: always()
-    needs: [lib, plugin, python, selftest, release-pr-current, v2-compat, release-verdict]
+    needs: [lib, plugin, python, selftest, container, release-pr-current, v2-compat, release-verdict]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -13,6 +13,7 @@ import json
 import pathlib
 import posixpath
 import re
+import tomllib
 from collections import namedtuple
 
 from . import callers
@@ -95,15 +96,25 @@ def is_home(repo_root):
     return (pathlib.Path(repo_root) / "skills/repo-infra/assets/manifest.json").is_file()
 
 
-def missing_dependencies(pieces, states):
+def missing_dependencies(pieces, states, called=None):
+    """[(dependency, user)] for each requirement no piece meets. Without
+    `called` only the installed pieces use others and a remote alternative
+    counts as met: apply passes nothing, so it never tries to install a remote
+    piece. With the remote pieces the callers call (D-a), those use others
+    too, and a remote alternative is met only when it is called."""
+    users = [name for name, state in sorted(states.items()) if state.state != "absent"]
+    if called is not None:
+        users = sorted(set(users) | set(called))
+
+    def met(dep):
+        if dep in states:
+            return states[dep].state != "absent"
+        return called is None or dep in called
+
     found = {}
-    for name, state in sorted(states.items()):
-        if state.state == "absent":
-            continue
+    for name in users:
         for alternatives in pieces[name].requires:
-            # A remote alternative has no state; whether a caller calls it is
-            # not known here, so the requirement counts as met.
-            if all(dep in states and states[dep].state == "absent" for dep in alternatives):
+            if not any(met(dep) for dep in alternatives):
                 found.setdefault(alternatives[0], name)
     return sorted(found.items())
 
@@ -193,21 +204,34 @@ def core_call_items(docs, pieces):
             and not callers.calls(docs, pathlib.PurePosixPath(piece.target).name)]
 
 
-def rendered(pieces, docs):
-    """`pieces` as the repository whose workflows are `docs` holds them (#92).
+def called_pieces(docs, pieces):
+    """The remote pieces a job of `docs` calls, through ./ or at @v2 (D33).
     A call that passes `repository` builds another repository's code:
-    repo-infra's gate-mtuspy.yml calls ri-ci-rust for mtuspy, and repo-infra
-    has no Cargo.toml for a cargo entry to find."""
+    repo-infra's gate-mtuspy.yml calls ri-ci-rust for mtuspy. A call that
+    passes a `directory` below the top builds the project there, and check
+    reads only the top level (D-a2): repo-infra's own `container` job builds
+    tests/fixtures/container-make."""
     files = {pathlib.PurePosixPath(piece.target).name: name
              for name, piece in pieces.items() if piece.remote}
-    called = {files[callers.normal_uses(job.get("uses"))]
-              for doc in docs.values() for job in callers.jobs(doc).values()
-              if callers.normal_uses(job.get("uses")) in files
-              and not (isinstance(job.get("with"), dict) and job["with"].get("repository"))}
+    found = set()
+    for doc in docs.values():
+        for job in callers.jobs(doc).values():
+            target = callers.normal_uses(job.get("uses"))
+            given = job.get("with") if isinstance(job.get("with"), dict) else {}
+            if (target in files and not given.get("repository")
+                    and given.get("directory", "") in ("", ".")):
+                found.add(files[target])
+    return found
+
+
+def rendered(pieces, docs):
+    """`pieces` as the repository whose workflows are `docs` holds them (#92):
+    dependabot lists the ecosystems of the pieces the callers call."""
+    called = called_pieces(docs, pieces)
     return {name: render(piece, called) for name, piece in pieces.items()}
 
 
-def piece_items(repo_root, pieces, published):
+def piece_items(repo_root, pieces, published, called=None):
     states = {name: piece_state(repo_root, piece, published.get(name, {}))
               for name, piece in pieces.items() if not piece.remote}
     items = []
@@ -233,9 +257,120 @@ def piece_items(repo_root, pieces, published):
         else:
             items.append(Item("pieces", name, "edited", edited_detail(piece, state)))
     reported = {i.name for i in items if i.state == "missing"}
-    items += [Item("pieces", dep, "missing", f"{user} needs it")
-              for dep, user in missing_dependencies(pieces, states) if dep not in reported]
+    for dep, user in missing_dependencies(pieces, states, called):
+        if dep in reported:
+            continue
+        detail = f"{user} needs it"
+        if pieces[dep].remote:
+            detail += (f"; no caller job calls {pieces[dep].uses} (see its Call: in the "
+                       "catalogue)")
+        items.append(Item("pieces", dep, "missing", detail))
     return items + unknown_items(repo_root, pieces)
+
+
+# GNU make reads the first of these it finds.
+MAKE_FILES = ("GNUmakefile", "makefile", "Makefile")
+AUTOTOOLS_DRIVER = ("container", "container-m4")
+PERL_CI = ("ri-ci-perl-mkpl", "ri-ci-perl-autotools")
+_INCLUDE = re.compile(r"^\s*-?s?include\s+\S*container-make\.mk\b", re.MULTILINE)
+_GUARD = re.compile(r"^ifeq\s*\(\s*\$[({]CONTAINER_DRIVER[)}]\s*,\s*no\s*\)$")
+_OPEN = re.compile(r"^(ifeq|ifneq|ifdef|ifndef)\b")
+_RULE = re.compile(r"^([^:=#\t][^:=#]*?)::?(?!=)")
+
+
+def unguarded_check_lines(text):
+    """Line numbers of `check:` rules outside `ifeq ($(CONTAINER_DRIVER),no)`."""
+    if not _INCLUDE.search(text):
+        return []
+    stack, found = [], []
+    for number, line in enumerate(text.splitlines(), 1):
+        if line.startswith("\t"):
+            continue
+        code = line.split("#", 1)[0].strip()
+        if _OPEN.match(code):
+            stack.append(bool(_GUARD.match(code)))
+        elif code.startswith("else") and stack:
+            stack[-1] = bool(_GUARD.match(code[4:].strip()))
+        elif code == "endif" and stack:
+            stack.pop()
+        else:
+            rule = _RULE.match(code)
+            if (rule and "check" in rule[1].split() and "=" not in code[rule.end():]
+                    and not any(stack)):
+                found.append(number)
+    return found
+
+
+def toolchain_pin_missing(toolchain, containerfile):
+    """The channel of rust-toolchain.toml when the Containerfile does not
+    install it (D-d): in a `RUN` line that calls rustup, or as the tag of a
+    `rust:` base image. None when there is nothing to compare."""
+    try:
+        channel = tomllib.loads(toolchain).get("toolchain", {}).get("channel")
+    except (tomllib.TOMLDecodeError, AttributeError):
+        return None
+    if not isinstance(channel, str) or not channel:
+        return None
+    token = re.compile(rf"(?<![\w.-]){re.escape(channel)}(?![\w.])")
+    image = re.compile(rf"\brust:{re.escape(channel)}(?![\w.])")
+    for line in re.sub(r"\\\r?\n", " ", containerfile).splitlines():
+        words = line.split()
+        if not words or words[0].startswith("#"):
+            continue
+        if words[0].upper() == "RUN" and "rustup" in line and token.search(line):
+            return None
+        if words[0].upper() == "FROM" and image.search(line):
+            return None
+    return channel
+
+
+def container_make_items(repo_root, pieces, published, called):
+    """container-make used where it cannot work (#94)."""
+    root = pathlib.Path(repo_root)
+
+    def state(name):
+        if name not in pieces:
+            return "absent"
+        return piece_state(root, pieces[name], published.get(name, {})).state
+
+    if state("container-make") == "absent":
+        return []
+    items = []
+
+    def report(kind, detail):
+        items.append(Item("pieces", "container-make", kind, detail))
+
+    driver = pieces["container-make"].target
+    if any(state(name) != "absent" for name in AUTOTOOLS_DRIVER):
+        report("conflict",
+               f"{driver} and build/container.mk or m4/repo-infra-container.m4 are "
+               "installed together. An autotools project keeps container + "
+               "container-m4, any other project keeps container-make; remove the other")
+    for name in sorted(set(PERL_CI) & set(called)):
+        report("conflict",
+               f"the callers call {name} and {driver} is installed. A generated Perl "
+               "Makefile runs its tests on the runner, so container-make has no check "
+               "rule to take over; remove one of the two")
+    path = next((root / name for name in MAKE_FILES if (root / name).is_file()), None)
+    if path is not None:
+        lines = unguarded_check_lines(path.read_text(encoding="utf-8", errors="replace"))
+        if lines:
+            where = ", ".join(map(str, lines))
+            report("problem",
+                   f"{path.name} includes container-make.mk and has a check: rule outside "
+                   f"ifeq ($(CONTAINER_DRIVER),no) on line {where}; the fragment's own "
+                   "check would be overridden. Move the project's check: inside that block")
+    toolchain, containerfile = root / "rust-toolchain.toml", root / "Containerfile"
+    if toolchain.is_file() and containerfile.is_file():
+        channel = toolchain_pin_missing(
+            toolchain.read_text(encoding="utf-8", errors="replace"),
+            containerfile.read_text(encoding="utf-8", errors="replace"))
+        if channel:
+            report("problem",
+                   f"rust-toolchain.toml pins channel {channel} and the Containerfile does "
+                   f"not install it; the check would run another toolchain. Add "
+                   f"`RUN rustup toolchain install {channel}` or base it on rust:{channel}")
+    return items
 
 
 # The JS `refusedReleaseFiles` in workflows/lib/release.js enforces the same rule; change both.
@@ -478,8 +613,11 @@ def classify_remote(facts):
 def run(repo_root, facts, assets=ASSETS):
     docs = callers.read_workflows(repo_root)
     pieces = rendered(load_pieces(assets), docs)
+    called = called_pieces(docs, pieces)
+    published = load_published(assets)
     home = is_home(repo_root)
-    return (piece_items(repo_root, pieces, load_published(assets))
+    return (piece_items(repo_root, pieces, published, called)
+            + container_make_items(repo_root, pieces, published, called)
             + ([] if home else layout_items(repo_root, pieces))
             + core_call_items(docs, pieces)
             + callers.validate(docs, pieces, assets, home=home)

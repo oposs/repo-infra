@@ -59,6 +59,34 @@ plugin:
     ref: ${{ inputs.ref }}
 ```
 
+### ri-ci-container
+
+Called as `oposs/repo-infra/.github/workflows/ri-ci-container.yml@v2`.
+
+**Purpose:** Run `make check` in the image the project's Containerfile builds (#94).
+
+**Choose it when:** The project includes build/container-make.mk.
+
+**The repository supplies:** A Containerfile and a Makefile that includes build/container-make.mk; `directory` when it is not at the top level.
+
+**Needs the pieces:** container-make
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `directory` | string | no | `.` | The directory that holds the Makefile; the top level unless set. |
+| `timeout_minutes` | number | no | `60` | How long the job may run before it is cancelled. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+container:
+  uses: oposs/repo-infra/.github/workflows/ri-ci-container.yml@v2
+  with:
+    ref: ${{ inputs.ref }}
+```
+
 ### ri-ci-github-action
 
 Called as `oposs/repo-infra/.github/workflows/ri-ci-github-action.yml@v2`.
@@ -786,6 +814,18 @@ Installed at `m4/repo-infra-container.m4`.
 **Choose it when:** With container.
 
 **The repository supplies:** The macro call in configure.ac.
+
+### container-make v1
+
+Installed at `build/container-make.mk`.
+
+**Purpose:** Run `make check` in the image the project's Containerfile builds, for a project without autotools (#94).
+
+**Choose it when:** The tests need tools or root beyond the runner image (D16) and the build is not autotools.
+
+**The repository supplies:** A Containerfile (contract in references/conventions.md) and a Makefile that includes this file first and guards its own `check:` with `ifeq ($(CONTAINER_DRIVER),no)`.
+
+**Needs the pieces:** ri-ci-container
 
 ### man v4
 
