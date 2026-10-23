@@ -194,13 +194,27 @@ def test_an_offline_build_uses_the_local_base_image(engine, trees):
         run([engine, "rmi", base], ROOT, check=False)
 
 
-def wait_for(read_chunk, marker, seconds=300):
-    """Collect output until marker appears; return everything read."""
+def wait_for(fd, marker, seconds=300):
+    """Read raw bytes from fd until marker appears; return everything read.
+
+    Reads with os.read into one buffer, so a marker that arrives in the same
+    chunk as an earlier line is still found. End of output (an empty read, or
+    EIO on a pty master whose slave closed) fails at once with the output so far.
+    """
     seen = ""
     deadline = time.monotonic() + seconds
     while marker not in seen:
-        assert time.monotonic() < deadline, "no %r in:\n%s" % (marker, seen)
-        seen += read_chunk(deadline - time.monotonic())
+        left = deadline - time.monotonic()
+        assert left > 0, "no %r within %d s in:\n%s" % (marker, seconds, seen)
+        ready, _, _ = select.select([fd], [], [], left)
+        if not ready:
+            continue
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            chunk = b""
+        assert chunk, "output ended before %r:\n%s" % (marker, seen)
+        seen += chunk.decode(errors="replace")
     return seen
 
 
@@ -216,12 +230,9 @@ def test_sigint_without_a_terminal_stops_the_container(tree):
     name = "sigint"
     proc = tree.popen("SLEEP=120", "TEST=" + name, start_new_session=True,
                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                      stderr=subprocess.STDOUT, text=True)
+                      stderr=subprocess.STDOUT)
     try:
-        def read_line(left):
-            ready, _, _ = select.select([proc.stdout], [], [], max(left, 0))
-            return proc.stdout.readline() if ready else ""
-        wait_for(read_line, "fixture: sleeping")
+        wait_for(proc.stdout.fileno(), "fixture: sleeping")
         os.killpg(proc.pid, signal.SIGINT)
         assert_interrupted_cleanly(tree, proc, name)
     finally:
@@ -242,10 +253,7 @@ def test_ctrl_c_on_a_terminal_stops_the_container(tree):
                       preexec_fn=controlling_terminal)
     os.close(slave)
     try:
-        def read_chunk(left):
-            ready, _, _ = select.select([master], [], [], max(left, 0))
-            return os.read(master, 4096).decode(errors="replace") if ready else ""
-        wait_for(read_chunk, "fixture: sleeping")
+        wait_for(master, "fixture: sleeping")
         os.write(master, b"\x03")
         assert_interrupted_cleanly(tree, proc, name)
     finally:

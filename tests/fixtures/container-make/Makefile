@@ -17,7 +17,11 @@ check:
 	@printf '%s\n' "$(TEST)" > check-ran.txt
 	@mkdir -p out/sub && echo made > out/sub/file
 	@if [ -e /dev/kvm ]; then \
-	  sh -c 'exec 3<> /dev/kvm' && echo "fixture: /dev/kvm opens"; \
+	  if sh -c 'exec 3<> /dev/kvm' 2>/dev/null; then \
+	    echo "fixture: /dev/kvm opens"; \
+	  else \
+	    echo "fixture: /dev/kvm not openable"; \
+	  fi; \
 	else \
 	  echo "fixture: no /dev/kvm"; \
 	fi
