@@ -105,7 +105,7 @@ def test_a_call_with_directory_or_repository_is_not_counted(tmp_path, given):
     assert [r[0] for r in missing(root)] == ["ri-ci-container"]
 
 
-@pytest.mark.parametrize("directory", ['""', "."])
+@pytest.mark.parametrize("directory", ['""', ".", "./", "null", "~"])
 def test_a_call_at_the_top_level_counts(tmp_path, directory):
     root = repo(tmp_path, ("ri-ci-container", {"directory": directory}))
     assert called(root) == {"ri-ci-container"}
@@ -235,6 +235,9 @@ def test_only_the_make_file_gnu_make_reads_is_scanned(tmp_path):
     ("FROM rust:1-trixie\nRUN apt-get update && \\\n    rustup toolchain install 1.85.0\n",
      None),
     ("FROM rust:1-trixie\n# RUN rustup toolchain install 1.85.0\n", "1.85.0"),
+    # Docker drops a comment line before it joins the continuation around it.
+    ("FROM rust:1-trixie\nRUN apt-get update \\\n    # the pin\n"
+     "    && rustup toolchain install 1.85.0\n", None),
     ("FROM rust:1.85-trixie\n", "1.85.0"),
     ("FROM rust:1-trixie\nRUN rustup toolchain install 1.85.01\n", "1.85.0"),
     ("FROM rust:1-trixie\nRUN echo 1.85.0\n", "1.85.0"),
