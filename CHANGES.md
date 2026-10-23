@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- The `ri-ci-man` job could fail with "The job has exceeded the maximum execution time of 10m0s" while it was still downloading packages from a slow Ubuntu mirror, so `ci-passed` failed although the manual was fine. The job now installs `pandoc`, `groff` and `man-db` without their recommended packages, so it no longer downloads ghostscript, imagemagick and their fonts. (#102)
 
 ## 2.5.0 - 2026-10-20
 ### New

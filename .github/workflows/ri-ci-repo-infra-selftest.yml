@@ -92,7 +92,7 @@ jobs:
       - name: Install pandoc and the man toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc groff man-db
+          sudo apt-get install -y --no-install-recommends pandoc groff man-db
 
       # Only the pandoc-marked tests. The ordinary pytest job deselects them,
       # since ci-python installs no pandoc. CI is set on the runner, so a

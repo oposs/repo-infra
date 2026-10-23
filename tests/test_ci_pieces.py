@@ -11,7 +11,7 @@ from repo_infra import check, workflow
 from repo_infra.pieces import ASSETS, load_pieces
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MAN_TOOLCHAIN_LINE = "          sudo apt-get install -y pandoc groff man-db"
+MAN_TOOLCHAIN_LINE = "          sudo apt-get install -y --no-install-recommends pandoc groff man-db"
 
 
 def piece_text(name):
