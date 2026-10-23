@@ -12,6 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 2.6.0 - 2026-10-23
+### New
 - A project without autotools can now run `make check` in the image its `Containerfile` builds, on a developer machine with podman or docker and in CI: include `build/container-make.mk` (`container-make`) and call `ri-ci-container`. `REPO_INFRA_USE_CONTAINER=no` runs the tests natively. `check` reports either piece alone, `container-make` next to `container` or `container-m4` or a `ri-ci-perl-*` piece, a `check:` outside `ifeq ($(CONTAINER_DRIVER),no)`, and a `rust-toolchain.toml` pin that the `Containerfile` does not install. (#94)
 
 ### Changed
