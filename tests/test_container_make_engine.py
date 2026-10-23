@@ -189,7 +189,7 @@ def test_an_offline_build_uses_the_local_base_image(engine, trees):
         done = offline.make("check", TEST="offline")
         assert "fixture: check ran as root" in done.stdout
         if engine == "docker":
-            assert "building again on the local copy" in done.stderr
+            assert "building again without it" in done.stderr
     finally:
         run([engine, "rmi", base], ROOT, check=False)
 
