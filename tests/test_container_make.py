@@ -475,3 +475,72 @@ def test_the_fragment_carries_its_marker_and_no_em_dash():
     text = MK.read_text(encoding="utf-8")
     assert text.startswith("# repo-infra: container-make v1\n")
     assert chr(0x2014) not in text
+
+
+# --- the wrapper inside the container -----------------------------------------
+
+
+def exec_env(tmp_path, **extra):
+    """Environment that makes the fake engine run the container command."""
+    etc = tmp_path / "etc"
+    etc.mkdir(exist_ok=True)
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    return {"FAKE_EXEC": "1", "FAKE_ETC": str(etc), "FAKE_HOME": str(home), **extra}
+
+
+def test_the_inner_make_runs_the_projects_guarded_check(tmp_path):
+    root = project(tmp_path / "p")
+    done = make(root, "check", env=exec_env(tmp_path))
+    assert done.returncode == 0, done.stderr
+    assert "PROJECT_CHECK TEST=[]" in done.stdout
+
+
+@pytest.mark.parametrize("value", ["foo", "a b", "it's", "x$y"])
+def test_an_override_reaches_the_projects_check_unchanged(tmp_path, value):
+    text = GUARDED.replace("@echo PROJECT_CHECK TEST=[$(TEST)]",
+                           "@:\n\t$(info PROJECT_CHECK TEST=[$(TEST)])")
+    root = project(tmp_path / "p", makefile=text)
+    done = make(root, "check", "TEST=" + value.replace("$", "$$"),
+                env=exec_env(tmp_path))
+    assert done.returncode == 0, done.stderr
+    assert f"PROJECT_CHECK TEST=[{value}]" in done.stdout
+
+
+def test_the_projects_exit_status_survives_the_handback(tmp_path):
+    text = GUARDED.replace("@echo PROJECT_CHECK TEST=[$(TEST)]", "@exit 3")
+    root = project(tmp_path / "p", makefile=text)
+    done = make(root, "check", env=exec_env(tmp_path))
+    assert done.returncode != 0
+    assert "Error 3" in done.stderr
+
+
+def test_the_wrapper_trusts_every_repository_for_git(tmp_path):
+    root = project(tmp_path / "p")
+    env = exec_env(tmp_path)
+    assert make(root, "check", env=env).returncode == 0
+    config = pathlib.Path(env["FAKE_ETC"]) / "gitconfig"
+    assert config.read_text(encoding="utf-8").endswith("[safe]\n\tdirectory = *\n")
+
+
+def test_an_unguarded_check_runs_on_the_host_and_make_warns(tmp_path):
+    text = GUARDED.replace("ifeq ($(CONTAINER_DRIVER),no)\n", "").replace(
+        "endif\n", "")
+    root = project(tmp_path / "p", makefile=text)
+    done = make(root, "check")
+    assert "overriding recipe" in done.stderr
+    assert "PROJECT_CHECK" in done.stdout
+    assert not any(c["argv"][0] == "run" for c in engine_calls(root))
+
+
+@pytest.mark.parametrize("shell", ["sh", "busybox"])
+def test_the_wrapper_is_posix_sh(tmp_path, shell):
+    argv0 = shutil.which(shell)
+    if argv0 is None:
+        pytest.skip(f"{shell} is not installed")
+    root = project(tmp_path / "p")
+    argv = run_argv(root, "check")
+    script = argv[argv.index("-c") + 1]
+    cmd = [argv0, "sh", "-n"] if shell == "busybox" else [argv0, "-n"]
+    done = subprocess.run(cmd, input=script, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr

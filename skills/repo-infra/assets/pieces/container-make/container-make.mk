@@ -182,6 +182,41 @@ esac
 exit "$$rc"
 endef
 
+# Runs inside the container as root, with the checkout at $1 (/src) and, in a
+# worktree, the main checkout's git directory as a further argument.
+#
+# The mount is owned by the host user and the container runs as root, so git
+# refuses the repository ("detected dubious ownership") without the safe
+# entry. Files root creates in the mount would stay root-owned on the host, so
+# they are handed back to the mount's owner before and after the check. The
+# job runs in the background with the terminal kept on fd 3: a non-interactive
+# shell gives a background job /dev/null as stdin, and Ctrl-C and SIGTERM must
+# reach make instead of leaving it orphaned when the shell exits.
+define _repo_infra_cm_wrapper
+set -u
+owner=$$(stat -c %u "$$1") && group=$$(stat -c %g "$$1") || exit 125
+handback() {
+	find "$$@" ! -user "$$owner" -exec chown -h "$$owner:$$group" {} + 2>/dev/null || :
+	count=$$(find "$$@" ! -user "$$owner" -print 2>/dev/null | wc -l)
+	if [ "$$count" -gt 0 ]; then
+		echo "build/container-make.mk: $$count files in the checkout belong to another user and could not be handed back; fix them on the host. The first ones:" >&2
+		find "$$@" ! -user "$$owner" -print 2>/dev/null | head -n 5 | sed 's/^/  /' >&2
+	fi
+}
+printf '[safe]\n\tdirectory = *\n' >> /etc/gitconfig 2>/dev/null || :
+handback "$$@"
+stop() { trap '' INT TERM; kill -s TERM 0 2>/dev/null; wait; exit "$$1"; }
+trap 'stop 130' INT
+trap 'stop 143' TERM
+exec 3<&0
+make check 0<&3 3<&- &
+wait "$$!"
+status=$$?
+trap - INT TERM
+handback "$$@"
+exit "$$status"
+endef
+
 define _repo_infra_cm_clean
 $(_repo_infra_cm_lib)
 pick_engine
@@ -204,7 +239,7 @@ check: export REPO_INFRA_CM_DEVICES = $(CONTAINER_DEVICES)
 check: export REPO_INFRA_CM_OPTS = $(CONTAINER_OPTS)
 check: export REPO_INFRA_CM_OVERRIDES = $(filter-out REPO_INFRA_USE_CONTAINER=%,$(MAKEOVERRIDES))
 check: export REPO_INFRA_CM_SCRIPT = $(_repo_infra_cm_check)
-check: export REPO_INFRA_WRAPPER = make check
+check: export REPO_INFRA_WRAPPER = $(_repo_infra_cm_wrapper)
 container-clean: export REPO_INFRA_CM_SCRIPT = $(_repo_infra_cm_clean)
 
 check:

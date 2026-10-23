@@ -10,7 +10,11 @@ Behaviour is steered by environment variables:
 - FAKE_PODMAN_INFO: what `info` prints (default `false crun`).
 - FAKE_VOLUME=1: `volume inspect` succeeds, otherwise it fails.
 - FAKE_RUN_STATUS: the exit status of `run` (default 0).
-- FAKE_EXEC=1: `run` emulates the container (added with the wrapper).
+- FAKE_EXEC=1: `run` emulates the container: the `-v host:/src` mount maps
+  /src to the host directory, the working directory is the `-w` path below it,
+  the environment is the `-e` pairs plus PATH and HOME, and the command after
+  the image tag runs for real. /etc/gitconfig in the script becomes
+  $FAKE_ETC/gitconfig. FAKE_HOME names HOME.
 """
 
 import json
@@ -42,6 +46,34 @@ if sub == "info":
     sys.exit(0)
 if sub == "volume" and argv[1:2] == ["inspect"]:
     sys.exit(0 if os.environ.get("FAKE_VOLUME") == "1" else 1)
+if sub == "run" and os.environ.get("FAKE_EXEC") == "1":
+    import subprocess
+    takes_value = {{"-v", "-e", "-w", "--security-opt", "--device", "--group-add"}}
+    mounts, env, cwd, i = [], {{}}, "/src", 1
+    while argv[i].startswith("-"):
+        flag = argv[i]
+        if flag in takes_value:
+            value = argv[i + 1]
+            i += 2
+            if flag == "-v":
+                mounts.append(value.split(":", 1))
+            elif flag == "-e":
+                name, eq, val = value.partition("=")
+                env[name] = val if eq else os.environ.get(name, "")
+            elif flag == "-w":
+                cwd = value
+        else:
+            i += 1
+    command = argv[i + 1:]
+    top = next(host for host, ctr in mounts if ctr == "/src")
+    etc = os.environ.get("FAKE_ETC", "/nonexistent") + "/gitconfig"
+    command = [a.replace("/etc/gitconfig", etc) if a != "/src" else top
+               for a in command]
+    env["PATH"] = os.environ["PATH"]
+    env["HOME"] = os.environ.get("FAKE_HOME", "/nonexistent")
+    if cwd == "/src" or cwd.startswith("/src/"):
+        cwd = top + cwd[4:]
+    sys.exit(subprocess.run(command, cwd=cwd, env=env).returncode)
 if sub == "run":
     sys.exit(int(os.environ.get("FAKE_RUN_STATUS", "0")))
 sys.exit(0)
