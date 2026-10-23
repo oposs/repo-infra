@@ -191,7 +191,9 @@ endef
 # they are handed back to the mount's owner before and after the check. The
 # job runs in the background with the terminal kept on fd 3: a non-interactive
 # shell gives a background job /dev/null as stdin, and Ctrl-C and SIGTERM must
-# reach make instead of leaving it orphaned when the shell exits.
+# reach make instead of leaving it orphaned when the shell exits. The hand-back
+# runs after an interrupted check as well, since that is when a half-finished
+# build leaves the most root-owned files behind.
 define _repo_infra_cm_wrapper
 set -u
 owner=$$(stat -c %u "$$1") && group=$$(stat -c %g "$$1") || exit 125
@@ -205,9 +207,9 @@ handback() {
 }
 printf '[safe]\n\tdirectory = *\n' >> /etc/gitconfig 2>/dev/null || :
 handback "$$@"
-stop() { trap '' INT TERM; kill -s TERM 0 2>/dev/null; wait; exit "$$1"; }
-trap 'stop 130' INT
-trap 'stop 143' TERM
+stop() { code=$$1; shift; trap '' INT TERM; kill -s TERM 0 2>/dev/null; wait; handback "$$@"; exit "$$code"; }
+trap 'stop 130 "$$@"' INT
+trap 'stop 143 "$$@"' TERM
 exec 3<&0
 make check 0<&3 3<&- &
 wait "$$!"
