@@ -9,6 +9,10 @@
       "target": "build/container.mk",
       "group": "build"
     },
+    "container-make": {
+      "target": "build/container-make.mk",
+      "group": "build"
+    },
     "container-m4": {
       "target": "m4/repo-infra-container.m4",
       "group": "build"

@@ -787,6 +787,16 @@ Installed at `m4/repo-infra-container.m4`.
 
 **The repository supplies:** The macro call in configure.ac.
 
+### container-make v1
+
+Installed at `build/container-make.mk`.
+
+**Purpose:** Run `make check` in the image the project's Containerfile builds, for a project without autotools (#94).
+
+**Choose it when:** The tests need tools or root beyond the runner image (D16) and the build is not autotools.
+
+**The repository supplies:** A Containerfile (contract in references/conventions.md) and a Makefile that includes this file first and guards its own `check:` with `ifeq ($(CONTAINER_DRIVER),no)`.
+
 ### man v4
 
 Installed at `build/man.mk`.
