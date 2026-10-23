@@ -146,12 +146,24 @@ def test_missing_dependencies_without_called_keeps_remote_alternatives_met(tmp_p
         ("ri-ci-container", "container-make")]
 
 
-def test_cli_pending_never_lists_a_remote_piece(tmp_path):
-    root = repo(tmp_path, pieces=["container-make"])
+def pending(root):
     files = cli._files(root, PIECES)
     states = cli._states(root, files, PUBLISHED)
-    names = cli._pending(root, files, states, PUBLISHED)
+    return cli._pending(root, files, states, PUBLISHED, PIECES)
+
+
+def test_a_bare_apply_installs_what_a_called_piece_needs_and_no_remote_piece(tmp_path):
+    """The loop "run check, then apply" ends clean: apply installs the local
+    pieces check reports missing for a called piece, and never a remote one."""
+    root = repo(tmp_path, "ri-release-rust-binaries", pieces=["container-make"])
+    names = pending(root)
+    assert {"man", "man-lua"} <= set(names)
     assert not [name for name in names if PIECES[name].remote]
+
+
+def test_a_bare_apply_does_not_install_for_a_call_into_a_subdirectory(tmp_path):
+    root = repo(tmp_path, ("ri-release-rust-binaries", {"repository": "oposs/other"}))
+    assert not {"man", "man-lua"} & set(pending(root))
 
 
 @pytest.mark.parametrize("autotools", [["container", "container-m4"], ["container-m4"],
