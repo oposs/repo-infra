@@ -218,8 +218,13 @@ def called_pieces(docs, pieces):
         for job in callers.jobs(doc).values():
             target = callers.normal_uses(job.get("uses"))
             given = job.get("with") if isinstance(job.get("with"), dict) else {}
-            if (target in files and not given.get("repository")
-                    and given.get("directory", "") in ("", ".")):
+            # The parser returns YAML's null spellings as text; the piece reads
+            # null and "" as the top level.
+            directory = given.get("directory") or "."
+            if directory in ("null", "Null", "NULL", "~"):
+                directory = "."
+            top = pathlib.PurePosixPath(directory)
+            if target in files and not given.get("repository") and str(top) == ".":
                 found.add(files[target])
     return found
 
@@ -313,9 +318,12 @@ def toolchain_pin_missing(toolchain, containerfile):
         return None
     token = re.compile(rf"(?<![\w.-]){re.escape(channel)}(?![\w.])")
     image = re.compile(rf"\brust:{re.escape(channel)}(?![\w.])")
-    for line in re.sub(r"\\\r?\n", " ", containerfile).splitlines():
+    # Docker drops comment lines first and joins continuations after, so a
+    # comment inside a RUN continuation does not end the RUN.
+    kept = [line for line in containerfile.splitlines() if not line.lstrip().startswith("#")]
+    for line in re.sub(r"\\\n", " ", "\n".join(kept)).splitlines():
         words = line.split()
-        if not words or words[0].startswith("#"):
+        if not words:
             continue
         if words[0].upper() == "RUN" and "rustup" in line and token.search(line):
             return None
@@ -343,8 +351,8 @@ def container_make_items(repo_root, pieces, published, called):
     driver = pieces["container-make"].target
     if any(state(name) != "absent" for name in AUTOTOOLS_DRIVER):
         report("conflict",
-               f"{driver} and build/container.mk or m4/repo-infra-container.m4 are "
-               "installed together. An autotools project keeps container + "
+               f"{driver} and {' or '.join(pieces[name].target for name in AUTOTOOLS_DRIVER)} "
+               "are installed together. An autotools project keeps container + "
                "container-m4, any other project keeps container-make; remove the other")
     for name in sorted(set(PERL_CI) & set(called)):
         report("conflict",
