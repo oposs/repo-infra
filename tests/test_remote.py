@@ -232,6 +232,41 @@ def test_classic_protection_that_cannot_be_read_is_an_error():
             "oposs/repo-infra")
 
 
+# What GitHub answers a private repository of a free account on both
+# protection endpoints, as `check` met it on a private repository.
+PLAN_REFUSES = ("gh: Upgrade to GitHub Pro or make this repository public to enable "
+                "this feature. (HTTP 403)")
+
+
+def test_a_plan_without_branch_protection_is_a_fact_not_an_error():
+    calls = []
+    run = fake_run({**RECORDED, "/rulesets": GhError(
+        f"gh api repos/oposs/repo-infra/rulesets --paginate --slurp failed: {PLAN_REFUSES}")})
+
+    def recording(args):
+        calls.append(" ".join(args))
+        return run(args)
+
+    result = Gh(run=recording).facts("oposs/repo-infra")
+    assert result.protection_unavailable == PLAN_REFUSES
+    assert result.protected is False
+    assert result.required_contexts == set()
+    assert result.classic_protection is False
+    assert not [call for call in calls if "branches/main/protection" in call]
+    assert "no-changelog" in result.labels
+
+
+def test_a_protected_repository_reads_protection_as_available():
+    assert facts().protection_unavailable is None
+
+
+def test_another_403_on_the_rulesets_is_still_an_error():
+    denied = GhError("gh api repos/oposs/repo-infra/rulesets --paginate --slurp failed: "
+                     "gh: Resource not accessible by integration (HTTP 403)")
+    with pytest.raises(GhError, match="403"):
+        Gh(run=fake_run({**RECORDED, "/rulesets": denied})).facts("oposs/repo-infra")
+
+
 def test_a_branch_name_goes_into_the_api_path_as_one_encoded_segment():
     """Git allows `#` in a branch name; unencoded, `feat/x#1` would ask about
     `feat/x` and drop the rest. GitHub reads `feat%2Fx` as `feat/x`."""

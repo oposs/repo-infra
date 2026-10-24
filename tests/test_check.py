@@ -251,6 +251,20 @@ def test_a_conforming_repository_reports_every_remote_item_ok():
     assert set(remote_states(remote()).values()) == {"ok"}
 
 
+UNAVAILABLE = "gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)"
+
+
+def test_a_plan_without_branch_protection_is_a_problem_naming_the_cause():
+    items = {i.name: i for i in remote(protected=False, required_contexts=set(),
+                                       strict=False, protection_unavailable=UNAVAILABLE)}
+    assert items["branch-protection"].state == "problem"
+    assert UNAVAILABLE in items["branch-protection"].detail
+    assert "public" in items["branch-protection"].detail
+    assert items["required-checks"].state == "problem"
+    assert items["classic-protection"].state == "ok"
+    assert items["no-changelog-label"].state == "ok"
+
+
 def test_a_master_branch_is_a_conflict_and_is_reported_first():
     items = remote(default_branch="master")
     assert items[0].name == "default-branch"

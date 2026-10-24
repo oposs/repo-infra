@@ -446,6 +446,13 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
                 "delete head branches\" by hand, then retry.")
         return "switched on Automatically delete head branches"
 
+    if (name in ("branch-protection", "required-checks", "classic-protection")
+            and facts.protection_unavailable):
+        raise ApplyError(
+            f"{name}: GitHub offers no branch protection on repos/{repo} "
+            f"({facts.protection_unavailable}). Make the repository public or move "
+            "its owner to a paid plan, then apply this item again.")
+
     if name == "classic-protection":
         branch = facts.default_branch
         if not facts.classic_protection:
