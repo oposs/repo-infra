@@ -16,6 +16,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+
+## 2.6.1 - 2026-10-24
+### Fixed
 - `check` and `apply` stopped with "gh: gh api repos/<owner>/<repo>/rulesets --paginate --slurp failed: gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)" and no report on a private repository of a free account. `check` now reports the rest of the repository and shows `branch-protection` and `required-checks` as `problem`, naming the cause and saying to make the repository public or move to a paid plan. `apply --item` with `required-checks`, `branch-protection` or `classic-protection` refuses with the same message before it writes anything.
 
 ## 2.6.0 - 2026-10-23
