@@ -1,4 +1,4 @@
-# repo-infra: container v3
+# repo-infra: container v4
 #
 # Purpose: Autotools as a container driver (D18).
 # Choose: The build needs a container (D16).
@@ -27,19 +27,19 @@
 # There is deliberately no way to declare host packages. Needing one is what
 # sent this project to containers in the first place (D16).
 #
-# In driver mode, every `make` invocation prints two GNU Make warnings:
+# In driver mode, every `make` invocation prints GNU Make warnings like:
 #
 #     Makefile:NNN: warning: overriding recipe for target 'dist'
 #     Makefile:NNN: warning: ignoring old recipe for target 'dist'
 #
-# Only `dist` warns, not `install`: automake's generated `install:` is
-# prerequisite-only and carries no recipe body of its own, so there is no old
-# recipe for this fragment's `install:` to override, while automake's `dist:`
-# does have one. These lines come from GNU Make itself parsing the generated
-# Makefile -- not from automake, so `AUTOMAKE_OPTIONS = -Wno-override` does not
-# silence them and must not be added. They are the expected sound of this
-# fragment replacing automake's own `dist` recipe; they are not a sign
-# anything is broken.
+# They name `dist` and `check-am`, and `check-recursive` too in a project with
+# SUBDIRS. Not `install`: automake's generated `install:` is prerequisite-only
+# and carries no recipe body of its own, so there is no old recipe for this
+# fragment's `install:` to override. These lines come from GNU Make itself
+# parsing the generated Makefile -- not from automake, so
+# `AUTOMAKE_OPTIONS = -Wno-override` does not silence them and must not be
+# added. They are the expected sound of this fragment replacing automake's own
+# recipes; they are not a sign anything is broken.
 
 if CONTAINER_DRIVER
 
@@ -47,11 +47,11 @@ CONTAINER_TAG ?= $(PACKAGE)-build:local
 TEST_DEV_MOUNTS ?=
 TARGET ?=
 
-.PHONY: container container-base test test-dev
+.PHONY: container container-base check-am check-recursive test-dev
 
 # The full image. Its build phase runs ./configure --disable-container && make
 # && make install, so building the image IS building the project. Always runs:
-# podman's layer cache makes a no-change rebuild cheap, and `make test` must
+# podman's layer cache makes a no-change rebuild cheap, and `make check` must
 # never test a stale image.
 container:
 	$(DOCKER) build -t $(CONTAINER_TAG) -f $(top_srcdir)/Containerfile $(top_srcdir)
@@ -66,13 +66,18 @@ container-base: .stamp-container-base
 
 all-local: container
 
-# The seam (D15). Inside the image this is the project's own native test target.
-test: container
-	$(DOCKER) run --rm $(CONTAINER_TAG) make -C /src test
+# The seam (D15). Inside the image `make check` is the project's own native
+# test target. Automake's `check:` has no recipe of its own: it depends on
+# check-am, or on check-recursive when the project has SUBDIRS, and those run
+# the suite. A rule of ours named `check` would only add to that, so the suite
+# would run on the host first. Replacing both recipes, as `dist` below does,
+# leaves the container as the only place the tests run.
+check-am check-recursive: container
+	$(DOCKER) run --rm $(CONTAINER_TAG) make -C /src check
 
 # The dev loop: one test file, run against the live working tree. Never used by
 # CI -- what CI must verify is that the image builds and its contents pass,
-# which is `make test`.
+# which is `make check`.
 #
 # The mounts are read-write, not :ro. The developer already owns the whole
 # source tree, so a read-write mount of a directory they can edit anyway grants
@@ -93,7 +98,7 @@ test-dev: container-base
 	fi
 	$(DOCKER) run --rm -it \
 		$(foreach d,$(TEST_DEV_MOUNTS),-v $(abs_top_srcdir)/$(d):/src/$(d)) \
-		$(CONTAINER_TAG) make -C /src test TESTS=$(TARGET)
+		$(CONTAINER_TAG) make -C /src check TESTS=$(TARGET)
 
 # The tarball is built by the same toolchain every time. Building it on the host
 # instead would let a host-built and an image-built tarball differ, and nobody

@@ -2,7 +2,7 @@
 #
 # Purpose: Bootstrap, configure, build and test an autotools Perl project.
 # Choose: configure.ac and cpanfile.
-# Supplies: ./bootstrap, configure, and the targets all and test.
+# Supplies: ./bootstrap, configure, and the targets all and check.
 # Call:
 #   perl:
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-perl-autotools.yml@v2
@@ -45,7 +45,7 @@ jobs:
       #
       # These four commands serve both kinds of autotools repository unchanged.
       # A containerized one configures into driver mode (D18), so `make` builds
-      # its image and `make test` runs the suite inside it -- and `configure`
+      # its image and `make check` runs the suite inside it -- and `configure`
       # never probes the project's own dependencies on this runner. One that
       # stayed native has no Containerfile, does not call REPO_INFRA_CONTAINER,
       # and runs plain autotools here.
@@ -60,8 +60,9 @@ jobs:
 
       - run: make
 
-      # The seam (D15). `make test` is the contract; whether the project runs
-      # its suite natively or inside its own container is its business, and
-      # m4/repo-infra-container.m4 and build/container.mk are what repo-infra
-      # ships for the second case.
-      - run: make test
+      # The seam (D15). `make check` is the contract, the target automake
+      # generates and the GNU coding standards name (#100); whether the
+      # project runs its suite natively or inside its own container is its
+      # business, and m4/repo-infra-container.m4 and build/container.mk are
+      # what repo-infra ships for the second case.
+      - run: make check

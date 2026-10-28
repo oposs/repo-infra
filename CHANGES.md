@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- Autotools projects now run their tests with `make check`, the target automake generates: `ri-ci-perl-autotools` calls it, and `build/container.mk` (`container` v4) runs it in the container, with no test run on the host. Driver mode no longer defines `make test`, so remove the `test: check` rule and its `if !CONTAINER_DRIVER` guard from `Makefile.am`. `ri-ci-perl-mkpl` keeps `make test`. (#100)
 
 ### Fixed
 

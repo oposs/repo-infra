@@ -142,7 +142,7 @@ What it must do, so the driver targets can reach it:
    first. `--disable-container` names the semantics, not the location: it means
    "do the real build in this tree", which is also what a distro packager on a
    bare build host wants.
-3. **Leave the build tree at `/src`** -- `make dist` and `make test` are run
+3. **Leave the build tree at `/src`** -- `make dist` and `make check` are run
    against that path from outside.
 4. **List itself in `EXTRA_DIST`** -- `build/container.mk` and
    `m4/repo-infra-container.m4` are distributed automatically (an included
@@ -174,9 +174,10 @@ and in `Makefile.am`, so a bare `aclocal` run finds it too:
     ACLOCAL_AMFLAGS = -I m4
 
 **Single-file test runs.** `make test-dev TARGET=t/foo.t` reaches one file
-through `make test TESTS=<file>`. Automake honours a command-line `TESTS=`
-override for free, so a project whose `test` target is `test: check` needs to do
-nothing. A project that drives `prove` itself must honour `TESTS` the same way.
+through `make check TESTS=<file>`. Automake honours a command-line `TESTS=`
+override, so a project that lists its tests in `TESTS` needs to do nothing. A
+project that drives `prove` itself from `check-local` must honour `TESTS` the
+same way.
 
 **`test-dev` needs `TEST_DEV_MOUNTS`.** The project declares, in its own
 `Makefile.am` before the include, which directories hold the interpreted source
@@ -190,23 +191,19 @@ whole tree would hide everything `configure` generated inside the image -- so
 refuses a missing `TARGET`, rather than silently testing the image's baked-in
 copy instead of the file just edited.
 
-**What `Makefile.am` must look like.** A project already defines its own
-`test:` for the native case (`test: check`) and now also includes
-`build/container.mk`. Both definitions are unconditional, so automake sees
-`test:` defined twice and warns at generation time:
+**What `Makefile.am` must look like.** The test target is `check`, which
+automake generates (#100). The project defines no `test:` and no `check:` of
+its own, and includes the fragment last:
 
-    build/container.mk:NN: warning: test was already defined in condition TRUE, which includes condition CONTAINER_DRIVER
-
-The fix is to guard the project's own target with the negated conditional, so
-the two definitions are never both live:
-
-    if !CONTAINER_DRIVER
-    test: check
-    endif
     include $(top_srcdir)/build/container.mk
 
-With that guard, `autoreconf` emits zero warnings and both modes still behave
-correctly -- native runs the real suite, driver delegates to podman.
+In driver mode the fragment replaces the recipes of `check-am` and
+`check-recursive`, the two rules automake's `check:` depends on, with one that
+runs `make -C /src check` in the image. A rule named `check` in the fragment
+would only add to automake's, and the suite would run on the host before the
+container. Tests the project hangs on `check-local` run only in the container
+for the same reason. In native mode the fragment defines nothing, and `make
+check` is automake's own.
 
 **`make install` needs `DESTDIR`.** In driver mode, `make install` without
 `DESTDIR` refuses with a usage message rather than mounting the host's
