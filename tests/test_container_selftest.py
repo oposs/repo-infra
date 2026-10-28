@@ -34,15 +34,15 @@ def tree(tmp_path_factory):
     shutil.copy(ASSETS / "pieces/container-m4/repo-infra-container.m4", work / "m4")
     shutil.copy(ASSETS / "pieces/container/container.mk", work / "build")
     done = run(["autoreconf", "-i"], work)
-    # D18's contract guards the project's own `test:` with `if !CONTAINER_DRIVER`
-    # precisely so automake does not warn about a duplicate definition.
+    # Replacing check-am and check-recursive is invisible to automake: it
+    # warns about neither.
     assert "warning" not in done.stderr.lower(), done.stderr
     return work
 
 
 def test_native_mode_runs_the_real_suite_and_defines_no_driver_targets(tree):
     run(["./configure", "--disable-container"], tree)
-    done = run(["make", "test"], tree)
+    done = run(["make", "check"], tree)
     assert "# TOTAL: 1" in done.stdout and "# PASS:  1" in done.stdout
     for target in ("container", "test-dev"):
         missing = run(["make", target], tree, check=False)
@@ -52,11 +52,24 @@ def test_native_mode_runs_the_real_suite_and_defines_no_driver_targets(tree):
 
 def test_driver_mode_builds_the_image_and_tests_inside_it(tree):
     run(["./configure"], tree)
-    done = run(["make", "test"], tree)
+    done = run(["make", "check"], tree)
     assert "# TOTAL: 1" in done.stdout and "# PASS:  1" in done.stdout
-    # make's own un-silenced recipe echo for `test:` -- forgeable only by
+    # make's own un-silenced recipe echo for `check-am:` -- forgeable only by
     # the real recipe running, not by a stale image passing on its own.
-    assert "make -C /src test" in done.stdout
+    assert "make -C /src check" in done.stdout
+
+
+def test_driver_mode_runs_no_test_on_the_host(tree):
+    # #100: automake's own `check: check-am` stays in the Makefile. Unless
+    # container.mk replaces the recipe below it, `make check` runs the suite
+    # on the host before the container does. A dry run prints the host's
+    # recipes without starting the container, so whatever runs the suite
+    # here would show up as automake's check-TESTS or test-driver.
+    run(["./configure"], tree)
+    done = run(["make", "-n", "check"], tree)
+    assert "make -C /src check" in done.stdout
+    assert "check-TESTS" not in done.stdout
+    assert "test-driver" not in done.stdout
 
 
 def test_dist_leaves_a_tarball_on_the_host(tree):

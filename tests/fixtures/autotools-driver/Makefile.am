@@ -7,7 +7,4 @@ ACLOCAL_AMFLAGS = -I m4
 TESTS = t/basic.t
 EXTRA_DIST = t/basic.t Containerfile
 TEST_DEV_MOUNTS = t
-if !CONTAINER_DRIVER
-test: check
-endif
 include $(top_srcdir)/build/container.mk

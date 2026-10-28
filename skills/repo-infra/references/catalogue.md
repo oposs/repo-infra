@@ -227,7 +227,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-perl-autotools.yml@v2`.
 
 **Choose it when:** configure.ac and cpanfile.
 
-**The repository supplies:** ./bootstrap, configure, and the targets all and test.
+**The repository supplies:** ./bootstrap, configure, and the targets all and check.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -793,7 +793,7 @@ release-verdict:
 
 ## Build files
 
-### container v3
+### container v4
 
 Installed at `build/container.mk`.
 

@@ -25,12 +25,27 @@ def test_the_fragment_carries_its_marker_at_the_declared_version():
 
 def test_every_driver_target_is_inside_the_conditional():
     # The whole point of D18's conditional: inside the container this file must
-    # define nothing, or `make test` there would invoke podman inside podman.
+    # define nothing, or `make check` there would invoke podman inside podman.
     text = FRAGMENT.read_text(encoding="utf-8")
     body = text.split("if CONTAINER_DRIVER", 1)[1].split("\nendif", 1)[0]
-    for target in ("container:", "container-base:", "test:", "test-dev:"):
+    for target in ("container:", "container-base:", "check-am check-recursive:",
+                   "test-dev:"):
         assert "\n" + target in body, "%s is outside the conditional" % target
     assert "$(DOCKER)" not in text.split("if CONTAINER_DRIVER", 1)[0]
+
+
+def test_check_replaces_the_recipes_automake_runs_the_suite_with():
+    # #100: automake always generates `check: check-am` (or check-recursive
+    # with SUBDIRS) and a rule of our own named `check` only adds to it, so
+    # the suite would run on the host first. Replacing the recipes below
+    # `check` is the same move as `dist`. `test` is gone: automake makes
+    # `check`, and the GNU standards name the target that.
+    text = FRAGMENT.read_text(encoding="utf-8")
+    body = text.split("if CONTAINER_DRIVER", 1)[1].split("\nendif", 1)[0]
+    assert "\ncheck:" not in body
+    assert "\ntest:" not in body
+    assert "make -C /src check\n" in body
+    assert "make -C /src test" not in text
 
 
 def test_test_dev_does_not_rebuild_the_full_image():
@@ -49,7 +64,7 @@ def test_test_dev_requires_a_target():
 
 
 def test_the_fragment_no_longer_carries_the_test_runner_knobs():
-    # D18: inside the container the project runs its own native `make test`, so
+    # D18: inside the container the project runs its own native `make check`, so
     # how the suite is invoked is the project's business again.
     text = FRAGMENT.read_text(encoding="utf-8")
     for knob in ("TEST_RUNNER", "TEST_DIR", "SKIP_TESTS"):
@@ -95,7 +110,7 @@ def test_test_dev_passes_a_relative_tests_override():
 
 def test_no_ci_block_calls_the_dev_loop():
     # test-dev is a developer convenience. What CI must verify is that the image
-    # builds and its contents pass, which is `make test`.
+    # builds and its contents pass, which is `make check`.
     paths = sorted(ASSETS.parents[2].joinpath(".github/workflows").glob("ri-*.yml"))
     assert len(paths) >= 10, "the piece workflow files were not found"
     for path in paths:

@@ -86,10 +86,16 @@ def test_the_autotools_piece_installs_only_the_fixed_host_toolchain():
     assert "system_packages" not in text
 
 
-def test_the_autotools_piece_runs_make_test():
+def test_the_autotools_piece_runs_make_check():
+    # #100: automake generates `check`, the GNU name for the test target.
     text = piece_text("ri-ci-perl-autotools")
-    assert "make test" in text
-    assert "make check" not in text
+    assert "run: make check" in text
+    assert "make test" not in text
+
+
+def test_the_makemaker_piece_keeps_make_test():
+    # ExtUtils::MakeMaker generates `test` and never `check`.
+    assert "run: make test" in piece_text("ri-ci-perl-mkpl")
 
 
 def test_the_autotools_piece_no_longer_documents_a_bare_configure_limit():

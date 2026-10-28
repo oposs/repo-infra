@@ -102,14 +102,14 @@ def test_the_teach_reference_points_at_the_driver_not_the_test_fragment():
     assert "build/container.mk" in text
 
 
-def test_conventions_documents_the_makefile_am_guard_against_the_automake_warning():
-    # A project that defines its own `test:` for the native case AND includes
-    # build/container.mk gets an automake "was already defined in condition
-    # TRUE" warning unless it guards its own target with the negated
-    # conditional. This is as load-bearing as the Containerfile contract, so it
-    # has to be written down too.
+def test_conventions_documents_that_the_project_defines_no_test_target():
+    # #100: automake generates `check`, and container v4 routes it into the
+    # image. A project that kept its own `test:` or wrote a `check:` would
+    # bring back the duplicate-definition warning or run the suite on the
+    # host, so the contract has to say both are absent.
     text = (ROOT / "skills/repo-infra/references/conventions.md").read_text(encoding="utf-8")
-    assert "if !CONTAINER_DRIVER" in text
+    assert "defines no `test:` and no `check:`" in text
+    assert "if !CONTAINER_DRIVER" not in text
 
 
 def test_the_skill_points_at_the_prose_skills():
