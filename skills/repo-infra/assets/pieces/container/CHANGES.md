@@ -3,6 +3,11 @@
 Upgrade notes, newest first. Each section says what a caller or
 .github/repo-infra.json must change to take that version.
 
+## v5
+
+No change for the repository. `make test-dev` asks the engine for a terminal
+only when it runs on one.
+
 ## v4
 
 `make check` runs the tests in the container, and driver mode no longer
