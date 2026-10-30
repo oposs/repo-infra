@@ -1,5 +1,6 @@
 import os
 import pathlib
+import pty
 import shutil
 import subprocess
 import tarfile
@@ -13,14 +14,16 @@ FIXTURE = ROOT / "tests/fixtures/autotools-driver"
 pytestmark = pytest.mark.container
 
 
-def run(args, cwd, check=True, timeout=900):
+def run(args, cwd, check=True, timeout=900, stdin=subprocess.DEVNULL):
     """Run a command and return the CompletedProcess, output captured.
 
     LC_ALL=C keeps make's own diagnostics (e.g. "No rule to make target")
-    in English regardless of the host locale.
+    in English regardless of the host locale. stdin is /dev/null unless the
+    caller hands in a terminal, so a run does not depend on whether pytest
+    itself was started from one.
     """
     return subprocess.run(args, cwd=cwd, check=check, timeout=timeout,
-                          capture_output=True, text=True,
+                          capture_output=True, text=True, stdin=stdin,
                           env={**os.environ, "LC_ALL": "C"})
 
 
@@ -124,6 +127,45 @@ def test_test_dev_runs_the_live_working_tree(tree):
         test_file.chmod(0o755)
     passed = run(["make", "test-dev", "TARGET=t/basic.t"], tree)
     assert "# PASS:  1" in passed.stdout
+
+
+def test_test_dev_without_a_terminal_asks_for_none(tree):
+    """From a pipe, cron or CI, stdin is no terminal and -t must not be passed.
+
+    The docker CLI refuses `run -it` there outright ("cannot attach stdin to
+    a TTY-enabled container because stdin is not a terminal") and podman
+    warns "The input device is not a TTY" on stderr. Podman's warning is the
+    witness here because podman is the engine configure picks first.
+    """
+    run(["./configure"], tree)
+    done = run(["make", "test-dev", "TARGET=t/basic.t"], tree, check=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "# PASS:  1" in done.stdout
+    for refusal in ("not a TTY", "not a terminal"):
+        assert refusal not in done.stderr, done.stderr
+
+
+def test_test_dev_on_a_terminal_hands_the_test_one(tree):
+    """On a terminal the container still gets one, for a debugger in the test.
+
+    The test file itself is the probe: it passes only when its stdin is a
+    terminal inside the container, which takes both -i and -t.
+    """
+    run(["./configure"], tree)
+    test_file = tree / "t/basic.t"
+    original = test_file.read_text(encoding="utf-8")
+    test_file.write_text("#!/bin/sh\n[ -t 0 ]\n", encoding="utf-8")
+    master, slave = pty.openpty()
+    try:
+        done = run(["make", "test-dev", "TARGET=t/basic.t"], tree,
+                   check=False, stdin=slave)
+    finally:
+        os.close(slave)
+        os.close(master)
+        test_file.write_text(original, encoding="utf-8")
+        test_file.chmod(0o755)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "# PASS:  1" in done.stdout
 
 
 def test_the_refusals_abort_make(tree):

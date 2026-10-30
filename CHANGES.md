@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `make test-dev` stopped with "cannot attach stdin to a TTY-enabled container because stdin is not a terminal" when it ran with docker from a script, a pipe or CI, and with podman it printed "The input device is not a TTY". `build/container.mk` (`container` v5) now asks for a terminal only when `make` runs on one.
 
 ## 2.7.0 - 2026-10-28
 ### Changed

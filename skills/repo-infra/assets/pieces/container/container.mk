@@ -1,4 +1,4 @@
-# repo-infra: container v4
+# repo-infra: container v5
 #
 # Purpose: Autotools as a container driver (D18).
 # Choose: The build needs a container (D16).
@@ -85,6 +85,12 @@ check-am check-recursive: container
 # writes <test>.log and <test>.trs next to each test file on every run, which a
 # native `make check` already does to the same tree. A :ro mount was tried and
 # fails outright: "Read-only file system" from test-driver itself.
+#
+# -i -t only when stdin is a terminal, where they let a debugger in the test
+# talk to the developer. From a pipe, cron or CI the docker CLI refuses `run
+# -it` with "cannot attach stdin to a TTY-enabled container because stdin is
+# not a terminal", and podman warns "The input device is not a TTY". The same
+# test is in container-make.mk.
 test-dev: container-base
 	@if [ -z "$(TARGET)" ]; then \
 		echo "Error: TARGET is required"; \
@@ -96,7 +102,8 @@ test-dev: container-base
 		echo "Set it in Makefile.am, e.g. TEST_DEV_MOUNTS = lib t bin/plugins"; \
 		exit 1; \
 	fi
-	$(DOCKER) run --rm -it \
+	tty=; if [ -t 0 ]; then tty="-i -t"; fi; \
+	$(DOCKER) run --rm $$tty \
 		$(foreach d,$(TEST_DEV_MOUNTS),-v $(abs_top_srcdir)/$(d):/src/$(d)) \
 		$(CONTAINER_TAG) make -C /src check TESTS=$(TARGET)
 
