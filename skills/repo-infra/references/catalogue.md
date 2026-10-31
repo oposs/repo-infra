@@ -840,7 +840,7 @@ release-verdict:
 
 ## Build files
 
-### container v4
+### container v5
 
 Installed at `build/container.mk`.
 
