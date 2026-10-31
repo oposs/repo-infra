@@ -2,7 +2,7 @@
 #
 # Purpose: Run the project's build of a macOS installer package or disk image with the Developer ID certificates in a temporary keychain, then notarize, staple and check every file it wrote (D36).
 # Choose: The project ships a Mac app or tool as a .pkg or .dmg (macos-signed in references/project-shape.md).
-# Supplies: The command `build`, which signs with the Developer ID identities it finds in the keychain search list and writes the files `assets` names; the secrets MACOS_CERTS_P12, MACOS_CERTS_PASSWORD, NOTARY_KEY_P8, NOTARY_KEY_ID and NOTARY_ISSUER; the variable REQUIRE_SIGNED_RELEASES set to 1 once releases are signed.
+# Supplies: The command `build`, which signs with the Developer ID identities it finds in the keychain search list and writes the files `assets` names; the secrets MACOS_CERTS_P12, MACOS_CERTS_PASSWORD, NOTARY_KEY_P8, NOTARY_KEY_ID and NOTARY_ISSUER.
 # Produces: The artifact release-asset-macos with every file `assets` names; list them in release_assets.
 # Call:
 #   macos:
@@ -19,9 +19,10 @@
 #       NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
 #       NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
 #
-# The build sees VERSION, MACOS_SIGNING (1 when the certificates are in the
-# keychain, 0 for an unsigned build) and MACOS_TEAM_ID. It signs; the piece
-# notarizes and staples, so the build needs no notarization credentials.
+# The build sees VERSION and MACOS_TEAM_ID. It signs; the piece notarizes and
+# staples, so the build needs no notarization credentials. There is no
+# unsigned mode: a project without certificates records the macos-signed
+# exception in .github/repo-infra.json and does not call the piece.
 
 name: Build the signed macOS release
 
@@ -56,20 +57,20 @@ on:
         default: 60
     secrets:
       MACOS_CERTS_P12:
-        description: Developer ID Application and Developer ID Installer with their private keys, exported together as one .p12, base64. Without it the build runs unsigned, unless REQUIRE_SIGNED_RELEASES is 1.
-        required: false
+        description: Developer ID Application and Developer ID Installer with their private keys, exported together as one .p12, base64. A project that ships only .dmg files needs no Installer certificate.
+        required: true
       MACOS_CERTS_PASSWORD:
         description: The password of the .p12.
-        required: false
+        required: true
       NOTARY_KEY_P8:
         description: The App Store Connect API key (.p8) notarytool signs in with.
-        required: false
+        required: true
       NOTARY_KEY_ID:
         description: The key ID of that API key.
-        required: false
+        required: true
       NOTARY_ISSUER:
         description: The issuer ID of the App Store Connect team.
-        required: false
+        required: true
 
 permissions:
   contents: read
@@ -98,26 +99,18 @@ jobs:
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
-          REQUIRE_SIGNED_RELEASES: ${{ vars.REQUIRE_SIGNED_RELEASES }}
+          ASSETS: ${{ inputs.assets }}
         run: |
           set -euo pipefail
-          if [ -z "$MACOS_CERTS_P12" ]; then
-            # A lost or renamed secret must not ship a release every Mac
-            # rejects; REQUIRE_SIGNED_RELEASES turns it into a failed build.
-            if [ "$REQUIRE_SIGNED_RELEASES" = 1 ]; then
-              echo "::error::REQUIRE_SIGNED_RELEASES is 1, but the secret MACOS_CERTS_P12 is empty or not passed to the piece"
-              exit 1
-            fi
-            echo "::warning::MACOS_CERTS_P12 is not set; the release is built unsigned and Gatekeeper blocks it"
-            echo "signed=0" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          # The key files must not be readable by other users of a
+          # self-hosted runner.
+          umask 077
           missing=()
-          for name in MACOS_CERTS_PASSWORD NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER; do
+          for name in MACOS_CERTS_P12 MACOS_CERTS_PASSWORD NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER; do
             [ -n "${!name}" ] || missing+=("$name")
           done
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::MACOS_CERTS_P12 is set, but ${missing[*]} is empty or not passed to the piece"
+            echo "::error::${missing[*]} is empty or not passed to the piece; a project that cannot sign yet records the macos-signed exception instead of calling the piece"
             exit 1
           fi
           kc="$RUNNER_TEMP/signing.keychain-db"
@@ -125,7 +118,10 @@ jobs:
           security create-keychain -p "$pw" "$kc"
           security set-keychain-settings -lut 21600 "$kc"
           security unlock-keychain -p "$pw" "$kc"
-          printf '%s' "$MACOS_CERTS_P12" | base64 --decode > "$RUNNER_TEMP/certs.p12"
+          if ! printf '%s' "$MACOS_CERTS_P12" | base64 --decode > "$RUNNER_TEMP/certs.p12" 2>/dev/null; then
+            echo "::error::MACOS_CERTS_P12 is not base64; set it with base64 -i certs.p12 | gh secret set MACOS_CERTS_P12"
+            exit 1
+          fi
           if ! security import "$RUNNER_TEMP/certs.p12" -k "$kc" -P "$MACOS_CERTS_PASSWORD" \
               -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/productsign; then
             echo "::error::the .p12 in MACOS_CERTS_P12 does not open with MACOS_CERTS_PASSWORD; test both with security import into a scratch keychain before gh secret set"
@@ -142,22 +138,31 @@ jobs:
             echo "::error::MACOS_CERTS_P12 holds no Developer ID Application certificate with its private key"
             exit 1
           fi
+          # productbuild needs the Installer identity, which find-identity
+          # lists only under the basic policy. Checked here so a .pkg build
+          # does not fail at its very end.
+          case " ${ASSETS//$'\n'/ } " in
+            *.pkg\ *)
+              installer=$(security find-identity -v -p basic "$kc" \
+                | sed -n 's/.*"Developer ID Installer: .* (\([A-Z0-9]\{10\}\))"$/\1/p' | head -1)
+              if [ "$installer" != "$app" ]; then
+                echo "::error::assets names a .pkg, but MACOS_CERTS_P12 holds no Developer ID Installer certificate of team $app with its private key"
+                exit 1
+              fi
+              ;;
+          esac
           printf '%s' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
           if ! xcrun notarytool history --key "$RUNNER_TEMP/notary.p8" \
               --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" >/dev/null; then
             echo "::error::notarytool does not accept NOTARY_KEY_P8 with NOTARY_KEY_ID and NOTARY_ISSUER; test them with xcrun notarytool history --key before gh secret set"
             exit 1
           fi
-          {
-            echo "signed=1"
-            echo "team=$app"
-          } >> "$GITHUB_OUTPUT"
+          echo "team=$app" >> "$GITHUB_OUTPUT"
 
       - name: Build
         env:
           BUILD: ${{ inputs.build }}
           VERSION: ${{ inputs.version }}
-          MACOS_SIGNING: ${{ steps.certs.outputs.signed }}
           MACOS_TEAM_ID: ${{ steps.certs.outputs.team }}
         run: eval "$BUILD"
 
@@ -172,7 +177,8 @@ jobs:
           found=0
           for pattern in "${patterns[@]}"; do
             matches=($pattern)
-            if [ ${#matches[@]} -eq 0 ]; then
+            # nullglob drops a glob without a match, but keeps a plain path.
+            if [ ${#matches[@]} -eq 0 ] || [ ! -e "${matches[0]}" ]; then
               echo "::error::assets names $pattern, but the build wrote no file there"
               exit 1
             fi
@@ -184,6 +190,10 @@ jobs:
                   exit 1
                   ;;
               esac
+              if [ -e "$RUNNER_TEMP/dist/${file##*/}" ]; then
+                echo "::error::two assets are named ${file##*/}; one would replace the other in the release"
+                exit 1
+              fi
               cp "$file" "$RUNNER_TEMP/dist/"
               found=$((found + 1))
             done
@@ -193,29 +203,41 @@ jobs:
             exit 1
           fi
 
+      # All files go to the notary service first and are waited for after, so
+      # their time in its queue overlaps. A failed call is caught, so the
+      # error line and the service's log are printed.
       - name: Notarize and staple
-        if: steps.certs.outputs.signed == '1'
         env:
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: |
           set -euo pipefail
           notary=(--key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
-          for file in "$RUNNER_TEMP"/dist/*; do
-            out=$(xcrun notarytool submit "$file" "${notary[@]}" --wait --output-format json)
-            status=$(jq -r .status <<< "$out")
-            if [ "$status" != Accepted ]; then
-              echo "::error::notarization of $(basename "$file") ended with $status"
-              xcrun notarytool log "$(jq -r .id <<< "$out")" "${notary[@]}" || true
+          files=("$RUNNER_TEMP"/dist/*)
+          ids=()
+          for file in "${files[@]}"; do
+            out=$(xcrun notarytool submit "$file" "${notary[@]}" --output-format json) || true
+            id=$(jq -r '.id // empty' <<< "$out" 2>/dev/null) || true
+            if [ -z "$id" ]; then
+              echo "::error::notarytool did not accept $(basename "$file") for notarization: $out"
               exit 1
             fi
-            xcrun stapler staple "$file"
+            ids+=("$id")
+          done
+          for i in "${!files[@]}"; do
+            out=$(xcrun notarytool wait "${ids[$i]}" "${notary[@]}" --output-format json) || true
+            status=$(jq -r '.status // empty' <<< "$out" 2>/dev/null) || true
+            if [ "$status" != Accepted ]; then
+              echo "::error::notarization of $(basename "${files[$i]}") ended with ${status:-no result}"
+              xcrun notarytool log "${ids[$i]}" "${notary[@]}" || true
+              exit 1
+            fi
+            xcrun stapler staple "${files[$i]}"
           done
 
       # What a Mac checks on download, checked before anything is published:
       # a Developer ID of the team, Gatekeeper's verdict and the stapled ticket.
       - name: Check the signatures
-        if: steps.certs.outputs.signed == '1'
         env:
           TEAM: ${{ steps.certs.outputs.team }}
         run: |
@@ -232,7 +254,10 @@ jobs:
                 ;;
               *.dmg)
                 codesign --verify --strict --verbose=2 "$file"
-                if ! codesign -dv "$file" 2>&1 | grep -qx "TeamIdentifier=$TEAM"; then
+                # Read whole before grep: with pipefail, grep -q ending the
+                # pipe early can kill codesign with SIGPIPE.
+                info=$(codesign -dv "$file" 2>&1) || true
+                if ! grep -qx "TeamIdentifier=$TEAM" <<< "$info"; then
                   echo "::error::$(basename "$file") is not signed by team $TEAM"
                   exit 1
                 fi

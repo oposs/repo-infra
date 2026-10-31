@@ -12,7 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
-- A Mac app or tool shipped as a `.pkg` or `.dmg` can now be released signed and notarized: `ri-release-macos-signed` runs the project's build with the Developer ID certificates from the secrets `MACOS_CERTS_P12` and `MACOS_CERTS_PASSWORD`, then notarizes, staples and checks every file with the App Store Connect key in `NOTARY_KEY_P8`, `NOTARY_KEY_ID` and `NOTARY_ISSUER`. A wrong .p12 password or a rejected notary key fails the job before the build and names the secret. With the repository variable `REQUIRE_SIGNED_RELEASES` set to `1`, a release without the secrets fails instead of shipping unsigned.
+- A Mac app or tool shipped as a `.pkg` or `.dmg` can now be released signed and notarized: `ri-release-macos-signed` runs the project's build with the Developer ID certificates from the secrets `MACOS_CERTS_P12` and `MACOS_CERTS_PASSWORD`, then notarizes, staples and checks every file with the App Store Connect key in `NOTARY_KEY_P8`, `NOTARY_KEY_ID` and `NOTARY_ISSUER`. A missing secret, a wrong .p12 password, a missing Installer certificate for a `.pkg` or a rejected notary key fails the job before the build and names the secret; there is no unsigned mode.
 
 ### Changed
 

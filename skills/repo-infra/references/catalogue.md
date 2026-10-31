@@ -446,7 +446,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-macos-signed.yml@v2`.
 
 **Choose it when:** The project ships a Mac app or tool as a .pkg or .dmg (macos-signed in references/project-shape.md).
 
-**The repository supplies:** The command `build`, which signs with the Developer ID identities it finds in the keychain search list and writes the files `assets` names; the secrets MACOS_CERTS_P12, MACOS_CERTS_PASSWORD, NOTARY_KEY_P8, NOTARY_KEY_ID and NOTARY_ISSUER; the variable REQUIRE_SIGNED_RELEASES set to 1 once releases are signed.
+**The repository supplies:** The command `build`, which signs with the Developer ID identities it finds in the keychain search list and writes the files `assets` names; the secrets MACOS_CERTS_P12, MACOS_CERTS_PASSWORD, NOTARY_KEY_P8, NOTARY_KEY_ID and NOTARY_ISSUER.
 
 **Produces:** The artifact release-asset-macos with every file `assets` names; list them in release_assets.
 
@@ -461,11 +461,11 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-macos-signed.yml@v2`.
 
 | Secret | Required | Description |
 |---|---|---|
-| `MACOS_CERTS_P12` | no | Developer ID Application and Developer ID Installer with their private keys, exported together as one .p12, base64. Without it the build runs unsigned, unless REQUIRE_SIGNED_RELEASES is 1. |
-| `MACOS_CERTS_PASSWORD` | no | The password of the .p12. |
-| `NOTARY_KEY_P8` | no | The App Store Connect API key (.p8) notarytool signs in with. |
-| `NOTARY_KEY_ID` | no | The key ID of that API key. |
-| `NOTARY_ISSUER` | no | The issuer ID of the App Store Connect team. |
+| `MACOS_CERTS_P12` | yes | Developer ID Application and Developer ID Installer with their private keys, exported together as one .p12, base64. A project that ships only .dmg files needs no Installer certificate. |
+| `MACOS_CERTS_PASSWORD` | yes | The password of the .p12. |
+| `NOTARY_KEY_P8` | yes | The App Store Connect API key (.p8) notarytool signs in with. |
+| `NOTARY_KEY_ID` | yes | The key ID of that API key. |
+| `NOTARY_ISSUER` | yes | The issuer ID of the App Store Connect team. |
 
 **Permissions it needs:** contents: read
 

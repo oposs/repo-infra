@@ -210,14 +210,13 @@ Trigger: is installed by users.
 
 Requires: For a program delivered to macOS as an installer package (`.pkg`) or
 a disk image (`.dmg`), the file is signed with a Developer ID of the project's
-team, notarized, and carries the stapled ticket (D36). The repository variable
-`REQUIRE_SIGNED_RELEASES` is `1`, so a release without the signing secrets
-fails.
+team, notarized, and carries the stapled ticket (D36). A project that cannot
+sign yet records an exception for this rule.
 
 Verify: On a Mac, `spctl --assess --type install` (a `.pkg`) or
 `spctl --assess --type open --context context:primary-signature` (a `.dmg`)
-accepts the file of the latest release, and `xcrun stapler validate` passes;
-`gh variable list` shows `REQUIRE_SIGNED_RELEASES` as `1`.
+accepts the file of the latest release, and `xcrun stapler validate` passes.
+`gh secret list` shows the five secrets of `ri-release-macos-signed`.
 
 Met by: `ri-release-macos-signed`, called with the command that builds and signs
 the file.
