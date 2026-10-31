@@ -204,6 +204,23 @@ No piece builds the interpreted variants of `linux-packages` and `homebrew`
 beyond what `ri-release-source-tarball` covers. The SmokePing onboarding proves
 the rest first.
 
+### `macos-signed`
+
+Trigger: is installed by users.
+
+Requires: For a program delivered to macOS as an installer package (`.pkg`) or
+a disk image (`.dmg`), the file is signed with a Developer ID of the project's
+team, notarized, and carries the stapled ticket (D36). A project that cannot
+sign yet records an exception for this rule.
+
+Verify: On a Mac, `spctl --assess --type install` (a `.pkg`) or
+`spctl --assess --type open --context context:primary-signature` (a `.dmg`)
+accepts the file of the latest release, and `xcrun stapler validate` passes.
+`gh secret list` shows the five secrets of `ri-release-macos-signed`.
+
+Met by: `ri-release-macos-signed`, called with the command that builds and signs
+the file.
+
 ## Exceptions
 
 `.github/repo-infra.json` maps a rule id to the reason the rule does not apply:

@@ -438,6 +438,53 @@ homebrew:
     bin: mytool
 ```
 
+### ri-release-macos-signed
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-macos-signed.yml@v2`.
+
+**Purpose:** Run the project's build of a macOS installer package or disk image with the Developer ID certificates in a temporary keychain, then notarize, staple and check every file it wrote (D36).
+
+**Choose it when:** The project ships a Mac app or tool as a .pkg or .dmg (macos-signed in references/project-shape.md).
+
+**The repository supplies:** The command `build`, which signs with the Developer ID identities it finds in the keychain search list and writes the files `assets` names; the secrets MACOS_CERTS_P12, MACOS_CERTS_PASSWORD, NOTARY_KEY_P8, NOTARY_KEY_ID and NOTARY_ISSUER.
+
+**Produces:** The artifact release-asset-macos with every file `assets` names; list them in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `build` | string | yes |  | The command that builds and signs the release, run by bash in the checkout, for example ./build.sh or make dist. |
+| `assets` | string | yes |  | Space-separated paths or globs of the .pkg and .dmg files the build writes, relative to the checkout. |
+| `timeout_minutes` | number | no | `60` | How long the job may run before it is cancelled; notarization alone can take 15 minutes. |
+
+| Secret | Required | Description |
+|---|---|---|
+| `MACOS_CERTS_P12` | yes | Developer ID Application and Developer ID Installer with their private keys, exported together as one .p12, base64. A project that ships only .dmg files needs no Installer certificate. |
+| `MACOS_CERTS_PASSWORD` | yes | The password of the .p12. |
+| `NOTARY_KEY_P8` | yes | The App Store Connect API key (.p8) notarytool signs in with. |
+| `NOTARY_KEY_ID` | yes | The key ID of that API key. |
+| `NOTARY_ISSUER` | yes | The issuer ID of the App Store Connect team. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+macos:
+  uses: oposs/repo-infra/.github/workflows/ri-release-macos-signed.yml@v2
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    build: ./build.sh
+    assets: build/*.pkg
+  secrets:
+    MACOS_CERTS_P12: ${{ secrets.MACOS_CERTS_P12 }}
+    MACOS_CERTS_PASSWORD: ${{ secrets.MACOS_CERTS_PASSWORD }}
+    NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+    NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+    NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+```
+
 ### ri-release-nfpm
 
 Called as `oposs/repo-infra/.github/workflows/ri-release-nfpm.yml@v2`.
