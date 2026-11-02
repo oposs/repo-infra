@@ -607,7 +607,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-gitea.yml@v2`.
 
 **Choose it when:** The project ships packages to Gitea.
 
-**The repository supplies:** gitea_packages (url, owner) in .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
+**The repository supplies:** gitea_packages (url, owner, optional debian.distributions) in .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|

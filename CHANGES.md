@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `ri-publish-gitea` can put each `.deb` into its own apt distribution, so a project that builds one package per Debian or Ubuntu release no longer mixes them in `stable`: map file-name globs to distributions in `gitea_packages.debian.distributions`, for example `"wg-wrangler_*~noble_*.deb": "noble"`. With the map set, a `.deb` that no glob or several globs match stops the job before the first upload, and the message names the file and the globs. On a re-run, a `.deb` whose file name Gitea lists in several distributions counts as uploaded only when every listed copy is the same file.
 
 ### Changed
 
