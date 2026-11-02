@@ -14,7 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
-- `ri-release-homebrew` builds the bottle on `macos-15`, because GitHub retired the `macos-14` runner on 2026-11-02 and a release build waiting for it stays `queued` until GitHub cancels it. The bottle is now `<bin>-<version>.arm64_sequoia.bottle.tar.gz`, so a `release_assets` entry ending in `arm64_sonoma.bottle.tar.gz` stops the release: write it as `<bin>-*.bottle.tar.gz`. Macs on macOS 14 Sonoma no longer get a bottle and build the formula from source.
+- `ri-release-homebrew` builds the bottle on `macos-latest`, because GitHub retired the `macos-14` runner on 2026-11-02 and a release build waiting for it stays `queued` until GitHub cancels it. The bottle is now tagged for the oldest macOS its binary runs on, for example `arm64_big_sur` for a Rust binary, so Homebrew pours it on macOS 11 and every later release, not only on the runner's version. Its file name changes with the tag, so a `release_assets` entry ending in `arm64_sonoma.bottle.tar.gz` stops the release: write it as `<bin>-*.bottle.tar.gz`.
 
 ### Fixed
 - `make test-dev` stopped with "cannot attach stdin to a TTY-enabled container because stdin is not a terminal" when it ran with docker from a script, a pipe or CI, and with podman it printed "The input device is not a TTY". `build/container.mk` (`container` v5) now asks for a terminal only when `make` runs on one.
