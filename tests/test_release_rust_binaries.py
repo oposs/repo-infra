@@ -5,8 +5,10 @@ run here, the last two on a fake target tree."""
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import tarfile
+import zipfile
 
 import pytest
 import yaml
@@ -276,3 +278,97 @@ def test_the_guard_runs_on_every_leg_before_the_build():
     names = [s.get("name") for s in doc()["jobs"]["binaries"]["steps"]]
     assert names.index(GUARD) == names.index("Build") - 1
     assert "if" not in step("binaries", GUARD)
+
+
+# --- extra_paths ------------------------------------------------------------
+
+STAGE = "Stage the extra paths"
+LIBRARY = ("require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/"
+           "archive.js`)")
+NODE = shutil.which("node")
+
+
+def test_extra_paths_is_optional_and_empty_by_default():
+    extra = doc()[True]["workflow_call"]["inputs"]["extra_paths"]
+    assert (extra["type"], extra["required"], extra["default"]) == ("string", False, "")
+
+
+def test_every_leg_stages_the_extra_paths_through_the_library_before_the_build():
+    staged = step("binaries", STAGE)
+    assert "if" not in staged
+    assert staged["uses"] == "actions/github-script@v9"
+    assert staged["env"] == {"BIN": "${{ inputs.bin }}",
+                             "EXTRA_PATHS": "${{ inputs.extra_paths }}"}
+    script = staged["with"]["script"]
+    assert LIBRARY in script and "stageExtraPaths(process.env)" in script
+    assert "core.setFailed(error.message)" in script and "${{" not in script
+    names = [s.get("name") for s in doc()["jobs"]["binaries"]["steps"]]
+    assert names.index(STAGE) < names.index(GUARD) < names.index("Build")
+
+
+def stage(work, extra_paths):
+    """Runs the library as the stage step does, in the checkout `work`."""
+    return subprocess.run(
+        [NODE, "-e", "const { stageExtraPaths } = require(process.argv[1]);"
+         "for (const line of stageExtraPaths(process.env)) console.log(line);",
+         str(ROOT / ".github/workflows/lib/archive.js")],
+        cwd=work, env={"PATH": "/usr/bin:/bin", "BIN": "tool", "EXTRA_PATHS": extra_paths},
+        capture_output=True, text=True)
+
+
+def extras(work):
+    (work / "examples/deep").mkdir(parents=True)
+    (work / "examples/config.toml").write_text("a = 1\n")
+    (work / "examples/deep/hook.sh").write_text("#!/bin/sh\n")
+    (work / "docs").mkdir()
+    (work / "docs/guide.md").write_text("guide\n")
+
+
+@pytest.mark.skipif(NODE is None, reason="no node on PATH")
+def test_the_archive_carries_the_extra_paths_at_their_relative_path(tmp_path):
+    work = tmp_path / "src"
+    work.mkdir()
+    extras(work)
+    staged = stage(work, "examples docs/guide.md")
+    assert staged.returncode == 0, staged.stdout + staged.stderr
+    work, done = pack(tmp_path, ["tool.1"])
+    assert done.returncode == 0, done.stdout + done.stderr
+    with tarfile.open(work / "dist/tool-1.2.3-x86_64-unknown-linux-musl.tar.gz") as tar:
+        files = sorted(m.name for m in tar.getmembers() if m.isfile())
+    assert files == ["tool/LICENSE", "tool/README.md", "tool/docs/guide.md",
+                     "tool/examples/config.toml", "tool/examples/deep/hook.sh",
+                     "tool/man/tool.1", "tool/tool"]
+
+
+@pytest.mark.skipif(NODE is None, reason="no node on PATH")
+def test_an_extra_path_that_does_not_exist_fails_and_is_named(tmp_path):
+    staged = stage(tmp_path, "integrations")
+    assert staged.returncode != 0
+    assert ("extra_paths names integrations, which does not exist in the repository"
+            in staged.stderr)
+
+
+PWSH = shutil.which("pwsh")
+
+
+@pytest.mark.skipif(NODE is None or PWSH is None, reason="no node or pwsh on PATH")
+def test_the_windows_zip_carries_the_extra_paths_too(tmp_path):
+    work = tmp_path / "src"
+    release = work / "target/x86_64-pc-windows-msvc/release"
+    release.mkdir(parents=True)
+    (release / "tool.exe").write_text("MZ")
+    (work / "README.md").write_text("readme\n")
+    (work / "LICENSE").write_text("license\n")
+    extras(work)
+    staged = stage(work, "examples docs/guide.md")
+    assert staged.returncode == 0, staged.stdout + staged.stderr
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "BIN": "tool", "VERSION": "1.2.3",
+           "TARGET": "x86_64-pc-windows-msvc"}
+    done = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-Command",
+                           step("binaries", "Pack the zip")["run"]],
+                          cwd=work, env=env, capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    with zipfile.ZipFile(work / "dist/tool-1.2.3-x86_64-pc-windows-msvc.zip") as zipped:
+        files = sorted(n.replace("\\", "/") for n in zipped.namelist() if not n.endswith(("/", "\\")))
+    assert files == ["tool/LICENSE", "tool/README.md", "tool/docs/guide.md",
+                     "tool/examples/config.toml", "tool/examples/deep/hook.sh", "tool/tool.exe"]

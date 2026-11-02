@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `ri-release-rust-binaries` and `ri-release-go-binaries` take `extra_paths`, a blank-separated list of files or folders relative to the repository root, and pack each into every archive under `<bin>/` at its own path, the Windows `.zip` included. A formula can then `pkgshare.install` such a path, for example `examples`, without `brew install --build-bottle` failing in `ri-release-homebrew`. A listed path that does not exist, an absolute path, or one that leaves the repository with `..` stops the build with a message naming the path.
 
 ### Changed
 
