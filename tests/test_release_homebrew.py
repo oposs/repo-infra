@@ -30,7 +30,7 @@ def step(job, name):
 
 def test_the_bottle_legs_and_the_formula_condition():
     jobs = doc()["jobs"]
-    assert jobs["bottles"]["strategy"]["matrix"]["include"] == [{"os": "macos-15"}]
+    assert jobs["bottles"]["strategy"]["matrix"]["include"] == [{"os": "macos-latest"}]
     assert "continue-on-error" not in jobs["bottles"]
     assert jobs["formula"]["needs"] == "bottles"
     assert "if" not in jobs["formula"]
@@ -51,7 +51,7 @@ def test_the_root_url_comes_from_the_repository_input():
 
 @pytest.mark.parametrize("job,name,call", [
     ("bottles", "Point the formula at the built archives", "pointAtArchives(process.env)"),
-    ("bottles", "Rename the bottles", "renameBottles()"),
+    ("bottles", "Rename the bottles", "renameBottles(process.env)"),
     ("formula", "Rewrite the formula", "rewriteFormula(process.env)"),
 ])
 def test_each_formula_step_runs_the_library_and_fails_with_its_message(job, name, call):

@@ -134,7 +134,6 @@ function nodeIo() {
     mkdir: (path) => fs.mkdirSync(path, { recursive: true }),
     list: (path) => (fs.existsSync(path) ? fs.readdirSync(path).sort() : []),
     rename: (from, to) => fs.renameSync(from, to),
-    copy: (from, to) => fs.copyFileSync(from, to),
     sha256: (path) => crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex'),
   };
 }
@@ -161,19 +160,96 @@ function pointAtArchives(env, io = nodeIo()) {
   return out;
 }
 
+function compareVersions(a, b) {
+  const x = String(a).split('.').map(Number);
+  const y = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
+    const d = (x[i] || 0) - (y[i] || 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+// Homebrew pours a bottle on the macOS its tag names and on every newer one,
+// and checks nothing else about where it was built (find_older_compatible_tag
+// and pour_bottle? in Homebrew/brew). `brew bottle` tags with the runner's
+// macOS, but the binaries in the bottle were built elsewhere and run from
+// their minos on. The bottle claims the oldest macOS brew knows that is not
+// older than the newest minos of its files. `symbols` is brew's
+// MacOSVersion::SYMBOLS: a name dropped there stops matching any Mac without
+// an error, so the choice is read from brew at every release.
+function claimedTag(builtTag, symbols, minos) {
+  const system = Object.keys(symbols)
+    .filter((name) => builtTag === name || builtTag.endsWith(`_${name}`))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!system) throw new Error(`brew bottle wrote the tag ${builtTag}, which names no macOS brew knows`);
+  if (minos.length === 0) throw new Error('no Mach-O file in the bottle names a minimum macOS');
+  const floor = minos.reduce((a, b) => (compareVersions(a, b) >= 0 ? a : b));
+  const oldest = Object.entries(symbols)
+    .filter(([, version]) => compareVersions(version, floor) >= 0)
+    .sort(([, a], [, b]) => compareVersions(a, b))[0];
+  if (!oldest) throw new Error(`no macOS brew knows is as new as ${floor}, the minos of the bottle`);
+  return `${builtTag.slice(0, builtTag.length - system.length)}${oldest[0]}`;
+}
+
+// The json with each tag replaced by its claim, and the file names with it.
+function retagJson(json, claim) {
+  const out = JSON.parse(JSON.stringify(json));
+  for (const { bottle } of Object.values(out)) {
+    const tags = {};
+    for (const [tag, entry] of Object.entries(bottle.tags)) {
+      const to = claim(tag);
+      for (const key of ['filename', 'local_filename']) {
+        entry[key] = entry[key].replace(`.${tag}.bottle.`, `.${to}.bottle.`);
+      }
+      tags[to] = entry;
+    }
+    bottle.tags = tags;
+  }
+  return out;
+}
+
+// The minos of every Mach-O load command in `otool -l` output:
+// LC_BUILD_VERSION names it minos, the older LC_VERSION_MIN_MACOSX version.
+// Text otool prints for a file that is no object file holds neither.
+function minosOf(text) {
+  const found = [];
+  let cmd = '';
+  for (const line of text.split('\n')) {
+    const [key, value] = line.trim().split(/\s+/);
+    if (key === 'cmd') cmd = value;
+    else if ((cmd === 'LC_BUILD_VERSION' && key === 'minos')
+      || (cmd === 'LC_VERSION_MIN_MACOSX' && key === 'version')) found.push(value);
+  }
+  return found;
+}
+
 // Bottle leg, after `brew bottle --json`: bottle/ receives each bottle under
-// the name its json records, and the json.
-function renameBottles(io = nodeIo()) {
+// the name its json records, retagged to the oldest macOS it runs on, and
+// the json. $RUNNER_TEMP holds macos-symbols.json, brew's macOS names, and
+// otool.txt, `otool -l` of every file in the keg.
+function renameBottles(env, io = nodeIo()) {
   const jsons = io.list('.').filter((name) => name.endsWith('.bottle.json'));
   if (jsons.length === 0) throw new Error('brew bottle wrote no json');
+  const symbols = JSON.parse(io.read(`${env.RUNNER_TEMP}/macos-symbols.json`));
+  const minos = minosOf(io.read(`${env.RUNNER_TEMP}/otool.txt`));
   io.mkdir('bottle');
   const moved = [];
   for (const name of jsons) {
-    for (const { from, to } of bottleFiles(JSON.parse(io.read(name)))) {
-      io.rename(from, `bottle/${to}`);
+    const built = JSON.parse(io.read(name));
+    const claims = {};
+    const json = retagJson(built, (tag) => {
+      claims[tag] = claimedTag(tag, symbols, minos);
+      return claims[tag];
+    });
+    const from = bottleFiles(built);
+    bottleFiles(json).forEach(({ to }, i) => {
+      io.rename(from[i].from, `bottle/${to}`);
       moved.push(to);
-    }
-    io.copy(name, `bottle/${name}`);
+    });
+    let out = name;
+    for (const [tag, to] of Object.entries(claims)) out = out.replace(`.${tag}.bottle.`, `.${to}.bottle.`);
+    io.write(`bottle/${out}`, `${JSON.stringify(json, null, 2)}\n`);
   }
   return moved;
 }
@@ -202,6 +278,6 @@ function rewriteFormula(env, io = nodeIo()) {
 }
 
 module.exports = {
-  MARKERS, localFormula, bottleFiles, bottleBlock, releaseFormula,
+  MARKERS, localFormula, bottleFiles, bottleBlock, releaseFormula, claimedTag, retagJson, minosOf,
   pointAtArchives, renameBottles, rewriteFormula,
 };

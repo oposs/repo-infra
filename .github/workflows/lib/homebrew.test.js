@@ -87,7 +87,6 @@ function fakeIo(files) {
       .map((p) => (dir === '.' ? p : p.slice(dir.length + 1)))
       .filter((p) => !p.includes('/')).sort(),
     rename: (from, to) => { store.set(to, store.get(from)); store.delete(from); },
-    copy: (from, to) => store.set(to, store.get(from)),
     sha256: (path) => digest(store.get(path.replace(/^\/w\//, ''))),
   };
 }
@@ -154,17 +153,85 @@ test('a missing formula fails naming it', () => {
   refusal(() => brew.pointAtArchives(ENV, fakeIo({})), /^Formula\/tool\.rb does not exist$/);
 });
 
-test('the bottles get the names their json records', () => {
-  const io = fakeIo({ 'arm.bottle.json': JSON.stringify(ARM), 'intel.bottle.json': JSON.stringify(INTEL),
-    'tool--1.2.3.arm64_sonoma.bottle.tar.gz': 'a', 'tool--1.2.3.sequoia.bottle.tar.gz': 'b' });
-  assert.deepEqual(brew.renameBottles(io),
-    ['tool-1.2.3.arm64_sonoma.bottle.tar.gz', 'tool-1.2.3.sequoia.bottle.tar.gz']);
-  assert.deepEqual(io.list('bottle'), ['arm.bottle.json', 'intel.bottle.json',
-    'tool-1.2.3.arm64_sonoma.bottle.tar.gz', 'tool-1.2.3.sequoia.bottle.tar.gz']);
+// MacOSVersion::SYMBOLS of Homebrew/brew 856ce8c (2026-11-02).
+const SYMBOLS = { golden_gate: '27', tahoe: '26', sequoia: '15', sonoma: '14',
+  ventura: '13', monterey: '12', big_sur: '11' };
+const MACOS = { RUNNER_TEMP: '/t' };
+// `otool -l` of a Rust binary (cut down), and what it prints for a text file.
+const OTOOL = `/w/keg/bin/tool:
+Load command 9
+      cmd LC_BUILD_VERSION
+  cmdsize 32
+ platform 1
+    minos 11.0
+      sdk 15.0
+   ntools 1
+     tool 3
+  version 1100.0
+/w/keg/README.md: is not an object file
+`;
+const MACOS_FILES = { '/t/macos-symbols.json': JSON.stringify(SYMBOLS), '/t/otool.txt': OTOOL };
+
+test('otool output gives the minos of both load command kinds', () => {
+  assert.deepEqual(brew.minosOf(OTOOL), ['11.0']);
+  const old = 'Load command 8\n      cmd LC_VERSION_MIN_MACOSX\n  cmdsize 16\n  version 10.12\n      sdk 10.13\n';
+  assert.deepEqual(brew.minosOf(OTOOL + old), ['11.0', '10.12']);
+  assert.deepEqual(brew.minosOf('/w/keg/README.md: is not an object file\n'), []);
+});
+
+test('the bottle claims the oldest macOS its binaries run on', () => {
+  assert.equal(brew.claimedTag('arm64_tahoe', SYMBOLS, ['11.0']), 'arm64_big_sur');
+  assert.equal(brew.claimedTag('arm64_tahoe', SYMBOLS, ['10.12']), 'arm64_big_sur');
+  assert.equal(brew.claimedTag('tahoe', SYMBOLS, ['10.12']), 'big_sur');
+});
+
+test('a minos inside a major version claims the next one', () => {
+  assert.equal(brew.claimedTag('arm64_tahoe', SYMBOLS, ['11.3']), 'arm64_monterey');
+});
+
+test('the newest minos of the bottle decides', () => {
+  assert.equal(brew.claimedTag('arm64_tahoe', SYMBOLS, ['11.0', '12.0', '10.12']), 'arm64_monterey');
+});
+
+test('a macOS brew dropped is never claimed', () => {
+  const { big_sur: _, ...later } = SYMBOLS;
+  assert.equal(brew.claimedTag('arm64_tahoe', later, ['11.0']), 'arm64_monterey');
+});
+
+test('a tag brew does not know fails', () => {
+  refusal(() => brew.claimedTag('arm64_future', SYMBOLS, ['11.0']),
+    /^brew bottle wrote the tag arm64_future, which names no macOS brew knows$/);
+});
+
+test('a bottle without a Mach-O minos fails', () => {
+  refusal(() => brew.claimedTag('arm64_tahoe', SYMBOLS, []),
+    /^no Mach-O file in the bottle names a minimum macOS$/);
+});
+
+test('a minos newer than every macOS brew knows fails', () => {
+  refusal(() => brew.claimedTag('arm64_tahoe', SYMBOLS, ['28.0']),
+    /^no macOS brew knows is as new as 28\.0, the minos of the bottle$/);
+});
+
+test('the bottles get their recorded names under the claimed tag', () => {
+  const io = fakeIo({ ...MACOS_FILES, 'tool--1.2.3.arm64_tahoe.bottle.json': JSON.stringify(bottleJson('arm64_tahoe', 'a'.repeat(64))),
+    'tool--1.2.3.arm64_tahoe.bottle.tar.gz': 'a' });
+  assert.deepEqual(brew.renameBottles(MACOS, io), ['tool-1.2.3.arm64_big_sur.bottle.tar.gz']);
+  assert.deepEqual(io.list('bottle'), ['tool--1.2.3.arm64_big_sur.bottle.json',
+    'tool-1.2.3.arm64_big_sur.bottle.tar.gz']);
+  assert.equal(io.store.get('bottle/tool-1.2.3.arm64_big_sur.bottle.tar.gz'), 'a');
+  const json = JSON.parse(io.store.get('bottle/tool--1.2.3.arm64_big_sur.bottle.json'));
+  assert.deepEqual(json, bottleJson('arm64_big_sur', 'a'.repeat(64)));
+});
+
+test('the retagged json gives the formula the claimed tag', () => {
+  const json = brew.retagJson(bottleJson('arm64_tahoe', 'a'.repeat(64)), () => 'arm64_big_sur');
+  const lines = brew.bottleBlock([json], { repository: 'owner/tool', version: '1.2.3' });
+  assert.equal(lines[2], `    sha256 cellar: :any_skip_relocation, arm64_big_sur: "${'a'.repeat(64)}"`);
 });
 
 test('no bottle json fails the rename', () => {
-  refusal(() => brew.renameBottles(fakeIo({})), /^brew bottle wrote no json$/);
+  refusal(() => brew.renameBottles(MACOS, fakeIo(MACOS_FILES)), /^brew bottle wrote no json$/);
 });
 
 test('two bottles give the version, the four checksums and both bottles', () => {
