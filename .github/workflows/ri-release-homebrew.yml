@@ -4,7 +4,7 @@
 # Choose: The project is a Rust or Go program users install with Homebrew (homebrew in references/project-shape.md).
 # Supplies: Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
 # Pieces: ri-release-rust-binaries or ri-release-go-binaries
-# Produces: The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
+# Produces: The artifact release-asset-bottle-macos-15 with <bin>-<version>.arm64_sequoia.bottle.tar.gz (list it in release_assets as <bin>-*.bottle.tar.gz, which survives the next runner change) and release-files with the formula; no other job may write release-files.
 # Call:
 #   homebrew:
 #     needs: binaries
@@ -56,12 +56,13 @@ jobs:
       matrix:
         include:
           # The oldest arm64 image: Homebrew lets a bottle serve a newer
-          # macOS, never an older one. No Intel bottle: Homebrew moved Intel
+          # macOS, never an older one. GitHub retired macos-14 on
+          # 2026-11-02, so Sonoma users build from source from then on. No Intel bottle: Homebrew moved Intel
           # macOS to Tier 3 in September 2026 and builds no Intel bottles
           # itself. Intel Macs install from the x86_64-apple-darwin archive,
           # and an optional Intel leg that timed out in "Set up job" turned
           # the whole run cancelled (mtuspy proof, 2026-10-11).
-          - os: macos-14
+          - os: macos-15
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1

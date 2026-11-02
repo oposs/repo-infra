@@ -30,7 +30,7 @@ def step(job, name):
 
 def test_the_bottle_legs_and_the_formula_condition():
     jobs = doc()["jobs"]
-    assert jobs["bottles"]["strategy"]["matrix"]["include"] == [{"os": "macos-14"}]
+    assert jobs["bottles"]["strategy"]["matrix"]["include"] == [{"os": "macos-15"}]
     assert "continue-on-error" not in jobs["bottles"]
     assert jobs["formula"]["needs"] == "bottles"
     assert "if" not in jobs["formula"]
