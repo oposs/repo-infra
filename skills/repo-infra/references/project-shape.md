@@ -295,11 +295,19 @@ Direct download: a link to `https://github.com/<owner>/<repo>/releases/latest`.
   <bin>/man/<every page in man/>
   <bin>/README.md
   <bin>/LICENSE
+  <bin>/<every path in extra_paths>
 ```
 
 `man/` holds whatever `make man` produced: `build/man.mk` takes the section
 from the manual's front matter, so a daemon ships `man/<page>.8`. The Windows
 `.zip` has the same layout without `man/`.
+
+`extra_paths` of `ri-release-rust-binaries` and `ri-release-go-binaries` lists
+further files or folders, relative to the repository root, separated by
+blanks. Each lands under `<bin>/` at its own relative path, in every archive:
+`extra_paths: examples` ships `<bin>/examples/`. A path that does not exist,
+an absolute path and a path with `..` that leaves the repository fail the
+build.
 
 ## Formula template
 
@@ -307,7 +315,10 @@ from the manual's front matter, so a daemon ships `man/<page>.8`. The Windows
 their marker comments, and the block between `# BOTTLE-START` and
 `# BOTTLE-END`. Each `url` line stands directly above its `sha256` line. The
 formula belongs to the repository: it decides what else is installed, such as
-`examples/`.
+`examples/`. A path the formula installs must be in the archive, so the
+binaries piece lists it in `extra_paths`; the formula then adds
+`pkgshare.install "examples"` to `install`, or `brew install --build-bottle`
+fails in `ri-release-homebrew`.
 
 ```ruby
 # Homebrew formula for <bin>. This repository is its own tap.

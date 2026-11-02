@@ -274,3 +274,49 @@ def test_the_windows_zip_has_the_same_layout_without_man(tmp_path, leg):
     with zipfile.ZipFile(archive) as zipped:
         files = sorted(n for n in zipped.namelist() if not n.endswith("/"))
     assert files == ["tool/LICENSE", "tool/README.md", "tool/tool.exe"]
+
+
+# --- extra_paths: the input and the step of ri-release-rust-binaries ----------
+
+STAGE = "Stage the extra paths"
+NODE = shutil.which("node")
+
+
+def test_every_leg_stages_the_extra_paths_as_the_rust_piece_does():
+    names = [s.get("name") for s in doc()["jobs"]["binaries"]["steps"]]
+    assert names.index(STAGE) < names.index("Build")
+    assert step("binaries", STAGE) == step("binaries", STAGE, RUST)
+
+
+def stage(work, extra_paths):
+    """Runs the library as the stage step does, in the checkout `work`."""
+    return subprocess.run(
+        [NODE, "-e", "const { stageExtraPaths } = require(process.argv[1]);"
+         "for (const line of stageExtraPaths(process.env)) console.log(line);",
+         str(ROOT / ".github/workflows/lib/archive.js")],
+        cwd=work, env={"PATH": "/usr/bin:/bin", "BIN": "tool", "EXTRA_PATHS": extra_paths},
+        capture_output=True, text=True)
+
+
+@pytest.mark.skipif(NODE is None, reason="no node on PATH")
+@pytest.mark.parametrize("leg", [UNIX[0], WINDOWS[0]], ids=lambda leg: leg["target"])
+def test_every_archive_carries_the_extra_paths_at_their_relative_path(tmp_path, leg):
+    work = tmp_path / "src"
+    (work / "examples/deep").mkdir(parents=True)
+    (work / "examples/config.toml").write_text("a = 1\n")
+    (work / "examples/deep/hook.sh").write_text("#!/bin/sh\n")
+    staged = stage(work, "examples")
+    assert staged.returncode == 0, staged.stdout + staged.stderr
+    windows = bool(leg.get("windows"))
+    work, done = pack(tmp_path, leg, None if windows else ["tool.1"])
+    assert done.returncode == 0, done.stdout + done.stderr
+    extra = ["tool/examples/config.toml", "tool/examples/deep/hook.sh"]
+    if windows:
+        with zipfile.ZipFile(work / f"dist/tool-1.2.3-{leg['target']}.zip") as zipped:
+            files = sorted(n for n in zipped.namelist() if not n.endswith("/"))
+        assert files == sorted(["tool/LICENSE", "tool/README.md", "tool/tool.exe", *extra])
+    else:
+        with tarfile.open(work / f"dist/tool-1.2.3-{leg['target']}.tar.gz") as tar:
+            files = sorted(m.name for m in tar.getmembers() if m.isfile())
+        assert files == sorted(["tool/LICENSE", "tool/README.md", "tool/man/tool.1",
+                                "tool/tool", *extra])
