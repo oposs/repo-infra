@@ -620,3 +620,27 @@ def test_a_sha_pin_does_not_raise_the_floor(tmp_path):
     assert own_pins(tmp_path, {
         "docs.yml": steps("actions/cache@v4"),
         "build.yml": steps("actions/cache@0123456789abcdef0123456789abcdef01234567")}) == []
+
+
+def test_gitea_distributions_map_that_gitea_accepts_is_fine(tmp_path):
+    packages = {"url": "https://gitea.example.org", "owner": "acme",
+                "debian": {"distributions": {"app_*~noble_*.deb": "noble",
+                                             "app_*~jammy_*.deb": "jammy"}}}
+    assert config(tmp_path, {"version_files": VERSIONS, "gitea_packages": packages},
+                  GITEA_DOCS) == []
+
+
+@pytest.mark.parametrize("distributions,message", [
+    (["noble"], "must be an object of file-name globs and distribution names"),
+    ({"": "noble"}, "has an empty glob"),
+    ({"app_*.deb": ""}, '"app_*.deb" must name a distribution'),
+    ({"app_*.deb": 24}, '"app_*.deb" must name a distribution'),
+    ({"app_*.deb": "no ble"}, 'names the distribution "no ble", which Gitea refuses'),
+])
+def test_a_wrong_gitea_distributions_map_is_a_problem(tmp_path, distributions, message):
+    packages = {"url": "https://gitea.example.org", "owner": "acme",
+                "debian": {"distributions": distributions}}
+    found = config(tmp_path, {"version_files": VERSIONS, "gitea_packages": packages},
+                   GITEA_DOCS)
+    assert [(n, s) for n, s, _ in found] == [("gitea_packages", "problem")]
+    assert message in found[0][2]

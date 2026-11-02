@@ -478,7 +478,39 @@ def config_items(repo_root, docs):
                               "ri-publish-gitea reads \"gitea_packages\" in "
                               f"{CONFIG} and it lacks {' and '.join(absent)}; set \"url\" "
                               "(the Gitea base URL) and \"owner\""))
+        debian = gitea.get("debian")
+        problem = gitea_distributions_problem(
+            debian.get("distributions") if isinstance(debian, dict) else None)
+        if problem:
+            items.append(Item("config", "gitea_packages", "problem", problem))
     return items
+
+
+# What Gitea accepts as a distribution name (IsValidDistributionOrComponent);
+# lib/gitea.js refuses the same names when the release runs.
+GITEA_SYMBOL = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9.~+_-]*")
+
+
+def gitea_distributions_problem(distributions):
+    """The problem with gitea_packages.debian.distributions, or None.
+
+    ri-publish-gitea reads the map only when the release publishes, so a
+    wrong one would otherwise show up as a failed publish job."""
+    if distributions is None:
+        return None
+    where = '"gitea_packages.debian.distributions"'
+    if not isinstance(distributions, dict):
+        return f"{where} must be an object of file-name globs and distribution names"
+    for glob, dist in distributions.items():
+        if glob == "":
+            return f"{where} has an empty glob"
+        if not isinstance(dist, str) or dist == "":
+            return f'{where}: "{glob}" must name a distribution (a non-empty string)'
+        if not GITEA_SYMBOL.fullmatch(dist):
+            return (f'{where}: "{glob}" names the distribution "{dist}", which Gitea '
+                    "refuses; use letters, digits and . ~ + _ - only, starting with a "
+                    "letter or digit")
+    return None
 
 
 def path_filter_items(docs):

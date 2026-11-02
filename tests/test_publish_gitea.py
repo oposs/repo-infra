@@ -106,3 +106,11 @@ def test_the_derived_basic_credential_is_masked():
 
 def test_every_job_has_a_timeout():
     assert isinstance(job()["timeout-minutes"], int)
+
+
+def test_every_deb_is_placed_in_a_distribution_before_any_upload():
+    # A .deb that no glob or several globs of debian.distributions match stops
+    # the job before the first file goes up, not halfway through the release.
+    s = script()
+    assert "gitea.debianDistribution" in s and "unplaced" in s
+    assert s.index("unplaced.length > 0") < s.index("method: 'PUT'")

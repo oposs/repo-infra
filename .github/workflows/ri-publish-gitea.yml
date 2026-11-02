@@ -2,8 +2,9 @@
 #
 # Purpose: Upload the release's .deb and .rpm files to a Gitea package registry.
 # Choose: The project ships packages to Gitea.
-# Supplies: gitea_packages (url, owner) in .github/repo-infra.json, the secret
-#   GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
+# Supplies: gitea_packages (url, owner, optional debian.distributions) in
+#   .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable
+#   GITEA_PACKAGE_USER.
 # Call:
 #   gitea:
 #     needs: [publish]
@@ -18,7 +19,9 @@
 #       GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
 #
 # Uploads every .deb and .rpm on the release to the Gitea package
-# registry named in .github/repo-infra.json "gitea_packages". Gitea signs
+# registry named in .github/repo-infra.json "gitea_packages". A .deb goes to
+# the apt distribution whose glob in "debian.distributions" matches its file
+# name, or to "debian.distribution" when there is no such map. Gitea signs
 # the Debian and RPM metadata and, with ?sign=true, each rpm, with its own
 # per-owner key; no repository holds a signing key.
 #
@@ -107,6 +110,15 @@ jobs:
             const packages = assets
               .map((asset) => ({ asset, pkg: gitea.parsePackageFile(asset.name) }))
               .filter((entry) => entry.pkg);
+            // Each .deb gets its distribution before anything goes up, so a
+            // file that no glob or several globs claim stops the whole upload.
+            const unplaced = [];
+            for (const { pkg } of packages) {
+              if (pkg.kind !== 'debian') continue;
+              const placed = gitea.debianDistribution(cfg, pkg.file);
+              if (placed.ok) pkg.distribution = placed.distribution;
+              else unplaced.push(placed.message);
+            }
             // Every .deb and .rpm is uploaded; one that cannot be named is a
             // failure, not a file to skip.
             const unparsable = assets
@@ -116,6 +128,12 @@ jobs:
               core.setFailed(`Cannot upload ${unparsable.join(', ')}: the file name does not `
                 + 'have the shape Gitea needs. Expected name_version_arch.deb (lower-case '
                 + 'name) or name-version-release.arch.rpm.');
+              return;
+            }
+            if (unplaced.length > 0) {
+              core.setFailed(`Cannot upload: ${unplaced.join('; ')}. With `
+                + '"gitea_packages.debian.distributions" set, every .deb needs exactly one '
+                + 'glob that matches its file name.');
               return;
             }
             if (packages.length === 0) {
@@ -146,7 +164,8 @@ jobs:
                 body,
               });
               if (res.ok) {
-                core.notice(`${asset.name}: uploaded to ${cfg.owner}'s ${pkg.kind} registry.`);
+                const where = pkg.kind === 'debian' ? `, distribution ${pkg.distribution}` : '';
+                core.notice(`${asset.name}: uploaded to ${cfg.owner}'s ${pkg.kind} registry${where}.`);
                 continue;
               }
               if (res.status === 409) {

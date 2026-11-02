@@ -248,7 +248,9 @@ One snippet per channel. `<owner>` and `<repo>` name the GitHub repository,
 are the package names (Smalti publishes `fonts-smalti` and `smalti-fonts`).
 `<gitea-url>` and `<gitea-owner>` come from `gitea_packages`, and so do
 `<distribution>` and `<component>` (`gitea_packages.debian`, default `stable`
-and `main`).
+and `main`). A project with `gitea_packages.debian.distributions` publishes one
+distribution per release codename; its snippet writes
+`$(. /etc/os-release && echo $VERSION_CODENAME)` for `<distribution>`.
 
 Debian and Ubuntu:
 

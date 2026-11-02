@@ -10,7 +10,7 @@ const CFG = g.packageConfig(CONFIG);
 test('the default layout is one channel', () => {
   assert.deepEqual(CFG, {
     url: 'https://gitea.oetiker.ch', owner: 'oposs',
-    distribution: 'stable', component: 'main', group: '',
+    distribution: 'stable', distributions: {}, component: 'main', group: '',
   });
 });
 
@@ -86,4 +86,92 @@ test('a 409 for an rpm matches by file name and says the content was not compare
 test('a 409 whose file Gitea does not list fails for either kind', () => {
   assert.equal(g.conflictVerdict(DEB, 'abc', []).ok, false);
   assert.equal(g.conflictVerdict(RPM, 'abc', [{ name: 'mdmost-0.5.0-1.aarch64.rpm' }]).ok, false);
+});
+
+const WG = {
+  gitea_packages: {
+    url: 'https://gitea.oetiker.ch', owner: 'oposs',
+    debian: {
+      component: 'main',
+      distributions: {
+        'wg-wrangler_*~noble_*.deb': 'noble',
+        'wg-wrangler_*~jammy_*.deb': 'jammy',
+        'wg-wrangler_*~trixie_*.deb': 'trixie',
+      },
+    },
+  },
+};
+const WGCFG = g.packageConfig(WG);
+
+test('globs know * and ? and match the whole name', () => {
+  assert.equal(g.globMatches('wg-wrangler_*~noble_*.deb', 'wg-wrangler_0.4.1~noble_amd64.deb'), true);
+  assert.equal(g.globMatches('*~noble_*.deb', 'x_0.4.1~noble_amd64.deb.sig'), false);
+  assert.equal(g.globMatches('noble', 'x_0.4.1~noble_amd64.deb'), false);
+  assert.equal(g.globMatches('x_1.?_amd64.deb', 'x_1.2_amd64.deb'), true);
+  assert.equal(g.globMatches('x_1.?_amd64.deb', 'x_1.23_amd64.deb'), false);
+  // Every other character is literal, the dot included.
+  assert.equal(g.globMatches('x_1.2_amd64.deb', 'x_1x2_amd64.deb'), false);
+  assert.equal(g.globMatches('x+(1)_[a]_amd64.deb', 'x+(1)_[a]_amd64.deb'), true);
+});
+
+test('a deb matching one glob goes to that distribution', () => {
+  const file = 'wg-wrangler_0.4.1~noble_amd64.deb';
+  assert.deepEqual(g.debianDistribution(WGCFG, file), { ok: true, distribution: 'noble' });
+  const pkg = { ...g.parsePackageFile(file), distribution: 'noble' };
+  assert.equal(g.uploadUrl(WGCFG, pkg),
+    'https://gitea.oetiker.ch/api/packages/oposs/debian/pool/noble/main/upload');
+});
+
+test('without a map every deb goes to debian.distribution', () => {
+  assert.deepEqual(g.debianDistribution(CFG, 'mdmost_0.5.0-1_amd64.deb'),
+    { ok: true, distribution: 'stable' });
+  const own = g.packageConfig({ gitea_packages: {
+    url: 'https://x', owner: 'o', debian: { distribution: 'bookworm', distributions: {} } } });
+  assert.deepEqual(g.debianDistribution(own, 'mdmost_0.5.0-1_amd64.deb'),
+    { ok: true, distribution: 'bookworm' });
+});
+
+test('with a map a deb no glob matches is refused, naming the file', () => {
+  const v = g.debianDistribution(WGCFG, 'wg-wrangler_0.4.1~bookworm_amd64.deb');
+  assert.equal(v.ok, false);
+  assert.equal(v.message, 'wg-wrangler_0.4.1~bookworm_amd64.deb: no glob in '
+    + '"gitea_packages.debian.distributions" matches it');
+});
+
+test('a deb several globs match is refused, naming file and globs', () => {
+  const cfg = g.packageConfig({ gitea_packages: { url: 'https://x', owner: 'o', debian: {
+    distributions: { '*~noble_*.deb': 'noble', 'wg-wrangler_*.deb': 'stable' } } } });
+  const v = g.debianDistribution(cfg, 'wg-wrangler_0.4.1~noble_amd64.deb');
+  assert.equal(v.ok, false);
+  assert.equal(v.message, 'wg-wrangler_0.4.1~noble_amd64.deb: several globs in '
+    + '"gitea_packages.debian.distributions" match it (*~noble_*.deb, wg-wrangler_*.deb)');
+});
+
+test('a malformed distributions map is refused with the key named', () => {
+  const bad = (distributions) => () => g.packageConfig({ gitea_packages: {
+    url: 'https://x', owner: 'o', debian: { distributions } } });
+  for (const shape of [null, [], 'noble', 3]) {
+    assert.throws(bad(shape), /"gitea_packages\.debian\.distributions" must be an object/,
+      JSON.stringify(shape));
+  }
+  assert.throws(bad({ '': 'noble' }), /has an empty glob/);
+  assert.throws(bad({ '*.deb': '' }), /"\*\.deb" must name a distribution/);
+  assert.throws(bad({ '*.deb': 7 }), /"\*\.deb" must name a distribution/);
+  assert.throws(bad({ '*.deb': 'noble main' }), /Gitea refuses/);
+  assert.throws(bad({ '*.deb': '-noble' }), /Gitea refuses/);
+});
+
+test('rpm ignores the distribution map', () => {
+  assert.equal(g.uploadUrl(WGCFG, g.parsePackageFile('wg-wrangler-0.4.1-1.x86_64.rpm')),
+    'https://gitea.oetiker.ch/api/packages/oposs/rpm/upload?sign=true');
+});
+
+test('a 409 for a deb whose name Gitea lists in several distributions', () => {
+  const pkg = { ...DEB, distribution: 'noble' };
+  assert.equal(g.conflictVerdict(pkg, 'abc', [
+    { name: DEB.file, sha256: 'abc' }, { name: DEB.file, sha256: 'abc' }]).ok, true);
+  const v = g.conflictVerdict(pkg, 'abc', [
+    { name: DEB.file, sha256: 'abc' }, { name: DEB.file, sha256: 'def' }]);
+  assert.equal(v.ok, false);
+  assert.match(v.message, /2 files of this name .* in noble$/);
 });

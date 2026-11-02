@@ -327,10 +327,26 @@ the piece and `gitea_packages` lacks `url` or `owner`.
       "rpm": {"group": ""}
     }
 
+One `.deb` per release, named for example `wg-wrangler_0.4.1~noble_amd64.deb`:
+
+    "debian": {
+      "component": "main",
+      "distributions": {
+        "wg-wrangler_*~bookworm_*.deb": "bookworm",
+        "wg-wrangler_*~noble_*.deb": "noble"
+      }
+    }
+
 - `url`, `owner`: the Gitea server and the organisation that owns the
   packages.
 - `debian.distribution`, `debian.component`: the channel for `.deb` files.
   The default is `stable` and `main`.
+- `debian.distributions`: for a project that builds one `.deb` per Debian or
+  Ubuntu release, an object that maps a file-name glob to the distribution
+  the file goes to. A glob knows `*` and `?` and matches the whole asset name.
+  With the map set, a `.deb` that no glob or several globs match fails the job
+  before the first upload, naming the file; `debian.distribution` is then not
+  used.
 - `rpm.group`: the RPM group. Empty by default.
 
 The job fails when no asset matches. It fails before the first upload when
