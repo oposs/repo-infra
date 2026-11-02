@@ -417,7 +417,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-homebrew.yml@v2`.
 
 **Needs the pieces:** ri-release-rust-binaries or ri-release-go-binaries
 
-**Produces:** The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
+**Produces:** The artifact release-asset-bottle-macos-15 with <bin>-<version>.arm64_sequoia.bottle.tar.gz (list it in release_assets as <bin>-*.bottle.tar.gz, which survives the next runner change) and release-files with the formula; no other job may write release-files.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
