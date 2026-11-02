@@ -65,6 +65,7 @@ jobs:
       repository: ${{ needs.source.outputs.repository }}
       ref: ${{ needs.source.outputs.ref }}
       bin: mtuspy
+      extra_paths: pkg docs/manual.md
 
   packages:
     needs: [source, binaries]
