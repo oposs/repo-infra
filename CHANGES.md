@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+
+### Fixed
+
+## 2.8.0 - 2026-11-02
+### Changed
 - `ri-release-homebrew` builds the bottle on `macos-latest`, because GitHub retired the `macos-14` runner on 2026-11-02 and a release build waiting for it stays `queued` until GitHub cancels it. The bottle is now tagged for the oldest macOS its binary runs on, for example `arm64_big_sur` for a Rust binary, so Homebrew pours it on macOS 11 and every later release, not only on the runner's version. Its file name changes with the tag, so a `release_assets` entry ending in `arm64_sonoma.bottle.tar.gz` stops the release: write it as `<bin>-*.bottle.tar.gz`.
 
 ### Fixed
