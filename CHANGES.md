@@ -18,6 +18,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `ri-ci-checkmk-plugin` runs its lint and tests on Python 3.12, the Python Checkmk 2.3 runs plugins on. On 3.11 a plugin passed CI that imports `distutils`, `imp` or `asynchat`, which 3.12 removed, and then failed on the Checkmk site; code using syntax new in 3.12 failed CI although it runs on the site.
 
 ### Fixed
+
+## 2.9.1 - 2026-11-03
+### Fixed
 - When the connection to Gitea dropped, `ri-publish-gitea` failed with `Unhandled error: TypeError: fetch failed` and did not say which package it was uploading. It now tries such an upload once more after 10 seconds. If that also fails, the error names the file and the cause, for example `ETIMEDOUT`.
 
 ## 2.9.0 - 2026-11-02
