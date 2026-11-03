@@ -98,6 +98,16 @@ def test_the_makemaker_piece_keeps_make_test():
     assert "run: make test" in piece_text("ri-ci-perl-mkpl")
 
 
+def test_the_checkmk_piece_lints_and_tests_on_the_python_of_checkmk_2_3():
+    # Checkmk 2.3 runs plugin code on Python 3.12. On 3.11, cmk-lint and
+    # cmk-test passed a plugin that imports a module 3.12 removed.
+    jobs = workflow.load(piece_text("ri-ci-checkmk-plugin"))["jobs"]
+    for job in ("cmk-lint", "cmk-test"):
+        setup = [s for s in jobs[job]["steps"]
+                 if s.get("uses", "").startswith("actions/setup-python@")]
+        assert [s["with"]["python-version"] for s in setup] == ["3.12"], job
+
+
 def test_the_autotools_piece_no_longer_documents_a_bare_configure_limit():
     # D18 closed it: plain ./configure is driver mode, so the runner never
     # probes the project's system dependencies.

@@ -1,0 +1,87 @@
+# repo-infra: ri-release-mkp v2
+#
+# Purpose: Build the Checkmk plugin package (MKP) of the release before the merge (D28, D37).
+# Choose: The repository has .mkp-builder.ini.
+# Supplies: Plugin code under local/, .mkp-builder.ini.
+# Produces: The artifact release-asset-mkp (`*.mkp`); list `*.mkp` in release_assets.
+# Call:
+#   mkp:
+#     uses: oposs/repo-infra/.github/workflows/ri-release-mkp.yml@v2
+#     with:
+#       version: ${{ inputs.version }}
+#       ref: ${{ inputs.ref }}
+#
+# The package is built from the release branch before the merge (D28); the
+# publish job attaches the file to the draft release.
+
+name: Build the Checkmk package
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version the release builds, from release-build.yml.
+        type: string
+        required: true
+      ref:
+        description: The release branch commit to build, from release-build.yml (D28).
+        type: string
+        required: true
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
+
+permissions:
+  contents: read
+
+jobs:
+  release-mkp:
+    name: Build the Checkmk package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+
+      - uses: oposs/mkp-builder@v2
+        with:
+          version: ${{ inputs.version }}
+          verbose: 'true'
+
+      # mkp-builder names the file <name>-<version>.mkp from .mkp-builder.ini,
+      # and its own package-file output is the first *.mkp a recursive find
+      # returns, so a committed package could be uploaded in place of the new
+      # one. Find it here instead: exactly one in the root, carrying the
+      # release version.
+      - name: Locate the package
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mapfile -t found < <(find . -maxdepth 1 -name '*.mkp' -printf '%P\n' | sort)
+          if [ "${#found[@]}" -eq 0 ]; then
+            echo "mkp-builder produced no package" >&2
+            exit 1
+          fi
+          if [ "${#found[@]}" -gt 1 ]; then
+            echo "more than one package in the source root: ${found[*]}" >&2
+            echo "remove the committed ones; this job cannot tell which to upload" >&2
+            exit 1
+          fi
+          name="${found[0]}"
+          if ! [[ "$name" =~ ^[A-Za-z0-9._+-]+\.mkp$ ]] || [[ "$name" != *"-$VERSION.mkp" ]]; then
+            echo "unexpected package name: ${name@Q}, expected <name>-$VERSION.mkp" >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/release-asset-mkp"
+          mv "$name" "$RUNNER_TEMP/release-asset-mkp/"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-asset-mkp
+          path: ${{ runner.temp }}/release-asset-mkp/
+          if-no-files-found: error
