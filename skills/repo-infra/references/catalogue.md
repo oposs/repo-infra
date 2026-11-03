@@ -440,6 +440,34 @@ homebrew:
     bin: mytool
 ```
 
+### ri-release-mkp
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-mkp.yml@v2`.
+
+**Purpose:** Build the Checkmk plugin package (MKP) of the release before the merge (D28, D37).
+
+**Choose it when:** The repository has .mkp-builder.ini.
+
+**The repository supplies:** Plugin code under local/, .mkp-builder.ini.
+
+**Produces:** The artifact release-asset-mkp (`*.mkp`); list `*.mkp` in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+mkp:
+  uses: oposs/repo-infra/.github/workflows/ri-release-mkp.yml@v2
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+```
+
 ### ri-release-nfpm
 
 Called as `oposs/repo-infra/.github/workflows/ri-release-nfpm.yml@v2`.
