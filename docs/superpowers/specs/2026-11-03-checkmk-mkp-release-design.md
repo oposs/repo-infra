@@ -71,5 +71,7 @@ that both setup steps of `ri-ci-checkmk-plugin` name 3.12.
 
 ## Proof
 
-Open: the release build of a `cmk-oposs_*` repository against
-`@checkmk-release-mkp`.
+oposs/cmk-oposs_smart_error ran its `release-build.yml` against
+`@checkmk-release-mkp` with version 1.2.1 (run 41644255113, branch
+`repo-infra/apply`). The job uploaded `release-asset-mkp` holding
+`oposs_smart_error-1.2.1.mkp`, whose `info.json` names version 1.2.1.
