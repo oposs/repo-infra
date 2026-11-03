@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- When the connection to Gitea dropped, `ri-publish-gitea` failed with `Unhandled error: TypeError: fetch failed` and did not say which package it was uploading. It now tries such an upload once more after 10 seconds. If that also fails, the error names the file and the cause, for example `ETIMEDOUT`.
 
 ## 2.9.0 - 2026-11-02
 ### New

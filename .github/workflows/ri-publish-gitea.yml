@@ -158,18 +158,33 @@ jobs:
               const body = Buffer.from(data);
               const sha256 = crypto.createHash('sha256').update(body).digest('hex');
 
-              const res = await fetch(gitea.uploadUrl(cfg, pkg), {
-                method: 'PUT',
-                headers: { authorization, 'content-type': 'application/octet-stream' },
-                body,
-              });
+              // fetchRetry retries a network error once and then throws,
+              // naming the file; the catch turns that into the job's error.
+              let res;
+              try {
+                res = await gitea.fetchRetry(fetch, gitea.uploadUrl(cfg, pkg), {
+                  method: 'PUT',
+                  headers: { authorization, 'content-type': 'application/octet-stream' },
+                  body,
+                }, asset.name);
+              } catch (err) {
+                core.setFailed(err.message);
+                return;
+              }
               if (res.ok) {
                 const where = pkg.kind === 'debian' ? `, distribution ${pkg.distribution}` : '';
                 core.notice(`${asset.name}: uploaded to ${cfg.owner}'s ${pkg.kind} registry${where}.`);
                 continue;
               }
               if (res.status === 409) {
-                const list = await fetch(gitea.filesUrl(cfg, pkg), { headers: { authorization } });
+                let list;
+                try {
+                  list = await gitea.fetchRetry(fetch, gitea.filesUrl(cfg, pkg),
+                    { headers: { authorization } }, asset.name);
+                } catch (err) {
+                  core.setFailed(err.message);
+                  return;
+                }
                 const files = list.ok ? await list.json().catch(() => null) : null;
                 if (!Array.isArray(files)) {
                   core.setFailed(`${asset.name}: Gitea answered 409 for ${pkg.name} `

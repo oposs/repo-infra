@@ -175,3 +175,50 @@ test('a 409 for a deb whose name Gitea lists in several distributions', () => {
   assert.equal(v.ok, false);
   assert.match(v.message, /2 files of this name .* in noble$/);
 });
+
+// fetchOnce stands in for fetch: a TypeError('fetch failed') with a cause is
+// what undici throws when the connection drops.
+function netError(code) {
+  return new TypeError('fetch failed', { cause: Object.assign(new Error(code), { code }) });
+}
+const noWait = () => Promise.resolve();
+
+test('a network error is retried once and the second answer is returned', async () => {
+  const calls = [];
+  const answers = [() => { throw netError('UND_ERR_SOCKET'); }, () => ({ ok: true, status: 201 })];
+  const res = await g.fetchRetry(async (url, init) => { calls.push([url, init]); return answers[calls.length - 1](); },
+    'https://g/x', { method: 'PUT' }, 'a.deb', { sleep: noWait });
+  assert.equal(res.status, 201);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1], ['https://g/x', { method: 'PUT' }]);
+});
+
+test('an HTTP answer, even an error, is not retried', async () => {
+  let n = 0;
+  const res = await g.fetchRetry(async () => { n += 1; return { ok: false, status: 500 }; },
+    'https://g/x', {}, 'a.deb', { sleep: noWait });
+  assert.equal(res.status, 500);
+  assert.equal(n, 1);
+});
+
+test('a second network error fails naming the file and the cause', async () => {
+  let n = 0;
+  await assert.rejects(
+    g.fetchRetry(async () => { n += 1; throw netError('ETIMEDOUT'); }, 'https://g/x', {}, 'edaptor_1.9.0-1_amd64.deb', { sleep: noWait }),
+    (err) => {
+      assert.match(err.message, /^edaptor_1\.9\.0-1_amd64\.deb: /);
+      assert.match(err.message, /ETIMEDOUT/);
+      assert.match(err.message, /2 attempts/);
+      return true;
+    });
+  assert.equal(n, 2);
+});
+
+test('the wait between the attempts is the one given', async () => {
+  const waits = [];
+  const answers = [() => { throw netError('ECONNRESET'); }, () => ({ ok: true, status: 201 })];
+  let n = 0;
+  await g.fetchRetry(async () => answers[n++](), 'https://g/x', {}, 'a.rpm',
+    { sleep: (ms) => { waits.push(ms); return Promise.resolve(); }, waitMs: 1234 });
+  assert.deepEqual(waits, [1234]);
+});
