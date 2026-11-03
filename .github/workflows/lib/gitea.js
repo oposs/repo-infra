@@ -149,6 +149,30 @@ function conflictVerdict(pkg, assetSha256, files) {
   };
 }
 
+// fetch for one package file. A network error (fetch throws; Gitea gave no
+// HTTP answer) is retried once after waitMs: on 2026-11-02 a slow Gitea
+// dropped a .deb upload with "TypeError: fetch failed" and nothing else.
+// Retrying a PUT is safe: when the first attempt stored the file, Gitea
+// answers 409 and conflictVerdict compares it. An HTTP answer, error or not,
+// is returned as it is. The second network error throws, naming the file and
+// the cause.
+async function fetchRetry(fetchFn, url, init, file, { attempts = 2, waitMs = 10000, sleep } = {}) {
+  const wait = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  let last;
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      return await fetchFn(url, init);
+    } catch (err) {
+      last = err;
+      if (i < attempts) await wait(waitMs);
+    }
+  }
+  const cause = last && last.cause ? `: ${last.cause.code || last.cause.message || last.cause}` : '';
+  throw new Error(`${file}: no answer from ${new URL(url).host} after ${attempts} attempts `
+    + `(${last && last.message}${cause})`);
+}
+
 module.exports = {
   packageConfig, globMatches, debianDistribution, parsePackageFile, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
+  fetchRetry,
 };
