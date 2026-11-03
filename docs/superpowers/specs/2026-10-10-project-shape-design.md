@@ -72,7 +72,8 @@ The result is visible across the terminal tools onboarded so far:
 - **A piece's v1 holds only what its proving consumer runs.** Every further
   input arrives in a later version, together with the consumer that proves it.
   The binaries piece gets `extra_paths` with edaptor, the nfpm piece gets the
-  `prepare` mode with Smalti.
+  `prepare` mode with Smalti. (2026-11-03: `extra_paths` is done, see
+  `ri-release-rust-binaries` under "Pieces".)
 
 ## The shape
 
@@ -276,6 +277,12 @@ Lifted from the three copies, holding only what mtuspy runs.
 Later versions, each with the consumer that proves it: `extra_paths` (edaptor
 packs `examples/`, mdmost `integrations/`).
 
+Done 2026-11-02 (#120, released in v2.9.0): `extra_paths` arrived as an
+optional input of `ri-release-rust-binaries` and `ri-release-go-binaries`
+within v2, not as a new piece version, and was proven by gate run
+41473480814. edaptor v1.9.0 (`extra_paths: examples`) and mdmost v0.8.0
+(`extra_paths: integrations`) are the first releases built with it.
+
 ### `ri-release-nfpm`
 
 The D30 design for this piece is narrowed to what mtuspy runs, and gains an
@@ -405,7 +412,8 @@ registry has no mtuspy package. The first release below fixes that.
 Then, one repository per run and each with the owner's OK:
 
 - edaptor, which brings `extra_paths` to `ri-release-rust-binaries` as v2,
-  proven in its tree first;
+  proven in its tree first (done differently, see
+  `ri-release-rust-binaries` under "Pieces");
 - Smalti, which brings the `prepare` mode to `ri-release-nfpm`, proven in its
   tree first;
 - mdmost, without a release until the owner says so.
