@@ -29,10 +29,29 @@ function fakeGithub() {
           seen.refs.push(params);
           return { data: { ref: params.ref } };
         },
+        getTree: async ({ tree_sha: sha }) => {
+          seen.treeReads = (seen.treeReads || 0) + 1;
+          return { data: { sha, tree: TREES[sha] || [], truncated: false } };
+        },
       },
     },
   };
 }
+
+/// The base commit's trees, one level per entry as the API returns them
+/// without `recursive`: a release commit touches a few files, so walking their
+/// directories is cheaper than the whole recursive tree, and never truncated.
+const TREES = {
+  'tree-of-base-sha': [
+    { path: 'CHANGES.md', mode: '100644', type: 'blob', sha: 'b1' },
+    { path: 'agents', mode: '040000', type: 'tree', sha: 'agents-tree' },
+    { path: 'link', mode: '120000', type: 'blob', sha: 'b2' },
+  ],
+  'agents-tree': [
+    { path: 'plugin', mode: '100755', type: 'blob', sha: 'b3' },
+    { path: 'module.py', mode: '100644', type: 'blob', sha: 'b4' },
+  ],
+};
 
 /// The API's answer when the branch is still there: a closed-but-undeleted
 /// release PR, or a run that committed and then failed before opening one.
@@ -84,7 +103,7 @@ test('the tree is based on the base commit tree, not the commit sha', async () =
   assert.equal(github.seen.trees[0].base_tree, 'tree-of-base-sha');
 });
 
-test('every entry is a normal file blob', async () => {
+test('every entry is a blob, a plain file unless it was executable', async () => {
   const github = fakeGithub();
   await commit.commitFiles(github, ARGS);
   for (const entry of github.seen.trees[0].tree) {
@@ -141,4 +160,54 @@ test('an error that is not "ref exists" still fails the run', async () => {
     throw e;
   };
   await assert.rejects(() => commit.commitFiles(github, ARGS), /Bad credentials/);
+});
+
+test('an executable file stays executable', async () => {
+  // A Checkmk agent plugin is a version file. Written as 100644, the release
+  // shipped an agent plugin the agent no longer ran.
+  const github = fakeGithub();
+  await commit.commitFiles(github, {
+    ...ARGS,
+    files: [
+      { path: 'agents/plugin', content: '#!/bin/sh\n' },
+      { path: 'agents/module.py', content: 'x = 1\n' },
+      { path: 'CHANGES.md', content: '# Changelog\n' },
+    ],
+  });
+  assert.deepEqual(
+    github.seen.trees[0].tree.map((e) => [e.path, e.mode]),
+    [['agents/plugin', '100755'], ['agents/module.py', '100644'], ['CHANGES.md', '100644']],
+  );
+});
+
+test('a new file, or one under a new directory, is a plain file', async () => {
+  const github = fakeGithub();
+  await commit.commitFiles(github, {
+    ...ARGS,
+    files: [
+      { path: 'agents/new', content: 'a\n' },
+      { path: 'missing/dir/file', content: 'b\n' },
+    ],
+  });
+  for (const entry of github.seen.trees[0].tree) assert.equal(entry.mode, '100644');
+});
+
+test('a symlink is replaced by a plain file, not written as a link', async () => {
+  // Content written under mode 120000 would become the link target.
+  const github = fakeGithub();
+  await commit.commitFiles(github, { ...ARGS, files: [{ path: 'link', content: 'v\n' }] });
+  assert.equal(github.seen.trees[0].tree[0].mode, '100644');
+});
+
+test('each directory of the base tree is read once', async () => {
+  const github = fakeGithub();
+  await commit.commitFiles(github, {
+    ...ARGS,
+    files: [
+      { path: 'agents/plugin', content: 'a\n' },
+      { path: 'agents/module.py', content: 'b\n' },
+      { path: 'CHANGES.md', content: 'c\n' },
+    ],
+  });
+  assert.equal(github.seen.treeReads, 2);
 });

@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- Create release PR wrote every version file as a plain file, so an executable one, such as a Checkmk agent plugin or special agent, lost its executable bit and the `.mkp` shipped it as `-rw-r--r--`. Version files, and the built files `ri-release-finish` commits, now keep the executable bit they have on the branch.
 
 ## 2.10.0 - 2026-11-03
 ### New
