@@ -210,10 +210,7 @@ test('a name nobody sets fails before nfpm runs', () => {
   assert.equal(calls.filter((c) => c.command === 'nfpm').length, 0);
 });
 
-test('a package name ri-publish-gitea refuses fails', () => {
-  const { io } = fakeIo({ name: (p, arch) => (p === 'deb' ? `Tool_1.2.3-1_${arch}.deb` : 'x.rpm') });
-  refusal(() => nfpm.run(env({ PACKAGERS: '{"deb": {}}' }), io),
-    /^Tool_1\.2\.3-1_amd64\.deb is not name_version_arch\.deb, the name ri-publish-gitea uploads$/);
+test('an rpm name ri-publish-gitea refuses fails', () => {
   refusal(() => nfpm.run(env({ PACKAGERS: '{"rpm": {}}' }), fakeIo({ name: () => 'tool.rpm' }).io),
     /^tool\.rpm is not name-version-release\.arch\.rpm/);
 });

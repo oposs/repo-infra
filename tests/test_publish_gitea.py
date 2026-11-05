@@ -94,8 +94,17 @@ def test_a_files_listing_that_is_not_an_array_fails_with_the_status():
 
 def test_a_package_name_that_does_not_parse_fails_before_any_upload():
     s = script()
-    assert "unparsable" in s and "Expected name_version_arch.deb" in s
-    assert s.index("unparsable") < s.index("method: 'PUT'")
+    assert "unparsable" in s and "Expected name-version-release.arch.rpm" in s
+    assert s.index("unparsable.length > 0") < s.index("method: 'PUT'")
+
+
+def test_a_deb_is_named_from_its_control_data_before_any_upload():
+    # GitHub turns ~ into . in asset names (#129), so the name and version of
+    # a .deb come from dpkg-deb, and a .deb it cannot read stops the job.
+    s = script()
+    assert "'dpkg-deb'" in s and "gitea.debPackage" in s
+    assert s.index("unreadable.length > 0") < s.index("method: 'PUT'")
+    assert s.index("gitea.debPackage") < s.index("gitea.debianDistribution")
 
 
 def test_the_derived_basic_credential_is_masked():

@@ -343,7 +343,10 @@ One `.deb` per release, named for example `wg-wrangler_0.4.1~noble_amd64.deb`:
   The default is `stable` and `main`.
 - `debian.distributions`: for a project that builds one `.deb` per Debian or
   Ubuntu release, an object that maps a file-name glob to the distribution
-  the file goes to. A glob knows `*` and `?` and matches the whole asset name.
+  the file goes to. A glob knows `*` and `?` and matches the whole file name
+  as the control data gives it, `name_version_arch.deb`. That is the name the
+  build wrote, `~` included; the GitHub release lists the same file with `.`
+  in place of `~`.
   With the map set, a `.deb` that no glob or several globs match fails the job
   before the first upload, naming the file; `debian.distribution` is then not
   used.
@@ -351,9 +354,9 @@ One `.deb` per release, named for example `wg-wrangler_0.4.1~noble_amd64.deb`:
 
 The job fails when no asset matches. It fails before the first upload when
 `GITEA_PACKAGE_TOKEN` or `GITEA_PACKAGE_USER` is empty, naming the missing
-one, and when a release carries a `.deb` or `.rpm` whose file name it cannot
-parse, naming the file. The expected shapes are `name_version_arch.deb` and
-`name-version-release.arch.rpm`.
+one, when a release carries a `.deb` whose control data `dpkg-deb` cannot
+read, and when it carries an `.rpm` whose file name is not
+`name-version-release.arch.rpm`. Each message names the file.
 
 The credential is the first stored one in the standard:
 

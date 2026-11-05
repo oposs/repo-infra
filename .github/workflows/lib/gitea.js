@@ -80,17 +80,37 @@ function debianDistribution(cfg, file) {
   };
 }
 
-// name_version_arch.deb (cargo-deb) and name-version-release.arch.rpm
-// (cargo-generate-rpm). Gitea's RPM version is the version-release pair.
-const DEB = /^([a-z0-9][a-z0-9+.-]*)_([^_/]+)_([a-z0-9]+)\.deb$/;
+// GitHub renames release assets: `~` becomes `.`, so a .deb built as
+// x_0.5.0~bookworm_amd64.deb is listed as x_0.5.0.bookworm_amd64.deb (#129).
+// The asset name therefore cannot give the version back. Gitea takes name,
+// version and architecture from the control data and names the stored file
+// name_version_arch.deb, so a .deb is described by its control data, read
+// with `dpkg-deb --field <file> Package Version Architecture`.
+function debPackage(control, asset) {
+  const fields = {};
+  for (const line of String(control).split('\n')) {
+    const m = /^([A-Za-z][A-Za-z0-9-]*):\s*(.*?)\s*$/.exec(line);
+    if (m) fields[m[1]] = m[2];
+  }
+  const missing = ['Package', 'Version', 'Architecture'].filter((k) => !fields[k]);
+  if (missing.length > 0) {
+    return { ok: false, message: `${asset}: the control data has no ${missing.join(', ')}` };
+  }
+  const { Package: name, Version: version, Architecture: arch } = fields;
+  return {
+    ok: true,
+    pkg: { kind: 'debian', name, version, arch, file: `${name}_${version}_${arch}.deb`, asset },
+  };
+}
+
+// name-version-release.arch.rpm (cargo-generate-rpm). Gitea's RPM version is
+// the version-release pair.
 const RPM = /^(.+)-([^-/]+)-([^-/]+)\.([A-Za-z0-9_]+)\.rpm$/;
 
-function parsePackageFile(file) {
-  let m = DEB.exec(file);
-  if (m) return { kind: 'debian', name: m[1], version: m[2], arch: m[3], file };
-  m = RPM.exec(file);
-  if (m) return { kind: 'rpm', name: m[1], version: `${m[2]}-${m[3]}`, arch: m[4], file };
-  return null;
+function parseRpmFile(file) {
+  const m = RPM.exec(file);
+  if (!m) return null;
+  return { kind: 'rpm', name: m[1], version: `${m[2]}-${m[3]}`, arch: m[4], file, asset: file };
 }
 
 const seg = encodeURIComponent;
@@ -173,6 +193,6 @@ async function fetchRetry(fetchFn, url, init, file, { attempts = 2, waitMs = 100
 }
 
 module.exports = {
-  packageConfig, globMatches, debianDistribution, parsePackageFile, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
+  packageConfig, globMatches, debianDistribution, debPackage, parseRpmFile, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
   fetchRetry,
 };

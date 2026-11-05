@@ -19,39 +19,64 @@ test('a config without url or owner is refused', () => {
   assert.throws(() => g.packageConfig({ gitea_packages: { url: 'https://x' } }), /owner/);
 });
 
-test('cargo-deb and cargo-generate-rpm names parse', () => {
-  assert.deepEqual(g.parsePackageFile('mdmost_0.5.0-1_amd64.deb'), {
-    kind: 'debian', name: 'mdmost', version: '0.5.0-1', arch: 'amd64',
-    file: 'mdmost_0.5.0-1_amd64.deb',
-  });
-  assert.deepEqual(g.parsePackageFile('smtp-proxy-0.1.0-1.aarch64.rpm'), {
+// What `dpkg-deb --field <file> Package Version Architecture` prints, and the
+// name GitHub lists the asset under: it turns every `~` into `.` (#129).
+const control = (name, version, arch) => `Package: ${name}\nVersion: ${version}\nArchitecture: ${arch}\n`;
+const github = (name) => name.replace(/~/g, '.');
+function deb(name, version, arch = 'amd64') {
+  const file = `${name}_${version}_${arch}.deb`;
+  const v = g.debPackage(control(name, version, arch), github(file));
+  assert.equal(v.ok, true, v.message);
+  return v.pkg;
+}
+
+test('a deb is named from its control data, not from the asset name', () => {
+  assert.deepEqual(
+    g.debPackage(control('wg-wrangler', '0.5.0~bookworm', 'amd64'), 'wg-wrangler_0.5.0.bookworm_amd64.deb'),
+    { ok: true, pkg: {
+      kind: 'debian', name: 'wg-wrangler', version: '0.5.0~bookworm', arch: 'amd64',
+      file: 'wg-wrangler_0.5.0~bookworm_amd64.deb', asset: 'wg-wrangler_0.5.0.bookworm_amd64.deb',
+    } });
+});
+
+test('a pre-release deb keeps the ~ GitHub took out of the asset name', () => {
+  const pkg = deb('mdmost', '1.0.0~rc.1-1', 'arm64');
+  assert.equal(pkg.version, '1.0.0~rc.1-1');
+  assert.equal(pkg.asset, 'mdmost_1.0.0.rc.1-1_arm64.deb');
+});
+
+test('control data without package, version or architecture is refused, naming the asset', () => {
+  assert.deepEqual(g.debPackage('Package: x\nArchitecture: all\n', 'x.deb'),
+    { ok: false, message: 'x.deb: the control data has no Version' });
+  assert.deepEqual(g.debPackage('', 'y.deb'),
+    { ok: false, message: 'y.deb: the control data has no Package, Version, Architecture' });
+});
+
+test('cargo-generate-rpm names parse', () => {
+  assert.deepEqual(g.parseRpmFile('smtp-proxy-0.1.0-1.aarch64.rpm'), {
     kind: 'rpm', name: 'smtp-proxy', version: '0.1.0-1', arch: 'aarch64',
-    file: 'smtp-proxy-0.1.0-1.aarch64.rpm',
+    file: 'smtp-proxy-0.1.0-1.aarch64.rpm', asset: 'smtp-proxy-0.1.0-1.aarch64.rpm',
   });
 });
 
-test('a pre-release deb version with ~ parses', () => {
-  assert.equal(g.parsePackageFile('mdmost_1.0.0~rc.1-1_arm64.deb').version, '1.0.0~rc.1-1');
-});
-
-test('anything else is not a package', () => {
+test('anything else is not an rpm', () => {
   for (const name of ['mdmost-0.5.0-x86_64-unknown-linux-musl.tar.gz', 'release-build.json',
-    'mdmost.deb', 'x.rpm']) {
-    assert.equal(g.parsePackageFile(name), null, name);
+    'mdmost_0.5.0-1_amd64.deb', 'x.rpm']) {
+    assert.equal(g.parseRpmFile(name), null, name);
   }
 });
 
 test('upload urls follow the Gitea API, rpm is always signed', () => {
-  assert.equal(g.uploadUrl(CFG, g.parsePackageFile('mdmost_0.5.0-1_amd64.deb')),
+  assert.equal(g.uploadUrl(CFG, deb('mdmost', '0.5.0-1')),
     'https://gitea.oetiker.ch/api/packages/oposs/debian/pool/stable/main/upload');
-  assert.equal(g.uploadUrl(CFG, g.parsePackageFile('mdmost-0.5.0-1.x86_64.rpm')),
+  assert.equal(g.uploadUrl(CFG, g.parseRpmFile('mdmost-0.5.0-1.x86_64.rpm')),
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/upload?sign=true');
-  assert.equal(g.uploadUrl({ ...CFG, group: 'el9' }, g.parsePackageFile('mdmost-0.5.0-1.x86_64.rpm')),
+  assert.equal(g.uploadUrl({ ...CFG, group: 'el9' }, g.parseRpmFile('mdmost-0.5.0-1.x86_64.rpm')),
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/el9/upload?sign=true');
 });
 
 test('the files url names type, package and version', () => {
-  assert.equal(g.filesUrl(CFG, g.parsePackageFile('mdmost_1.0.0~rc.1-1_amd64.deb')),
+  assert.equal(g.filesUrl(CFG, deb('mdmost', '1.0.0~rc.1-1')),
     'https://gitea.oetiker.ch/api/v1/packages/oposs/debian/mdmost/1.0.0~rc.1-1/files');
 });
 
@@ -62,8 +87,8 @@ test('missing credentials are named, both of them', () => {
   assert.deepEqual(g.missingCredentials({ GITEA_PACKAGE_TOKEN: 't', GITEA_PACKAGE_USER: 'u' }), []);
 });
 
-const DEB = g.parsePackageFile('mdmost_0.5.0-1_amd64.deb');
-const RPM = g.parsePackageFile('mdmost-0.5.0-1.x86_64.rpm');
+const DEB = deb('mdmost', '0.5.0-1');
+const RPM = g.parseRpmFile('mdmost-0.5.0-1.x86_64.rpm');
 
 test('a 409 for a deb with the same SHA-256 is success', () => {
   const v = g.conflictVerdict(DEB, 'abc', [{ name: DEB.file, sha256: 'abc' }]);
@@ -75,6 +100,15 @@ test('a 409 for a different deb under the same version fails', () => {
   const v = g.conflictVerdict(DEB, 'abc', [{ name: DEB.file, sha256: 'def' }]);
   assert.equal(v.ok, false);
   assert.match(v.message, /different/);
+});
+
+test('a 409 for a deb whose version has a ~ finds the file Gitea stored', () => {
+  // Gitea lists the file under the control name; the asset name has a `.`.
+  const pkg = deb('wg-wrangler', '0.5.0~bookworm');
+  assert.equal(g.filesUrl(CFG, pkg),
+    'https://gitea.oetiker.ch/api/v1/packages/oposs/debian/wg-wrangler/0.5.0~bookworm/files');
+  const v = g.conflictVerdict(pkg, 'abc', [{ name: 'wg-wrangler_0.5.0~bookworm_amd64.deb', sha256: 'abc' }]);
+  assert.equal(v.ok, true, v.message);
 });
 
 test('a 409 for an rpm matches by file name and says the content was not compared', () => {
@@ -117,7 +151,7 @@ test('globs know * and ? and match the whole name', () => {
 test('a deb matching one glob goes to that distribution', () => {
   const file = 'wg-wrangler_0.4.1~noble_amd64.deb';
   assert.deepEqual(g.debianDistribution(WGCFG, file), { ok: true, distribution: 'noble' });
-  const pkg = { ...g.parsePackageFile(file), distribution: 'noble' };
+  const pkg = { ...deb('wg-wrangler', '0.4.1~noble'), distribution: 'noble' };
   assert.equal(g.uploadUrl(WGCFG, pkg),
     'https://gitea.oetiker.ch/api/packages/oposs/debian/pool/noble/main/upload');
 });
@@ -162,7 +196,7 @@ test('a malformed distributions map is refused with the key named', () => {
 });
 
 test('rpm ignores the distribution map', () => {
-  assert.equal(g.uploadUrl(WGCFG, g.parsePackageFile('wg-wrangler-0.4.1-1.x86_64.rpm')),
+  assert.equal(g.uploadUrl(WGCFG, g.parseRpmFile('wg-wrangler-0.4.1-1.x86_64.rpm')),
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/upload?sign=true');
 });
 
