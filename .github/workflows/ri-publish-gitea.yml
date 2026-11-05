@@ -82,6 +82,8 @@ jobs:
           script: |
             const crypto = require('crypto');
             const fs = require('fs');
+            const path = require('path');
+            const { execFileSync } = require('child_process');
             const ws = process.env.GITHUB_WORKSPACE;
             const gitea = require(`${ws}/.repo-infra/.github/workflows/lib/gitea.js`);
             const owner = context.repo.owner;
@@ -107,11 +109,66 @@ jobs:
             const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
               owner, repo, release_id, per_page: 100,
             });
-            const packages = assets
-              .map((asset) => ({ asset, pkg: gitea.parsePackageFile(asset.name) }))
-              .filter((entry) => entry.pkg);
+            // By asset id through the API: browser_download_url does not
+            // serve drafts. Every package is fetched before anything goes up,
+            // because a .deb is named from its control data: GitHub turns `~`
+            // into `.` in asset names, and Gitea stores the file under the
+            // control name and version (#129).
+            const dir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'gitea-'));
+            const packages = [];
+            const unparsable = [];
+            const unreadable = [];
+            for (const asset of assets) {
+              const kind = /\.deb$/.test(asset.name) ? 'deb' : /\.rpm$/.test(asset.name) ? 'rpm' : null;
+              if (!kind) continue;
+              let pkg = null;
+              if (kind === 'rpm') {
+                pkg = gitea.parseRpmFile(asset.name);
+                if (!pkg) {
+                  unparsable.push(asset.name);
+                  continue;
+                }
+              }
+              const { data } = await github.rest.repos.getReleaseAsset({
+                owner, repo, asset_id: asset.id,
+                headers: { accept: 'application/octet-stream' },
+              });
+              const local = path.join(dir, String(asset.id));
+              fs.writeFileSync(local, Buffer.from(data));
+              if (kind === 'deb') {
+                let control;
+                try {
+                  control = execFileSync('dpkg-deb',
+                    ['--field', local, 'Package', 'Version', 'Architecture'],
+                    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+                } catch (err) {
+                  unreadable.push(`${asset.name}: dpkg-deb cannot read it (`
+                    + `${String(err.stderr || err.message).trim()})`);
+                  continue;
+                }
+                const read = gitea.debPackage(control, asset.name);
+                if (!read.ok) {
+                  unreadable.push(read.message);
+                  continue;
+                }
+                pkg = read.pkg;
+              }
+              packages.push({ asset, pkg, local });
+            }
+            // Every .deb and .rpm is uploaded; one that cannot be named is a
+            // failure, not a file to skip.
+            if (unparsable.length > 0) {
+              core.setFailed(`Cannot upload ${unparsable.join(', ')}: the file name does not `
+                + 'have the shape Gitea needs. Expected name-version-release.arch.rpm.');
+              return;
+            }
+            if (unreadable.length > 0) {
+              core.setFailed(`Cannot upload: ${unreadable.join('; ')}.`);
+              return;
+            }
             // Each .deb gets its distribution before anything goes up, so a
             // file that no glob or several globs claim stops the whole upload.
+            // The globs see the name the .deb was built under, `~` and all.
             const unplaced = [];
             for (const { pkg } of packages) {
               if (pkg.kind !== 'debian') continue;
@@ -119,21 +176,11 @@ jobs:
               if (placed.ok) pkg.distribution = placed.distribution;
               else unplaced.push(placed.message);
             }
-            // Every .deb and .rpm is uploaded; one that cannot be named is a
-            // failure, not a file to skip.
-            const unparsable = assets
-              .filter((a) => /\.(deb|rpm)$/.test(a.name) && !gitea.parsePackageFile(a.name))
-              .map((a) => a.name);
-            if (unparsable.length > 0) {
-              core.setFailed(`Cannot upload ${unparsable.join(', ')}: the file name does not `
-                + 'have the shape Gitea needs. Expected name_version_arch.deb (lower-case '
-                + 'name) or name-version-release.arch.rpm.');
-              return;
-            }
             if (unplaced.length > 0) {
               core.setFailed(`Cannot upload: ${unplaced.join('; ')}. With `
                 + '"gitea_packages.debian.distributions" set, every .deb needs exactly one '
-                + 'glob that matches its file name.');
+                + 'glob that matches the file name in its control data '
+                + '(name_version_arch.deb).');
               return;
             }
             if (packages.length === 0) {
@@ -148,14 +195,8 @@ jobs:
             const authorization = `Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
             core.setSecret(authorization);
 
-            for (const { asset, pkg } of packages) {
-              // By asset id through the API: browser_download_url does not
-              // serve drafts.
-              const { data } = await github.rest.repos.getReleaseAsset({
-                owner, repo, asset_id: asset.id,
-                headers: { accept: 'application/octet-stream' },
-              });
-              const body = Buffer.from(data);
+            for (const { asset, pkg, local } of packages) {
+              const body = fs.readFileSync(local);
               const sha256 = crypto.createHash('sha256').update(body).digest('hex');
 
               // fetchRetry retries a network error once and then throws,

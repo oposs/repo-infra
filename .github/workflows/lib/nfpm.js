@@ -7,7 +7,7 @@
 // nfpm.test.js. The file system and the commands go through `io`, which the
 // tests replace.
 
-const { parsePackageFile } = require('./gitea.js');
+const { parseRpmFile } = require('./gitea.js');
 
 // The variables the piece sets for every nfpm run. A packagers key that
 // names one of them fails, so a config cannot shadow VERSION or ARCH.
@@ -91,14 +91,11 @@ function variables({ version, epoch, packager, target, stage, extra }) {
   };
 }
 
-// The names ri-publish-gitea uploads; parsePackageFile in gitea.js is the
-// one place they are written down.
+// ri-publish-gitea reads a .deb's name and version from its control data,
+// but an .rpm's from the file name; parseRpmFile in gitea.js is the one place
+// that name is written down.
 function checkName(packager, file) {
-  const parsed = parsePackageFile(file);
-  if (packager === 'deb' && (!parsed || parsed.kind !== 'debian')) {
-    throw new Error(`${file} is not name_version_arch.deb, the name ri-publish-gitea uploads`);
-  }
-  if (packager === 'rpm' && (!parsed || parsed.kind !== 'rpm')) {
+  if (packager === 'rpm' && !parseRpmFile(file)) {
     throw new Error(`${file} is not name-version-release.arch.rpm, `
       + 'the name ri-publish-gitea uploads');
   }
