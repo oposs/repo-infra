@@ -3,6 +3,34 @@
 // Commits go through the Git Data API rather than `git commit && git push`.
 // Two reasons: no `git config user.email` dance repeated in every repository,
 // and the commit lands atomically instead of as a sequence that can half-fail.
+// The mode a file gets in the release commit. An executable stays executable:
+// a Checkmk agent plugin is a version file, and written as 100644 the release
+// shipped a plugin the agent no longer ran. Anything else, a symlink included,
+// becomes a plain file, since content written under 120000 would turn into the
+// link target. The walk reads one directory per level, cached by tree SHA,
+// rather than the recursive tree, which the API truncates on large repositories.
+async function modeFinder(github, owner, repo, rootTree) {
+  const listings = new Map();
+  async function entries(treeSha) {
+    if (!listings.has(treeSha)) {
+      const { data } = await github.rest.git.getTree({ owner, repo, tree_sha: treeSha });
+      listings.set(treeSha, data.tree);
+    }
+    return listings.get(treeSha);
+  }
+  return async function modeOf(filePath) {
+    const parts = filePath.split('/');
+    let treeSha = rootTree;
+    for (const dir of parts.slice(0, -1)) {
+      const sub = (await entries(treeSha)).find((e) => e.path === dir && e.type === 'tree');
+      if (!sub) return '100644';
+      treeSha = sub.sha;
+    }
+    const leaf = (await entries(treeSha)).find((e) => e.path === parts[parts.length - 1]);
+    return leaf && leaf.mode === '100755' ? '100755' : '100644';
+  };
+}
+
 async function commitFiles(github, {
   owner, repo, branch, baseSha, message, files,
 }) {
@@ -16,13 +44,14 @@ async function commitFiles(github, {
     owner, repo, commit_sha: baseSha,
   });
 
+  const modeOf = await modeFinder(github, owner, repo, base.tree.sha);
   const tree = [];
   for (const file of files) {
     const { data: blob } = await github.rest.git.createBlob({
       owner, repo, content: file.content, encoding: 'utf-8',
     });
     tree.push({
-      path: file.path, mode: '100644', type: 'blob', sha: blob.sha,
+      path: file.path, mode: await modeOf(file.path), type: 'blob', sha: blob.sha,
     });
   }
 
