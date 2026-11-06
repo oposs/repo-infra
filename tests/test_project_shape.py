@@ -7,7 +7,8 @@ import re
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SHAPE = ROOT / "skills/repo-infra/references/project-shape.md"
 RULES = {"readme-current", "badges", "install-text", "writing-style", "man-page", "demo",
-         "screenshot", "native-targets", "source-archive", "linux-packages", "homebrew"}
+         "screenshot", "native-targets", "source-archive", "linux-packages", "homebrew",
+         "macos-signed"}
 FIELDS = ("Trigger:", "Requires:", "Verify:", "Met by:")
 
 
