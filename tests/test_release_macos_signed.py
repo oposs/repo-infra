@@ -18,11 +18,19 @@ SECRETS = ["MACOS_CERTS_P12", "MACOS_CERTS_PASSWORD", "NOTARY_KEY_P8", "NOTARY_K
 TEAM = "ABCDE12345"
 
 # Each stub appends its name and arguments to $STUB_LOG and fails when
-# $FAIL_<NAME> names a word of its arguments.
+# $FAIL_<NAME> names a word of its arguments. $FLAKY_<NAME> does the same for
+# the first $FLAKY_TIMES calls with that word, then lets them pass.
 STUB = """#!/bin/bash
 echo "{name} $*" >> "$STUB_LOG"
 for word in $FAIL_{upper}; do
   case " $* " in *" $word "*) echo "{name} failed" >&2; exit 1 ;; esac
+done
+for word in $FLAKY_{upper}; do
+  case " $* " in *" $word "*)
+    if [ "$(grep -c -- " $word " "$STUB_LOG")" -le "${{FLAKY_TIMES:-1}}" ]; then
+      echo "{name} lost the connection" >&2; exit 1
+    fi ;;
+  esac
 done
 {body}
 """
@@ -55,6 +63,8 @@ fi
 exit 0""",
     "spctl": "",
     "uuidgen": "echo 0000",
+    # The retry pauses are logged, not waited for.
+    "sleep": "",
 }
 
 
@@ -332,6 +342,39 @@ def test_a_failed_staple_check_fails_the_job(run):
     dist(run, "App-1.0.pkg")
     proc = run("Check the signatures", TEAM=TEAM, FAIL_XCRUN="validate")
     assert proc.returncode == 1
+
+
+def test_a_staple_that_loses_the_connection_is_tried_again(run):
+    # FocusWell run 41127065823: notarization Accepted, then stapler error 68.
+    dist(run, "App-1.0.pkg")
+    proc = run("Notarize and staple", FLAKY_XCRUN="staple", FLAKY_TIMES="2",
+               NOTARY_KEY_ID="K", NOTARY_ISSUER="I")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert [line for line in proc.log if "stapler" in line or line.startswith("sleep")] == [
+        f"xcrun stapler staple {run.temp}/dist/App-1.0.pkg", "sleep 15",
+        f"xcrun stapler staple {run.temp}/dist/App-1.0.pkg", "sleep 30",
+        f"xcrun stapler staple {run.temp}/dist/App-1.0.pkg"]
+    assert proc.stdout.count("::warning::xcrun stapler staple") == 2
+
+
+def test_a_staple_that_always_fails_stops_after_five_tries(run):
+    dist(run, "App-1.0.pkg")
+    proc = run("Notarize and staple", FAIL_XCRUN="staple", NOTARY_KEY_ID="K",
+               NOTARY_ISSUER="I")
+    assert proc.returncode == 1
+    assert sum("stapler staple" in line for line in proc.log) == 5
+    assert [line for line in proc.log if line.startswith("sleep")] == [
+        "sleep 15", "sleep 30", "sleep 45", "sleep 60"]
+    assert "failed five times" in proc.stdout
+
+
+def test_the_check_tries_gatekeeper_and_the_ticket_again(run):
+    dist(run, "App-1.0.pkg", "App-1.0.dmg")
+    proc = run("Check the signatures", TEAM=TEAM, FLAKY_SPCTL="--assess",
+               FLAKY_XCRUN="validate")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert sum(line.startswith("spctl") for line in proc.log) == 3
+    assert sum("stapler validate" in line for line in proc.log) == 3
 
 
 def test_the_keychain_and_the_key_are_removed_even_after_a_failure():

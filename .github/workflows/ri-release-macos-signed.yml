@@ -212,6 +212,21 @@ jobs:
           NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: |
           set -euo pipefail
+          # Apple's ticket server drops a connection now and then, after the
+          # notarization was accepted: on 2026-11-01 FocusWell's stapler
+          # failed with error 68 (NSURLErrorDomain -1005) and passed on the
+          # next run. A real rejection fails all five tries.
+          retry() {
+            local pause
+            for pause in 15 30 45 60 0; do
+              if "$@"; then return 0; fi
+              [ "$pause" = 0 ] && break
+              echo "::warning::$* failed, trying again in ${pause}s"
+              sleep "$pause"
+            done
+            echo "::error::$* failed five times"
+            return 1
+          }
           notary=(--key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
           files=("$RUNNER_TEMP"/dist/*)
           ids=()
@@ -232,7 +247,7 @@ jobs:
               xcrun notarytool log "${ids[$i]}" "${notary[@]}" || true
               exit 1
             fi
-            xcrun stapler staple "${files[$i]}"
+            retry xcrun stapler staple "${files[$i]}"
           done
 
       # What a Mac checks on download, checked before anything is published:
@@ -242,6 +257,21 @@ jobs:
           TEAM: ${{ steps.certs.outputs.team }}
         run: |
           set -euo pipefail
+          # Apple's ticket server drops a connection now and then, after the
+          # notarization was accepted: on 2026-11-01 FocusWell's stapler
+          # failed with error 68 (NSURLErrorDomain -1005) and passed on the
+          # next run. A real rejection fails all five tries.
+          retry() {
+            local pause
+            for pause in 15 30 45 60 0; do
+              if "$@"; then return 0; fi
+              [ "$pause" = 0 ] && break
+              echo "::warning::$* failed, trying again in ${pause}s"
+              sleep "$pause"
+            done
+            echo "::error::$* failed five times"
+            return 1
+          }
           for file in "$RUNNER_TEMP"/dist/*; do
             case "$file" in
               *.pkg)
@@ -250,7 +280,7 @@ jobs:
                   echo "::error::$(basename "$file") is not signed by a Developer ID Installer of team $TEAM"
                   exit 1
                 fi
-                spctl --assess --type install -vv "$file"
+                retry spctl --assess --type install -vv "$file"
                 ;;
               *.dmg)
                 codesign --verify --strict --verbose=2 "$file"
@@ -261,10 +291,10 @@ jobs:
                   echo "::error::$(basename "$file") is not signed by team $TEAM"
                   exit 1
                 fi
-                spctl --assess --type open --context context:primary-signature -vv "$file"
+                retry spctl --assess --type open --context context:primary-signature -vv "$file"
                 ;;
             esac
-            xcrun stapler validate "$file"
+            retry xcrun stapler validate "$file"
           done
 
       # A fresh VM today, but on a self-hosted runner the key and the keychain

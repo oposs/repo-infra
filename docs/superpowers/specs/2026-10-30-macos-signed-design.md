@@ -116,6 +116,12 @@ which applies only to a program delivered as a `.pkg` or `.dmg`.
   correctly signed image.
 - `nullglob` drops a glob without a match but keeps a plain path, so a plain
   path is checked with `-e`.
+- `stapler staple`, `stapler validate` and `spctl` ask Apple's ticket server,
+  which drops a connection now and then after the notarization was accepted:
+  FocusWell run 41127065823 failed with stapler error 68 (`NSURLErrorDomain
+  -1005`) and passed on the next dispatch. Each of these calls is tried up to
+  five times, with pauses of 15, 30, 45 and 60 seconds; a real rejection fails
+  all five.
 
 ## Tests
 
@@ -127,7 +133,9 @@ without the Application identity, a `.pkg` without an Installer identity of the
 team, a rejected notary key, private key files, the keychain and the team ID,
 the asset patterns, a plain path without a file, two assets of one name and a
 `.zip`, the submit-then-wait order, a failed submit, an `Invalid` submission
-with its log, and a package and an image of another team. It checks that no input is spliced into a script and that the
+with its log, a staple that fails twice and then passes, one that fails five
+times, a Gatekeeper and ticket check that pass on the second try, and a package
+and an image of another team. It checks that no input is spliced into a script and that the
 cleanup runs `always()` before the upload.
 
 ## Proof
@@ -141,4 +149,4 @@ X52UCY22QK, notarized and stapled (`The staple and validate action worked!`),
 and `spctl` reported `accepted`, `source=Notarized Developer ID`.
 
 Open: a second run after the review changes (required secrets, the Installer
-check, submit then wait).
+check, submit then wait, the retry of staple and checks).
