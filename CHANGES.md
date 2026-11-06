@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- The onboarding guide says that a version file holds the last released version between releases. A placeholder such as `"unreleased"` makes the publish check on main fail with "CHANGES.md says 1.1.3 but these disagree", and Create release PR then refuses to start.
 
 ### Fixed
 - `ri-publish-gitea` stopped with `wg-wrangler_0.5.0.bookworm_amd64.deb: no glob in "gitea_packages.debian.distributions" matches it`, because GitHub lists a `.deb` built as `wg-wrangler_0.5.0~bookworm_amd64.deb` with `.` in place of `~`. The job now takes the name, version and architecture of each `.deb` from the package itself, so globs such as `"wg-wrangler_*~noble_*.deb"` match again. A re-run after a partial upload no longer fails with `Gitea answered 409 but lists no such file` for a `.deb` whose version has a `~`, for example `1.0.0~rc.1` (#129).
