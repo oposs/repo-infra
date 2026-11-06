@@ -103,14 +103,59 @@ function debPackage(control, asset) {
   };
 }
 
-// name-version-release.arch.rpm (cargo-generate-rpm). Gitea's RPM version is
-// the version-release pair.
-const RPM = /^(.+)-([^-/]+)-([^-/]+)\.([A-Za-z0-9_]+)\.rpm$/;
+// An .rpm has the same problem as a .deb: GitHub lists
+// tool-1.0.0~rc.1-1.x86_64.rpm as tool-1.0.0.rc.1-1.x86_64.rpm. Gitea reads
+// name, epoch, version, release and architecture from the package header,
+// sets the version to [epoch-]version-release and names the stored file
+// name-version.arch.rpm. The header is not compressed, so it is read here
+// rather than with rpm, which the runner lacks.
+const RPM_TAG = { 1000: 'name', 1001: 'version', 1002: 'release', 1003: 'epoch', 1022: 'arch' };
 
-function parseRpmFile(file) {
-  const m = RPM.exec(file);
-  if (!m) return null;
-  return { kind: 'rpm', name: m[1], version: `${m[2]}-${m[3]}`, arch: m[4], file, asset: file };
+// One header structure at `at`: magic, reserved, entry count, store size,
+// then 16-byte entries (tag, type, offset, count) and the store.
+function rpmHeader(buf, at) {
+  if (buf.length < at + 16 || buf.readUInt32BE(at) !== 0x8eade801) return null;
+  const count = buf.readUInt32BE(at + 8);
+  const size = buf.readUInt32BE(at + 12);
+  const store = at + 16 + count * 16;
+  if (buf.length < store + size) return null;
+  const tags = {};
+  for (let i = 0; i < count; i += 1) {
+    const e = at + 16 + i * 16;
+    const key = RPM_TAG[buf.readUInt32BE(e)];
+    if (!key) continue;
+    const type = buf.readUInt32BE(e + 4);
+    const off = store + buf.readUInt32BE(e + 8);
+    if (type === 4) {
+      tags[key] = String(buf.readUInt32BE(off));
+    } else if (type === 6 || type === 9) {
+      const nul = buf.indexOf(0, off);
+      tags[key] = buf.toString('utf8', off, nul < 0 ? store + size : nul);
+    }
+  }
+  return { tags, end: store + size };
+}
+
+function rpmPackage(buf, asset) {
+  const bad = { ok: false, message: `${asset}: not an rpm package (no readable header)` };
+  // A 96-byte lead, then the signature header padded to 8 bytes, then the
+  // header that describes the package.
+  if (buf.length < 96 || buf.readUInt32BE(0) !== 0xedabeedb) return bad;
+  const sig = rpmHeader(buf, 96);
+  if (!sig) return bad;
+  const main = rpmHeader(buf, sig.end + ((8 - (sig.end % 8)) % 8));
+  if (!main) return bad;
+  const t = main.tags;
+  const missing = ['name', 'version', 'release', 'arch'].filter((k) => !t[k]);
+  if (missing.length > 0) {
+    return { ok: false, message: `${asset}: the rpm header has no ${missing.join(', ')}` };
+  }
+  const version = `${t.epoch && t.epoch !== '0' ? `${t.epoch}-` : ''}${t.version}-${t.release}`;
+  return {
+    ok: true,
+    pkg: { kind: 'rpm', name: t.name, version, arch: t.arch,
+      file: `${t.name}-${version}.${t.arch}.rpm`, asset },
+  };
 }
 
 const seg = encodeURIComponent;
@@ -193,6 +238,6 @@ async function fetchRetry(fetchFn, url, init, file, { attempts = 2, waitMs = 100
 }
 
 module.exports = {
-  packageConfig, globMatches, debianDistribution, debPackage, parseRpmFile, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
+  packageConfig, globMatches, debianDistribution, debPackage, rpmPackage, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
   fetchRetry,
 };

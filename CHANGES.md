@@ -18,7 +18,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 - `ri-publish-gitea` stopped with `wg-wrangler_0.5.0.bookworm_amd64.deb: no glob in "gitea_packages.debian.distributions" matches it`, because GitHub lists a `.deb` built as `wg-wrangler_0.5.0~bookworm_amd64.deb` with `.` in place of `~`. The job now takes the name, version and architecture of each `.deb` from the package itself, so globs such as `"wg-wrangler_*~noble_*.deb"` match again. A re-run after a partial upload no longer fails with `Gitea answered 409 but lists no such file` for a `.deb` whose version has a `~`, for example `1.0.0~rc.1` (#129).
-- `ri-release-nfpm` no longer checks the file name of a `.deb` it builds, because `ri-publish-gitea` no longer reads it; `.rpm` names are checked as before.
+- On a re-run after a partial upload, `ri-publish-gitea` failed with `Gitea answered 409 but lists no such file` for an `.rpm` whose version has a `~` or that carries an epoch. It now reads name, version and architecture from the `.rpm` itself, as it does for a `.deb`.
+- `ri-release-nfpm` no longer checks the file names of the `.deb` and `.rpm` files it builds, because `ri-publish-gitea` no longer reads them.
 
 ## 2.10.1 - 2026-11-05
 ### Fixed
