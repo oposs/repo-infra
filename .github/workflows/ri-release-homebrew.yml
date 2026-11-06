@@ -4,7 +4,7 @@
 # Choose: The project is a Rust or Go program users install with Homebrew (homebrew in references/project-shape.md).
 # Supplies: Formula/<bin>.rb from the template in references/project-shape.md, listed in release_files.
 # Pieces: ri-release-rust-binaries or ri-release-go-binaries
-# Produces: The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
+# Produces: The artifact release-asset-bottle-macos-latest with <bin>-<version>.arm64_<macos>.bottle.tar.gz, <macos> the oldest macOS the binaries run on (list it in release_assets as <bin>-*.bottle.tar.gz) and release-files with the formula; no other job may write release-files.
 # Call:
 #   homebrew:
 #     needs: binaries
@@ -50,18 +50,18 @@ jobs:
     timeout-minutes: 40
     # mdmost v0.1.2 shipped with an empty bottle block because a retired
     # runner label left a leg queued until GitHub cancelled it after 24 hours.
-    # The label is kept current by hand, and a release build stuck in
-    # `queued` is the symptom.
+    # macos-latest is never retired. The bottle is retagged to the oldest
+    # macOS its binaries run on (Rename the bottles), so the runner's macOS
+    # does not limit which Macs get it.
     strategy:
       matrix:
         include:
-          # The oldest arm64 image: Homebrew lets a bottle serve a newer
-          # macOS, never an older one. No Intel bottle: Homebrew moved Intel
-          # macOS to Tier 3 in September 2026 and builds no Intel bottles
-          # itself. Intel Macs install from the x86_64-apple-darwin archive,
-          # and an optional Intel leg that timed out in "Set up job" turned
-          # the whole run cancelled (mtuspy proof, 2026-10-11).
-          - os: macos-14
+          # No Intel bottle: Homebrew moved Intel macOS to Tier 3 in
+          # September 2026 and builds no Intel bottles itself. Intel Macs
+          # install from the x86_64-apple-darwin archive, and an optional
+          # Intel leg that timed out in "Set up job" turned the whole run
+          # cancelled (mtuspy proof, 2026-10-11).
+          - os: macos-latest
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
@@ -128,15 +128,28 @@ jobs:
             --root-url="https://github.com/$REPOSITORY/releases/download/v$VERSION" \
             "local/$BIN/$BIN"
 
-      # `brew bottle` writes name--version.tag.bottle.tar.gz; the release
-      # carries the name its json records (lib/homebrew.js).
+      # What the retag reads: the macOS names this brew knows, and the load
+      # commands of every file in the keg, which name the oldest macOS each
+      # Mach-O file runs on. otool fails on a file that is no object file;
+      # that is expected, and lib/homebrew.js finds no minos in its text.
+      - name: Measure the oldest macOS the bottle runs on
+        run: |
+          set -euo pipefail
+          brew ruby -e 'require "json"; puts MacOSVersion::SYMBOLS.to_json' > "$RUNNER_TEMP/macos-symbols.json"
+          find "$(brew --cellar "local/$BIN/$BIN")" -type f | while IFS= read -r file; do
+            otool -l "$file" || true
+          done > "$RUNNER_TEMP/otool.txt"
+
+      # `brew bottle` writes name--version.tag.bottle.tar.gz, the tag naming
+      # the runner's macOS; the release carries the name its json records,
+      # under the oldest macOS the binaries run on (lib/homebrew.js).
       - name: Rename the bottles
         uses: actions/github-script@v9
         with:
           script: |
             const { renameBottles } = require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/homebrew.js`);
             try {
-              for (const name of renameBottles()) core.info(`bottle/${name}`);
+              for (const name of renameBottles(process.env)) core.info(`bottle/${name}`);
             } catch (error) {
               core.setFailed(error.message);
             }

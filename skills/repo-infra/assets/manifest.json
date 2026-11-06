@@ -136,6 +136,10 @@
       "kind": "remote",
       "group": "release-build"
     },
+    "ri-release-mkp": {
+      "kind": "remote",
+      "group": "release-build"
+    },
     "ri-publish-crates-io": {
       "kind": "remote",
       "group": "publish"

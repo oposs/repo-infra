@@ -17,6 +17,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `ri-publish-gitea` stopped with `wg-wrangler_0.5.0.bookworm_amd64.deb: no glob in "gitea_packages.debian.distributions" matches it`, because GitHub lists a `.deb` built as `wg-wrangler_0.5.0~bookworm_amd64.deb` with `.` in place of `~`. The job now takes the name, version and architecture of each `.deb` from the package itself, so globs such as `"wg-wrangler_*~noble_*.deb"` match again. A re-run after a partial upload no longer fails with `Gitea answered 409 but lists no such file` for a `.deb` whose version has a `~`, for example `1.0.0~rc.1` (#129).
+- `ri-release-nfpm` no longer checks the file name of a `.deb` it builds, because `ri-publish-gitea` no longer reads it; `.rpm` names are checked as before.
+
+## 2.10.1 - 2026-11-05
+### Fixed
+- Create release PR wrote every version file as a plain file, so an executable one, such as a Checkmk agent plugin or special agent, lost its executable bit and the `.mkp` shipped it as `-rw-r--r--`. Version files, and the built files `ri-release-finish` commits, now keep the executable bit they have on the branch.
+
+## 2.10.0 - 2026-11-03
+### New
+- A Checkmk plugin can now release through Create release PR: `ri-release-mkp` builds the `.mkp` with mkp-builder at the release version, and the release attaches it when `release_assets` lists `*.mkp`. The build stops with "more than one package in the source root" when a `.mkp` is committed, and with "unexpected package name" when the file does not end in `-<version>.mkp`.
+
+### Changed
+- `ri-ci-checkmk-plugin` runs its lint and tests on Python 3.12, the Python Checkmk 2.3 runs plugins on. On 3.11 a plugin passed CI that imports `distutils`, `imp` or `asynchat`, which 3.12 removed, and then failed on the Checkmk site; code using syntax new in 3.12 failed CI although it runs on the site.
+
+## 2.9.1 - 2026-11-03
+### Fixed
+- When the connection to Gitea dropped, `ri-publish-gitea` failed with `Unhandled error: TypeError: fetch failed` and did not say which package it was uploading. It now tries such an upload once more after 10 seconds. If that also fails, the error names the file and the cause, for example `ETIMEDOUT`.
+
+## 2.9.0 - 2026-11-02
+### New
+- `ri-publish-gitea` can put each `.deb` into its own apt distribution, so a project that builds one package per Debian or Ubuntu release no longer mixes them in `stable`: map file-name globs to distributions in `gitea_packages.debian.distributions`, for example `"wg-wrangler_*~noble_*.deb": "noble"`. With the map set, a `.deb` that no glob or several globs match stops the job before the first upload, and the message names the file and the globs. On a re-run, a `.deb` whose file name Gitea lists in several distributions counts as uploaded only when every listed copy is the same file.
+- `ri-release-rust-binaries` and `ri-release-go-binaries` take `extra_paths`, a blank-separated list of files or folders relative to the repository root, and pack each into every archive under `<bin>/` at its own path, the Windows `.zip` included. A formula can then `pkgshare.install` such a path, for example `examples`, without `brew install --build-bottle` failing in `ri-release-homebrew`. A listed path that does not exist, an absolute path, or one that leaves the repository with `..` stops the build with a message naming the path.
+
+## 2.8.0 - 2026-11-02
+### Changed
+- `ri-release-homebrew` builds the bottle on `macos-latest`, because GitHub retired the `macos-14` runner on 2026-11-02 and a release build waiting for it stays `queued` until GitHub cancels it. The bottle is now tagged for the oldest macOS its binary runs on, for example `arm64_big_sur` for a Rust binary, so Homebrew pours it on macOS 11 and every later release, not only on the runner's version. Its file name changes with the tag, so a `release_assets` entry ending in `arm64_sonoma.bottle.tar.gz` stops the release: write it as `<bin>-*.bottle.tar.gz`.
+
+### Fixed
 - `make test-dev` stopped with "cannot attach stdin to a TTY-enabled container because stdin is not a terminal" when it ran with docker from a script, a pipe or CI, and with podman it printed "The input device is not a TTY". `build/container.mk` (`container` v5) now asks for a terminal only when `make` runs on one.
 
 ## 2.7.0 - 2026-10-28

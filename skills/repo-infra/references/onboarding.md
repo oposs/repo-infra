@@ -382,8 +382,25 @@ lockfile left out keeps the old version: mdmost v0.1.1 was tagged with
 }
 ```
 
-Go, the Checkmk plugin, the GitHub Action and Perl `Makefile.PL` repositories
-have no entry here. Name the file that holds their version if they keep one.
+A Checkmk plugin takes its package version from the release; `ri-release-mkp`
+passes it to mkp-builder. A plugin that also keeps the version in its agent
+plugin as `__version__ = "..."` takes one entry per such file, for an agent
+plugin named `oposs_smart_error`:
+
+```json
+{
+  "path": "local/share/check_mk/agents/plugins/oposs_smart_error",
+  "pattern": "^__version__ = \"[^\"]*\"",
+  "replacement": "__version__ = \"$VERSION\"",
+  "verify": "^__version__ = \"$VERSION\""
+}
+```
+
+The patterns are JavaScript regular expressions with the `m` flag, so `^`
+anchors at the start of any line. The first match is replaced.
+
+Go, the GitHub Action and Perl `Makefile.PL` repositories have no entry here.
+Name the file that holds their version if they keep one.
 
 ## Questions to ask
 
@@ -420,6 +437,8 @@ Candidates a repository's files suggest but do not decide:
 - `go.mod` with a main package users install suggests `ri-release-go-binaries`
   with `package` naming that main package, and `ri-release-nfpm` and
   `ri-release-homebrew` as for Rust.
+- `.mkp-builder.ini` suggests `ri-release-mkp` beside `ri-ci-checkmk-plugin`,
+  with `*.mkp` in `release_assets`.
 - `book.toml` is a documentation site. No piece covers it.
 
 ## Administration items

@@ -376,11 +376,11 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2`.
 
 **Choose it when:** The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
 
-**The repository supplies:** go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, and `make man` writing man/.
+**The repository supplies:** go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
 
 **Needs the pieces:** man, man-lua
 
-**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built; list each of them in release_assets.
+**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built, with the `extra_paths` under <bin>/ for the formula to pkgshare.install; list each of them in release_assets.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -390,6 +390,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2`.
 | `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
 | `package` | string | no | `.` | The main package that builds `bin`, as go build takes it, for example ./cmd/mytool. |
 | `version_var` | string | no | `''` | A string variable the build sets to the version with -ldflags -X, for example main.version; empty sets none. |
+| `extra_paths` | string | no | `''` | Space-separated paths of files or folders, relative to the repository root, that every archive carries under <bin>/ at the same relative path, for example examples or docs/config.toml; empty adds none. A path that does not exist fails the run. |
 | `targets` | string | no | `x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-illumos x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc` | Space-separated target triples to build (D34); all seven unless set. A name the piece does not build fails the run. |
 
 **Permissions it needs:** contents: read
@@ -403,6 +404,7 @@ binaries:
     bin: mytool
     package: ./cmd/mytool
     version_var: main.version
+    extra_paths: examples
 ```
 
 ### ri-release-homebrew
@@ -417,7 +419,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-homebrew.yml@v2`.
 
 **Needs the pieces:** ri-release-rust-binaries or ri-release-go-binaries
 
-**Produces:** The artifact release-asset-bottle-macos-14 with <bin>-<version>.arm64_sonoma.bottle.tar.gz (list it in release_assets) and release-files with the formula; no other job may write release-files.
+**Produces:** The artifact release-asset-bottle-macos-latest with <bin>-<version>.arm64_<macos>.bottle.tar.gz, <macos> the oldest macOS the binaries run on (list it in release_assets as <bin>-*.bottle.tar.gz) and release-files with the formula; no other job may write release-files.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -485,6 +487,34 @@ macos:
     NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
 ```
 
+### ri-release-mkp
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-mkp.yml@v2`.
+
+**Purpose:** Build the Checkmk plugin package (MKP) of the release before the merge (D28, D37).
+
+**Choose it when:** The repository has .mkp-builder.ini.
+
+**The repository supplies:** Plugin code under local/, .mkp-builder.ini.
+
+**Produces:** The artifact release-asset-mkp (`*.mkp`); list `*.mkp` in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+
+**Permissions it needs:** contents: read
+
+```yaml
+mkp:
+  uses: oposs/repo-infra/.github/workflows/ri-release-mkp.yml@v2
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+```
+
 ### ri-release-nfpm
 
 Called as `oposs/repo-infra/.github/workflows/ri-release-nfpm.yml@v2`.
@@ -530,11 +560,11 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-rust-binaries.yml@v2`.
 
 **Choose it when:** The project is a Rust program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
 
-**The repository supplies:** Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, and `make man` writing man/.
+**The repository supplies:** Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
 
 **Needs the pieces:** man, man-lua
 
-**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built; list each of them in release_assets.
+**Produces:** The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built, with the `extra_paths` under <bin>/ for the formula to pkgshare.install; list each of them in release_assets.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -542,6 +572,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-rust-binaries.yml@v2`.
 | `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
 | `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
 | `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
+| `extra_paths` | string | no | `''` | Space-separated paths of files or folders, relative to the repository root, that every archive carries under <bin>/ at the same relative path, for example examples or docs/config.toml; empty adds none. A path that does not exist fails the run. |
 | `targets` | string | no | `x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-illumos x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc` | Space-separated target triples to build (D34); all seven unless set. A name the piece does not build fails the run. |
 
 **Permissions it needs:** contents: read
@@ -553,6 +584,7 @@ binaries:
     version: ${{ inputs.version }}
     ref: ${{ inputs.ref }}
     bin: mytool
+    extra_paths: examples
 ```
 
 ### ri-release-source-tarball
@@ -654,7 +686,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-gitea.yml@v2`.
 
 **Choose it when:** The project ships packages to Gitea.
 
-**The repository supplies:** gitea_packages (url, owner) in .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
+**The repository supplies:** gitea_packages (url, owner, optional debian.distributions) in .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable GITEA_PACKAGE_USER.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|

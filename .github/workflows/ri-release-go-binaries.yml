@@ -2,9 +2,9 @@
 #
 # Purpose: Build the release archives of a Go program for the seven native targets (D32), or for the ones `targets` names (D34), under the target names of ri-release-rust-binaries (D35).
 # Choose: The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
-# Supplies: go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, and `make man` writing man/.
+# Supplies: go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
 # Pieces: man, man-lua
-# Produces: The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built; list each of them in release_assets.
+# Produces: The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built, with the `extra_paths` under <bin>/ for the formula to pkgshare.install; list each of them in release_assets.
 # Call:
 #   binaries:
 #     uses: oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2
@@ -14,6 +14,7 @@
 #       bin: mytool
 #       package: ./cmd/mytool
 #       version_var: main.version
+#       extra_paths: examples
 
 name: Build the Go release archives
 
@@ -44,6 +45,11 @@ on:
         default: .
       version_var:
         description: A string variable the build sets to the version with -ldflags -X, for example main.version; empty sets none.
+        type: string
+        required: false
+        default: ''
+      extra_paths:
+        description: Space-separated paths of files or folders, relative to the repository root, that every archive carries under <bin>/ at the same relative path, for example examples or docs/config.toml; empty adds none. A path that does not exist fails the run.
         type: string
         required: false
         default: ''
@@ -159,6 +165,33 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
+      # The library of the commit this piece was loaded from (D33): repo-infra
+      # at the release v2 points at, or the commit under test in repo-infra.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
+      # lib/archive.js copies each path of extra_paths into staging/<bin>/,
+      # where the pack step adds the binary, so the formula of edaptor can
+      # pkgshare.install examples. It runs before the build, so a path that
+      # does not exist fails the leg in seconds.
+      - name: Stage the extra paths
+        uses: actions/github-script@v9
+        env:
+          BIN: ${{ inputs.bin }}
+          EXTRA_PATHS: ${{ inputs.extra_paths }}
+        with:
+          script: |
+            const { stageExtraPaths } = require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/archive.js`);
+            try {
+              for (const line of stageExtraPaths(process.env)) core.info(line);
+            } catch (error) {
+              core.setFailed(error.message);
+            }
+
       # The toolchain go.mod names, as ri-ci-go tests with.
       - uses: actions/setup-go@v7
         with:
@@ -198,7 +231,8 @@ jobs:
             -o "release-bin/$TARGET/$BIN$exe" "$PACKAGE"
 
       # The archive layout is the contract the packaging and Homebrew pieces
-      # read (D32): <bin>/<bin>, <bin>/man/<every page>, README.md, LICENSE.
+      # read (D32): <bin>/<bin>, <bin>/man/<every page>, README.md, LICENSE,
+      # next to the extra_paths the library staged before the build.
       # The Windows .zip has the same layout without man/ and the binary
       # <bin>.exe, as ri-release-rust-binaries packs it.
       - name: Pack the archive

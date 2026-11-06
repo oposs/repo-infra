@@ -40,9 +40,12 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
+      # Checkmk 2.3 runs plugin code on Python 3.12 (PYTHON_VERSION 3.12.13 in
+      # its package_versions.bzl). On 3.11 an import 3.12 removed, such as
+      # distutils or imp, passed here and failed on the site.
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - run: pip install ruff
 
@@ -60,7 +63,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - run: pip install pytest
 

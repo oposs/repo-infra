@@ -3,34 +3,114 @@
 // publish-gitea-packages (D27): which release assets are packages, where
 // Gitea wants them, and what a 409 on a re-run means.
 
+const CONFIG = '.github/repo-infra.json';
+// What Gitea accepts as a distribution or component in the upload path.
+const SYMBOL = /^[a-zA-Z0-9][a-zA-Z0-9.~+_-]*$/;
+
+// debian.distributions maps file-name globs to apt distributions, so a
+// project that builds one .deb per Debian or Ubuntu release puts each into
+// its own distribution.
+function distributionMap(debian) {
+  const map = debian.distributions;
+  if (map === undefined) return {};
+  const where = `${CONFIG}: "gitea_packages.debian.distributions"`;
+  if (!map || typeof map !== 'object' || Array.isArray(map)) {
+    throw new Error(`${where} must be an object of file-name globs and distribution names`);
+  }
+  for (const [glob, dist] of Object.entries(map)) {
+    if (glob === '') {
+      throw new Error(`${where} has an empty glob`);
+    }
+    if (typeof dist !== 'string' || dist === '') {
+      throw new Error(`${where}: "${glob}" must name a distribution (a non-empty string)`);
+    }
+    if (!SYMBOL.test(dist)) {
+      throw new Error(`${where}: "${glob}" names the distribution "${dist}", which Gitea `
+        + 'refuses; use letters, digits and . ~ + _ - only, starting with a letter or digit');
+    }
+  }
+  return { ...map };
+}
+
 function packageConfig(config) {
   const c = (config || {}).gitea_packages;
   if (!c || !c.url) {
-    throw new Error('.github/repo-infra.json: "gitea_packages" needs a "url"');
+    throw new Error(`${CONFIG}: "gitea_packages" needs a "url"`);
   }
   if (!c.owner) {
-    throw new Error('.github/repo-infra.json: "gitea_packages" needs an "owner"');
+    throw new Error(`${CONFIG}: "gitea_packages" needs an "owner"`);
   }
+  const debian = c.debian || {};
   return {
     url: c.url.replace(/\/+$/, ''),
     owner: c.owner,
-    distribution: (c.debian && c.debian.distribution) || 'stable',
-    component: (c.debian && c.debian.component) || 'main',
+    distribution: debian.distribution || 'stable',
+    distributions: distributionMap(debian),
+    component: debian.component || 'main',
     group: (c.rpm && c.rpm.group) || '',
   };
 }
 
-// name_version_arch.deb (cargo-deb) and name-version-release.arch.rpm
-// (cargo-generate-rpm). Gitea's RPM version is the version-release pair.
-const DEB = /^([a-z0-9][a-z0-9+.-]*)_([^_/]+)_([a-z0-9]+)\.deb$/;
+// A glob knows `*` and `?` and matches the whole name.
+function globMatches(glob, name) {
+  const re = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*').replace(/\?/g, '.');
+  return new RegExp(`^${re}$`, 's').test(name);
+}
+
+// The distribution a .deb goes to. Without a map every .deb goes to
+// debian.distribution. With a map, a file no glob or several globs match is
+// an error: falling back would put a package built for one release into the
+// channel of another.
+function debianDistribution(cfg, file) {
+  const globs = Object.keys(cfg.distributions || {});
+  if (globs.length === 0) return { ok: true, distribution: cfg.distribution };
+  const hits = globs.filter((glob) => globMatches(glob, file));
+  if (hits.length === 1) return { ok: true, distribution: cfg.distributions[hits[0]] };
+  if (hits.length === 0) {
+    return {
+      ok: false,
+      message: `${file}: no glob in "gitea_packages.debian.distributions" matches it`,
+    };
+  }
+  return {
+    ok: false,
+    message: `${file}: several globs in "gitea_packages.debian.distributions" match it (`
+      + `${hits.join(', ')})`,
+  };
+}
+
+// GitHub renames release assets: `~` becomes `.`, so a .deb built as
+// x_0.5.0~bookworm_amd64.deb is listed as x_0.5.0.bookworm_amd64.deb (#129).
+// The asset name therefore cannot give the version back. Gitea takes name,
+// version and architecture from the control data and names the stored file
+// name_version_arch.deb, so a .deb is described by its control data, read
+// with `dpkg-deb --field <file> Package Version Architecture`.
+function debPackage(control, asset) {
+  const fields = {};
+  for (const line of String(control).split('\n')) {
+    const m = /^([A-Za-z][A-Za-z0-9-]*):\s*(.*?)\s*$/.exec(line);
+    if (m) fields[m[1]] = m[2];
+  }
+  const missing = ['Package', 'Version', 'Architecture'].filter((k) => !fields[k]);
+  if (missing.length > 0) {
+    return { ok: false, message: `${asset}: the control data has no ${missing.join(', ')}` };
+  }
+  const { Package: name, Version: version, Architecture: arch } = fields;
+  return {
+    ok: true,
+    pkg: { kind: 'debian', name, version, arch, file: `${name}_${version}_${arch}.deb`, asset },
+  };
+}
+
+// name-version-release.arch.rpm (cargo-generate-rpm). Gitea's RPM version is
+// the version-release pair.
 const RPM = /^(.+)-([^-/]+)-([^-/]+)\.([A-Za-z0-9_]+)\.rpm$/;
 
-function parsePackageFile(file) {
-  let m = DEB.exec(file);
-  if (m) return { kind: 'debian', name: m[1], version: m[2], arch: m[3], file };
-  m = RPM.exec(file);
-  if (m) return { kind: 'rpm', name: m[1], version: `${m[2]}-${m[3]}`, arch: m[4], file };
-  return null;
+function parseRpmFile(file) {
+  const m = RPM.exec(file);
+  if (!m) return null;
+  return { kind: 'rpm', name: m[1], version: `${m[2]}-${m[3]}`, arch: m[4], file, asset: file };
 }
 
 const seg = encodeURIComponent;
@@ -38,7 +118,7 @@ const seg = encodeURIComponent;
 function uploadUrl(cfg, pkg) {
   const base = `${cfg.url}/api/packages/${seg(cfg.owner)}`;
   if (pkg.kind === 'debian') {
-    return `${base}/debian/pool/${seg(cfg.distribution)}/${seg(cfg.component)}/upload`;
+    return `${base}/debian/pool/${seg(pkg.distribution || cfg.distribution)}/${seg(cfg.component)}/upload`;
   }
   // Gitea's generated .repo sets gpgcheck=1, so an unsigned rpm would not
   // install. Gitea signs with its per-owner key.
@@ -59,14 +139,26 @@ function missingCredentials(env) {
 // upload that is the file that went up the first time -- or a different file
 // under the same version, which must fail.
 function conflictVerdict(pkg, assetSha256, files) {
-  const stored = (files || []).find((f) => f.name === pkg.file);
-  if (!stored) {
+  const stored = (files || []).filter((f) => f.name === pkg.file);
+  if (stored.length === 0) {
     return { ok: false, message: `${pkg.file}: Gitea answered 409 but lists no such file` };
   }
   if (pkg.kind === 'debian') {
-    return stored.sha256 === assetSha256
-      ? { ok: true, message: `${pkg.file}: already uploaded, SHA-256 matches` }
-      : { ok: false, message: `${pkg.file}: Gitea holds a different file under this version` };
+    // Gitea keeps one file per distribution and component under a version,
+    // and its file listing does not say which is which. A file name listed
+    // more than once is accepted only when every copy is this asset.
+    if (stored.every((f) => f.sha256 === assetSha256)) {
+      return { ok: true, message: `${pkg.file}: already uploaded, SHA-256 matches` };
+    }
+    if (stored.length > 1) {
+      return {
+        ok: false,
+        message: `${pkg.file}: Gitea holds ${stored.length} files of this name in `
+          + 'different distributions or components, not all of them this asset, and its '
+          + `listing does not say which one is in ${pkg.distribution}`,
+      };
+    }
+    return { ok: false, message: `${pkg.file}: Gitea holds a different file under this version` };
   }
   // With ?sign=true Gitea stores the signed file, whose SHA-256 never equals
   // the unsigned asset's.
@@ -77,6 +169,30 @@ function conflictVerdict(pkg, assetSha256, files) {
   };
 }
 
+// fetch for one package file. A network error (fetch throws; Gitea gave no
+// HTTP answer) is retried once after waitMs: on 2026-11-02 a slow Gitea
+// dropped a .deb upload with "TypeError: fetch failed" and nothing else.
+// Retrying a PUT is safe: when the first attempt stored the file, Gitea
+// answers 409 and conflictVerdict compares it. An HTTP answer, error or not,
+// is returned as it is. The second network error throws, naming the file and
+// the cause.
+async function fetchRetry(fetchFn, url, init, file, { attempts = 2, waitMs = 10000, sleep } = {}) {
+  const wait = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  let last;
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      return await fetchFn(url, init);
+    } catch (err) {
+      last = err;
+      if (i < attempts) await wait(waitMs);
+    }
+  }
+  const cause = last && last.cause ? `: ${last.cause.code || last.cause.message || last.cause}` : '';
+  throw new Error(`${file}: no answer from ${new URL(url).host} after ${attempts} attempts `
+    + `(${last && last.message}${cause})`);
+}
+
 module.exports = {
-  packageConfig, parsePackageFile, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
+  packageConfig, globMatches, debianDistribution, debPackage, parseRpmFile, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
+  fetchRetry,
 };
