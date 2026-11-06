@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const g = require('./gitea.js');
 
 const CONFIG = { gitea_packages: { url: 'https://gitea.oetiker.ch/', owner: 'oposs' } };
@@ -52,26 +54,42 @@ test('control data without package, version or architecture is refused, naming t
     { ok: false, message: 'y.deb: the control data has no Package, Version, Architecture' });
 });
 
-test('cargo-generate-rpm names parse', () => {
-  assert.deepEqual(g.parseRpmFile('smtp-proxy-0.1.0-1.aarch64.rpm'), {
-    kind: 'rpm', name: 'smtp-proxy', version: '0.1.0-1', arch: 'aarch64',
-    file: 'smtp-proxy-0.1.0-1.aarch64.rpm', asset: 'smtp-proxy-0.1.0-1.aarch64.rpm',
+// Real packages built by nfpm 2.43.0: tool 1.0.0~rc.1-1 x86_64, and tool
+// 0.5.0-1 aarch64 with epoch 2. rpm -qp reads them the same way.
+const FIXTURES = path.join(__dirname, '../../../tests/fixtures/rpm');
+function rpm(file) {
+  const v = g.rpmPackage(fs.readFileSync(path.join(FIXTURES, file)), github(file));
+  assert.equal(v.ok, true, v.message);
+  return v.pkg;
+}
+
+test('an rpm is named from its header, not from the asset name', () => {
+  assert.deepEqual(rpm('tool-1.0.0~rc.1-1.x86_64.rpm'), {
+    kind: 'rpm', name: 'tool', version: '1.0.0~rc.1-1', arch: 'x86_64',
+    file: 'tool-1.0.0~rc.1-1.x86_64.rpm', asset: 'tool-1.0.0.rc.1-1.x86_64.rpm',
   });
 });
 
-test('anything else is not an rpm', () => {
-  for (const name of ['mdmost-0.5.0-x86_64-unknown-linux-musl.tar.gz', 'release-build.json',
-    'mdmost_0.5.0-1_amd64.deb', 'x.rpm']) {
-    assert.equal(g.parseRpmFile(name), null, name);
-  }
+test('an rpm epoch leads the version as Gitea writes it', () => {
+  // Gitea: version [epoch-]version-release, file name-version.arch.rpm.
+  const pkg = rpm('tool-0.5.0-1.aarch64.rpm');
+  assert.equal(pkg.version, '2-0.5.0-1');
+  assert.equal(pkg.file, 'tool-2-0.5.0-1.aarch64.rpm');
+});
+
+test('a file that is not an rpm is refused, naming the asset', () => {
+  assert.deepEqual(g.rpmPackage(Buffer.from('junk'), 'x.rpm'),
+    { ok: false, message: 'x.rpm: not an rpm package (no readable header)' });
+  const cut = fs.readFileSync(path.join(FIXTURES, 'tool-0.5.0-1.aarch64.rpm')).subarray(0, 300);
+  assert.equal(g.rpmPackage(cut, 'cut.rpm').ok, false);
 });
 
 test('upload urls follow the Gitea API, rpm is always signed', () => {
   assert.equal(g.uploadUrl(CFG, deb('mdmost', '0.5.0-1')),
     'https://gitea.oetiker.ch/api/packages/oposs/debian/pool/stable/main/upload');
-  assert.equal(g.uploadUrl(CFG, g.parseRpmFile('mdmost-0.5.0-1.x86_64.rpm')),
+  assert.equal(g.uploadUrl(CFG, rpm('tool-1.0.0~rc.1-1.x86_64.rpm')),
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/upload?sign=true');
-  assert.equal(g.uploadUrl({ ...CFG, group: 'el9' }, g.parseRpmFile('mdmost-0.5.0-1.x86_64.rpm')),
+  assert.equal(g.uploadUrl({ ...CFG, group: 'el9' }, rpm('tool-1.0.0~rc.1-1.x86_64.rpm')),
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/el9/upload?sign=true');
 });
 
@@ -88,7 +106,7 @@ test('missing credentials are named, both of them', () => {
 });
 
 const DEB = deb('mdmost', '0.5.0-1');
-const RPM = g.parseRpmFile('mdmost-0.5.0-1.x86_64.rpm');
+const RPM = rpm('tool-1.0.0~rc.1-1.x86_64.rpm');
 
 test('a 409 for a deb with the same SHA-256 is success', () => {
   const v = g.conflictVerdict(DEB, 'abc', [{ name: DEB.file, sha256: 'abc' }]);
@@ -111,6 +129,12 @@ test('a 409 for a deb whose version has a ~ finds the file Gitea stored', () => 
   assert.equal(v.ok, true, v.message);
 });
 
+test('a 409 for an rpm whose version has a ~ finds the file Gitea stored', () => {
+  assert.equal(g.filesUrl(CFG, RPM),
+    'https://gitea.oetiker.ch/api/v1/packages/oposs/rpm/tool/1.0.0~rc.1-1/files');
+  assert.equal(g.conflictVerdict(RPM, 'abc', [{ name: 'tool-1.0.0~rc.1-1.x86_64.rpm' }]).ok, true);
+});
+
 test('a 409 for an rpm matches by file name and says the content was not compared', () => {
   const v = g.conflictVerdict(RPM, 'abc', [{ name: RPM.file, sha256: 'signed' }]);
   assert.equal(v.ok, true);
@@ -119,7 +143,7 @@ test('a 409 for an rpm matches by file name and says the content was not compare
 
 test('a 409 whose file Gitea does not list fails for either kind', () => {
   assert.equal(g.conflictVerdict(DEB, 'abc', []).ok, false);
-  assert.equal(g.conflictVerdict(RPM, 'abc', [{ name: 'mdmost-0.5.0-1.aarch64.rpm' }]).ok, false);
+  assert.equal(g.conflictVerdict(RPM, 'abc', [{ name: RPM.asset }]).ok, false);
 });
 
 const WG = {
@@ -196,7 +220,7 @@ test('a malformed distributions map is refused with the key named', () => {
 });
 
 test('rpm ignores the distribution map', () => {
-  assert.equal(g.uploadUrl(WGCFG, g.parseRpmFile('wg-wrangler-0.4.1-1.x86_64.rpm')),
+  assert.equal(g.uploadUrl(WGCFG, rpm('tool-1.0.0~rc.1-1.x86_64.rpm')),
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/upload?sign=true');
 });
 

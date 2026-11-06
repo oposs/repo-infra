@@ -111,31 +111,25 @@ jobs:
             });
             // By asset id through the API: browser_download_url does not
             // serve drafts. Every package is fetched before anything goes up,
-            // because a .deb is named from its control data: GitHub turns `~`
-            // into `.` in asset names, and Gitea stores the file under the
-            // control name and version (#129).
+            // because it is named from its own metadata (.deb control data,
+            // .rpm header): GitHub turns `~` into `.` in asset names, and
+            // Gitea stores the file under the metadata's name and version.
             const dir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'gitea-'));
             const packages = [];
-            const unparsable = [];
             const unreadable = [];
             for (const asset of assets) {
               const kind = /\.deb$/.test(asset.name) ? 'deb' : /\.rpm$/.test(asset.name) ? 'rpm' : null;
               if (!kind) continue;
-              let pkg = null;
-              if (kind === 'rpm') {
-                pkg = gitea.parseRpmFile(asset.name);
-                if (!pkg) {
-                  unparsable.push(asset.name);
-                  continue;
-                }
-              }
               const { data } = await github.rest.repos.getReleaseAsset({
                 owner, repo, asset_id: asset.id,
                 headers: { accept: 'application/octet-stream' },
               });
               const local = path.join(dir, String(asset.id));
               fs.writeFileSync(local, Buffer.from(data));
-              if (kind === 'deb') {
+              let read;
+              if (kind === 'rpm') {
+                read = gitea.rpmPackage(fs.readFileSync(local), asset.name);
+              } else {
                 let control;
                 try {
                   control = execFileSync('dpkg-deb',
@@ -146,22 +140,16 @@ jobs:
                     + `${String(err.stderr || err.message).trim()})`);
                   continue;
                 }
-                const read = gitea.debPackage(control, asset.name);
-                if (!read.ok) {
-                  unreadable.push(read.message);
-                  continue;
-                }
-                pkg = read.pkg;
+                read = gitea.debPackage(control, asset.name);
               }
-              packages.push({ asset, pkg, local });
+              if (!read.ok) {
+                unreadable.push(read.message);
+                continue;
+              }
+              packages.push({ asset, pkg: read.pkg, local });
             }
-            // Every .deb and .rpm is uploaded; one that cannot be named is a
+            // Every .deb and .rpm is uploaded; one that cannot be read is a
             // failure, not a file to skip.
-            if (unparsable.length > 0) {
-              core.setFailed(`Cannot upload ${unparsable.join(', ')}: the file name does not `
-                + 'have the shape Gitea needs. Expected name-version-release.arch.rpm.');
-              return;
-            }
             if (unreadable.length > 0) {
               core.setFailed(`Cannot upload: ${unreadable.join('; ')}.`);
               return;

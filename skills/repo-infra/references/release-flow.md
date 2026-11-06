@@ -354,9 +354,10 @@ One `.deb` per release, named for example `wg-wrangler_0.4.1~noble_amd64.deb`:
 
 The job fails when no asset matches. It fails before the first upload when
 `GITEA_PACKAGE_TOKEN` or `GITEA_PACKAGE_USER` is empty, naming the missing
-one, when a release carries a `.deb` whose control data `dpkg-deb` cannot
-read, and when it carries an `.rpm` whose file name is not
-`name-version-release.arch.rpm`. Each message names the file.
+one, and when a release carries a `.deb` whose control data `dpkg-deb`
+cannot read or an `.rpm` without a readable header, naming the file. The
+name, version and architecture of each package come from that metadata, not
+from the asset name.
 
 The credential is the first stored one in the standard:
 
