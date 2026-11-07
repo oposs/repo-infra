@@ -3,6 +3,7 @@
 and apply append one entry per ecosystem."""
 
 import hashlib
+import json
 import pathlib
 import subprocess
 
@@ -47,29 +48,33 @@ def ci(*called):
     return f"name: CI\non:\n  push:\njobs:\n{jobs}"
 
 
-def repo(tmp_path, *called, dependabot=None):
+def repo(tmp_path, *called, dependabot=None, config=None):
     root = tmp_path / "repo"
     (root / ".github/workflows").mkdir(parents=True)
     (root / ".github/workflows/ci.yml").write_text(ci(*called), encoding="utf-8")
     if dependabot is not None:
         (root / TARGET).write_text(dependabot, encoding="utf-8")
+    if config is not None:
+        (root / ".github/repo-infra.json").write_text(json.dumps(config), encoding="utf-8")
     return root
 
 
+def pieces_of(root):
+    return check.rendered(load_pieces(), callers.read_workflows(root), check.read_config(root))
+
+
 def rendered(root):
-    piece = check.rendered(load_pieces(), callers.read_workflows(root))["dependabot"]
-    return piece.files[TARGET]
+    return pieces_of(root)["dependabot"].files[TARGET]
 
 
 def state(root):
     found = [(i.state, i.detail) for i in check.piece_items(
-        root, check.rendered(load_pieces(), callers.read_workflows(root)), load_published())
-             if i.name == "dependabot"]
+        root, pieces_of(root), load_published()) if i.name == "dependabot"]
     return found[0]
 
 
-def test_the_asset_is_v3():
-    assert load_pieces()["dependabot"].version == 3
+def test_the_asset_is_v4():
+    assert load_pieces()["dependabot"].version == 4
 
 
 @pytest.mark.parametrize("called, ecosystems", [
@@ -114,13 +119,16 @@ def test_every_ecosystem_is_named_in_the_header():
 def test_the_rendered_file_is_current(tmp_path):
     root = repo(tmp_path, "ri-ci-rust")
     (root / TARGET).write_text(BASE + entry("cargo"), encoding="utf-8")
-    assert state(root) == ("current", "v3")
+    assert state(root) == ("current", "v4")
 
 
-def test_a_v3_file_for_other_callers_is_outdated(tmp_path):
+OTHER = (f"{TARGET} lists other ecosystems or directories than the callers' CI pieces "
+         "and \"dependabot\" in .github/repo-infra.json ask for; apply rewrites it")
+
+
+def test_a_current_file_for_other_callers_is_outdated(tmp_path):
     root = repo(tmp_path, "ri-ci-rust", dependabot=BASE)
-    assert state(root) == ("outdated", f"{TARGET} lists other ecosystems than the CI "
-                                       "pieces the callers call; apply rewrites it")
+    assert state(root) == ("outdated", OTHER)
 
 
 def test_a_v3_file_with_an_ecosystem_no_caller_builds_is_outdated(tmp_path):
@@ -130,7 +138,7 @@ def test_a_v3_file_with_an_ecosystem_no_caller_builds_is_outdated(tmp_path):
 
 def test_v2_reads_outdated(tmp_path):
     root = repo(tmp_path, "ri-ci-rust", dependabot=V2)
-    assert state(root) == ("outdated", "v2 installed, v3 available; apply replaces it")
+    assert state(root) == ("outdated", "v2 installed, v4 available; apply replaces it")
 
 
 def test_v2_with_a_hand_added_entry_reads_outdated(tmp_path):
@@ -160,7 +168,7 @@ def test_a_frozen_v3_file_reads_current_or_outdated(tmp_path):
     root = repo(tmp_path, "ri-ci-rust", "ri-ci-node-pnpm",
                 dependabot=FROZEN.read_text(encoding="utf-8"))
     if load_pieces()["dependabot"].version == 3:
-        assert state(root) == ("current", "v3")
+        assert state(root) == ("current", "v4")
     else:
         assert state(root)[0] == "outdated"
         assert state(root)[1].startswith("v3 installed")
@@ -172,7 +180,7 @@ def test_install_writes_the_rendered_text(tmp_path):
     piece = check.rendered(load_pieces(), docs)["dependabot"]
     history = load_published()["dependabot"]
     plan = apply.plan_piece(root, piece, check.piece_state(root, piece, history), history)
-    assert plan.write == [TARGET] and plan.since == 3
+    assert plan.write == [TARGET] and plan.since == 4
     apply.install_piece(root, piece, check.piece_state(root, piece, history), history)
     assert (root / TARGET).read_text(encoding="utf-8") == BASE + entry("gomod")
 
@@ -201,9 +209,141 @@ def test_apply_installs_the_entries_for_the_callers(tmp_path, monkeypatch):
     assert cli.main(["apply", "--root", str(root), "--repo", "o/r"]) == 0
     assert (root / TARGET).read_text(encoding="utf-8") == BASE + entry("cargo")
     assert git(root, "log", "-1", "--format=%s") == (
-        "Install dependabot v3 from the repo-infra standard\n")
+        "Install dependabot v4 from the repo-infra standard\n")
 
 
 def test_repo_infra_lists_pip():
     root = pathlib.Path(__file__).resolve().parents[1]
     assert (root / TARGET).read_text(encoding="utf-8") == BASE + entry("pip")
+
+
+# #117: further directories per ecosystem, from the "dependabot" key of
+# .github/repo-infra.json.
+SHADCN = {"dependabot": {"cargo": ["/tools/stylegen", "/tools/icongen", "/tools/fontgen"]}}
+SHADCN_CARGO = """  - package-ecosystem: cargo
+    directories:
+      - /
+      - /tools/stylegen
+      - /tools/icongen
+      - /tools/fontgen
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - no-changelog
+"""
+
+
+def test_listed_directories_follow_the_top_in_their_order(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", "ri-ci-node-pnpm", config=SHADCN)
+    assert rendered(root) == BASE + SHADCN_CARGO + entry("npm")
+
+
+def test_the_listed_entry_is_the_entry_function():
+    assert pieces.dependabot_entry(
+        "cargo", ["/tools/stylegen", "/tools/icongen", "/tools/fontgen"]) == SHADCN_CARGO
+
+
+def test_an_ecosystem_without_a_list_keeps_the_v3_entry(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", "ri-ci-node-pnpm", config={"dependabot": {}})
+    assert rendered(root) == BASE + entry("cargo") + entry("npm")
+
+
+def test_a_configured_file_is_current(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", dependabot=BASE + SHADCN_CARGO, config=SHADCN)
+    assert state(root) == ("current", "v4")
+
+
+def test_a_listed_entry_without_the_key_is_outdated(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", dependabot=BASE + SHADCN_CARGO)
+    assert state(root) == ("outdated", OTHER)
+
+
+def test_a_key_the_file_does_not_carry_yet_is_outdated(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", dependabot=BASE + entry("cargo"), config=SHADCN)
+    assert state(root) == ("outdated", OTHER)
+
+
+def test_published_base_strips_the_listed_entry():
+    data = (BASE + SHADCN_CARGO + entry("npm")).encode("utf-8")
+    assert pieces.published_base("dependabot", data) == BASE.encode("utf-8")
+
+
+def test_an_edited_listed_entry_is_edited(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", config=SHADCN,
+                dependabot=BASE + SHADCN_CARGO.replace("weekly", "daily"))
+    assert state(root)[0] == "edited"
+
+
+def test_an_invalid_key_renders_no_directories(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust",
+                config={"dependabot": {"cargo": ["/tools/a", "tools/b"]}})
+    assert rendered(root) == BASE + entry("cargo")
+
+
+def test_install_writes_the_listed_directories(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", dependabot=BASE, config=SHADCN)
+    piece = pieces_of(root)["dependabot"]
+    history = load_published()["dependabot"]
+    apply.install_piece(root, piece, check.piece_state(root, piece, history), history)
+    assert (root / TARGET).read_text(encoding="utf-8") == BASE + SHADCN_CARGO
+
+
+def dependabot_config(root):
+    return [i.detail for i in check.config_items(root, callers.read_workflows(root))
+            if i.name in ("dependabot", "repo-infra.json")]
+
+
+def test_the_key_is_known(tmp_path):
+    root = repo(tmp_path, "ri-ci-rust", config=SHADCN)
+    assert dependabot_config(root) == []
+
+
+WHERE = '"dependabot.cargo" in .github/repo-infra.json'
+
+
+@pytest.mark.parametrize("value, problem", [
+    (["/a"], '"dependabot" in .github/repo-infra.json must be an object that maps an '
+             "ecosystem to a list of directories"),
+    ({"cargo": "/a"}, f"{WHERE} must be a list of directories"),
+    ({"cargo": [1]}, f"{WHERE} must be a list of directories"),
+    ({"cargo": []}, f"{WHERE} is empty; list a directory or remove the key"),
+    ({"cargo": ["/"]}, f'{WHERE}: "/" is always in the entry; list only the other '
+                       "directories"),
+    ({"cargo": ["/a", "/a"]}, f'{WHERE}: "/a" is listed twice'),
+    ({"github-actions": ["/a"]},
+     '"dependabot.github-actions" in .github/repo-infra.json: the github-actions entry '
+     "is the piece's own text and stays at directory /"),
+    ({"maven": ["/a"]},
+     '"dependabot.maven" in .github/repo-infra.json: maven is no ecosystem the pieces '
+     "write an entry for; the keys are bun, cargo, gomod, npm, pip"),
+    ({"npm": ["/web"]},
+     '"dependabot.npm" in .github/repo-infra.json: no caller calls ri-ci-node-pnpm at '
+     "the top level, so there is no npm entry to add directories to"),
+])
+def test_a_wrong_key_is_a_problem(tmp_path, value, problem):
+    root = repo(tmp_path, "ri-ci-rust", config={"dependabot": value})
+    assert dependabot_config(root) == [problem]
+
+
+def test_an_ecosystem_names_every_piece_that_builds_it(tmp_path):
+    root = repo(tmp_path, "ri-ci-python", config={"dependabot": {"cargo": ["/a"]}})
+    assert dependabot_config(root) == [
+        f"{WHERE}: no caller calls ri-ci-rust or ri-ci-rust-musl at the top level, so "
+        "there is no cargo entry to add directories to"]
+
+
+@pytest.mark.parametrize("directory", [
+    "tools/a", "/tools/a/", "/tools//a", "/../a", "/tools/../a", "/./a", "/a b",
+    "/a#b", "/a:b", ""])
+def test_a_directory_must_be_a_clean_path_below_the_top(tmp_path, directory):
+    root = repo(tmp_path, "ri-ci-rust", config={"dependabot": {"cargo": [directory]}})
+    assert dependabot_config(root) == [
+        f'{WHERE}: "{directory}" must start with /, end without /, hold no . or .. and '
+        "use only letters, digits and . _ - *"]
+
+
+@pytest.mark.parametrize("directory", ["/tools/a", "/.config/x", "/lib-*", "/a_b.c-d"])
+def test_a_clean_directory_passes(tmp_path, directory):
+    root = repo(tmp_path, "ri-ci-rust", config={"dependabot": {"cargo": [directory]}})
+    assert dependabot_config(root) == []
