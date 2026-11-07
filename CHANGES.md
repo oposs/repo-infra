@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+
+### Fixed
+
+## 2.10.2 - 2026-11-07
+### Changed
 - The onboarding guide says that a version file holds the last released version between releases. A placeholder such as `"unreleased"` makes the publish check on main fail with "CHANGES.md says 1.1.3 but these disagree", and Create release PR then refuses to start.
 
 ### Fixed
