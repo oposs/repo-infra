@@ -24,8 +24,32 @@ function patternToRegExp(pattern) {
   return new RegExp(`^${body}$`);
 }
 
+// GitHub renames a release asset on upload: `~` becomes `.`, and then every
+// run of dots becomes one dot, dots that were there before included. Tried
+// on 2026-11-07 with a draft release of this repository:
+//   a+b~c.txt -> a+b.c.txt   p~~q.txt -> p.q.txt   d..e.txt -> d.e.txt
+//   f~.g.txt  -> f.g.txt     j~-k.txt -> j.-k.txt
+// `+`, `-` and `_` stay. A pattern is compared in that same published form,
+// and so is the name, so the check before the merge (the built files) and
+// the one after the tag (the release's assets) give the same answer (#137).
+function publishedName(name) {
+  return name.replace(/~/g, '.').replace(/\.{2,}/g, '.');
+}
+
 function matches(name, pattern) {
-  return patternToRegExp(pattern).test(name);
+  return patternToRegExp(publishedName(pattern)).test(publishedName(name));
+}
+
+// Built files that GitHub would publish under one name, as lists of the
+// built names. The second upload of such a name fails half way through the
+// release, so the build is refused before the release exists.
+function collidingAssets(names) {
+  const by = new Map();
+  for (const name of names || []) {
+    const key = publishedName(name);
+    by.set(key, [...(by.get(key) || []), name]);
+  }
+  return [...by.values()].filter((group) => group.length > 1);
 }
 
 // The expected patterns that nothing on the release satisfies, in the order
@@ -48,4 +72,4 @@ function unfinishedAssets(attached) {
   return (attached || []).filter((a) => a.state !== 'uploaded').map((a) => a.name);
 }
 
-module.exports = { matches, missingAssets, unfinishedAssets };
+module.exports = { publishedName, matches, missingAssets, collidingAssets, unfinishedAssets };

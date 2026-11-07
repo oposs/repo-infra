@@ -159,6 +159,13 @@ jobs:
                 + `(release_assets). Built: ${assetNames.join(', ') || 'nothing'}.`);
               return;
             }
+            const colliding = assetsLib.collidingAssets(assetNames);
+            if (colliding.length > 0) {
+              core.setFailed('GitHub would publish these built files under one name, because '
+                + 'it turns ~ into . and a run of dots into one: '
+                + `${colliding.map((g) => g.join(' and ')).join('; ')}.`);
+              return;
+            }
             if (assetNames.includes(releaseLib.BUILD_RECORD)) {
               core.setFailed(`The build produced a file named ${releaseLib.BUILD_RECORD}; `
                 + 'that name is reserved.');

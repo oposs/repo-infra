@@ -270,6 +270,14 @@ diff, so reviewers see it. `finish` first removes its own earlier drafts for
 the same version, including a bot-created draft that a failed upload left
 without `release-build.json`.
 
+GitHub renames an asset on upload: `~` becomes `.`, and a run of dots becomes
+one dot, so `wg-wrangler_0.5.0~bookworm_amd64.deb` is listed as
+`wg-wrangler_0.5.0.bookworm_amd64.deb`. `finish` and `finalize` compare the
+`release_assets` patterns and the file names in that published form, so a
+pattern such as `wg-wrangler_*~bookworm_amd64.deb` passes both. `finish`
+refuses two built files that GitHub would list under one name, such as
+`x_1~rc1.deb` and `x_1.rc1.deb`, naming both.
+
 Publish tags the head recorded in `release-build.json`, not the merge commit.
 If that commit does not exist in the repository, publish fails with
 `release-build.json names <sha>, which does not exist in this repository`.
@@ -287,6 +295,17 @@ release URLs that answer 404, because the release is still a draft. Usually
 that lasts the few minutes publish takes. A failed publish job keeps the release a
 draft and `brew install` fails until it is public. Recovery is **Re-run failed
 jobs** on the publish run.
+
+When `finalize` fails because of the repository's own configuration, for
+example a `release_assets` pattern that matches nothing on the release, a
+re-run fails the same way: it reads `.github/repo-infra.json` at the tagged
+commit. The tag and the uploads are done by then. Finish the release by hand,
+the way `finalize` does it, after checking that every file is attached:
+
+    gh release delete-asset vX.Y.Z release-build.json --yes
+    gh release edit vX.Y.Z --draft=false
+
+Then correct the configuration on `main` for the next release.
 
 `Create release PR` refuses in two cases:
 
