@@ -108,6 +108,14 @@ def test_the_checkmk_piece_lints_and_tests_on_the_python_of_checkmk_2_3():
         assert [s["with"]["python-version"] for s in setup] == ["3.12"], job
 
 
+def test_the_checkmk_piece_lints_the_whole_repository_with_a_pinned_ruff():
+    # `ruff check local/` let lint findings in tests/ pass, and an unpinned
+    # ruff could turn every caller red on its next release (#133).
+    steps = workflow.load(piece_text("ri-ci-checkmk-plugin"))["jobs"]["cmk-lint"]["steps"]
+    runs = [s["run"] for s in steps if "run" in s]
+    assert runs == ["pip install ruff==0.17.4", "ruff check ."]
+
+
 def test_the_autotools_piece_no_longer_documents_a_bare_configure_limit():
     # D18 closed it: plain ./configure is driver mode, so the runner never
     # probes the project's system dependencies.
