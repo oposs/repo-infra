@@ -12,6 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 2.11.0 - 2026-11-07
+### New
 - A repository with further Cargo, npm, bun, pip or Go projects below the top, such as `tools/stylegen` with its own `Cargo.lock`, can now get Dependabot updates for them: list the directories under the new `dependabot` key of `.github/repo-infra.json`, for example `"dependabot": {"cargo": ["/tools/stylegen"]}`. `apply` writes the ecosystem's entry in `.github/dependabot.yml` (`dependabot` v4) with `directories:`, `/` first, and the same weekly schedule and labels. `check` reports a path that does not start with `/`, a duplicate, and an ecosystem no CI piece of the callers builds. (#117)
 
 ### Changed
