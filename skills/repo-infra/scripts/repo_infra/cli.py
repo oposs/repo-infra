@@ -73,8 +73,10 @@ def _pending(root, pieces, states, published, store):
 
 
 def _files(root, pieces):
-    """The pieces apply installs, as the callers of `root` render them (#92)."""
-    rendered = checking.rendered(pieces, callers.read_workflows(root))
+    """The pieces apply installs, as the callers and repo-infra.json of `root`
+    render them (#92, #117)."""
+    rendered = checking.rendered(pieces, callers.read_workflows(root),
+                                 checking.read_config(root))
     return {name: piece for name, piece in rendered.items() if not piece.remote}
 
 
