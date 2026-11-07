@@ -14,6 +14,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- The *Plugin lint* job of `ri-ci-checkmk-plugin` now checks the whole repository with `ruff check .`, so lint findings in `tests/` fail CI; before, only `local/` was checked. It installs ruff 0.17.4 instead of the newest release, so a new ruff release no longer turns a plugin's CI red without a change in the plugin (#133).
 
 ### Fixed
 - A release whose `release_assets` names a file with `~`, such as `"wg-wrangler_*~bookworm_amd64.deb"`, stayed a draft after it was tagged and uploaded: `finalize` failed with `v0.5.0 is missing wg-wrangler_*~bookworm_amd64.deb`, because GitHub lists the file with `.` in place of `~`. `Create release PR` and `finalize` now compare the patterns as GitHub lists the files, so both checks agree. `Create release PR` refuses two built files that GitHub would list under one name, such as `x_1~rc1.deb` and `x_1.rc1.deb` (#137).
