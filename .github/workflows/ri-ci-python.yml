@@ -44,7 +44,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - run: pip install ruff
+      # Pinned: an unpinned ruff takes each new release's rules, which could
+      # turn every caller red at once with no change in the caller. The
+      # version moves on purpose, with ri-ci-checkmk-plugin and `make lint`.
+      - run: pip install ruff==0.17.4
 
       - run: ruff check .
 

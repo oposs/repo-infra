@@ -116,6 +116,16 @@ def test_the_checkmk_piece_lints_the_whole_repository_with_a_pinned_ruff():
     assert runs == ["pip install ruff==0.17.4", "ruff check ."]
 
 
+def test_the_python_piece_lints_with_the_ruff_the_checkmk_piece_pins():
+    # An unpinned ruff could turn every caller red on its next release; both
+    # pieces and `make lint` move to a new ruff together.
+    steps = workflow.load(piece_text("ri-ci-python"))["jobs"]["ruff"]["steps"]
+    runs = [s["run"] for s in steps if "run" in s]
+    assert runs == ["pip install ruff==0.17.4", "ruff check ."]
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "\tuvx ruff@0.17.4 check .\n" in makefile
+
+
 def test_the_autotools_piece_no_longer_documents_a_bare_configure_limit():
     # D18 closed it: plain ./configure is driver mode, so the runner never
     # probes the project's system dependencies.
