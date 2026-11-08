@@ -239,33 +239,56 @@ ECOSYSTEMS = {"ri-ci-go": "gomod", "ri-ci-node-bun": "bun", "ri-ci-node-pnpm": "
               "ri-ci-python": "pip", "ri-ci-rust": "cargo", "ri-ci-rust-musl": "cargo"}
 
 
-def dependabot_entry(ecosystem):
-    """The entry for one ecosystem. generations.json records only the asset,
-    and `published_base` finds it by stripping this text, so a change here
-    must keep stripping the old text, or every v3 copy reads edited.
-    tests/fixtures/dependabot/v3-cargo-npm.yml holds a frozen v3 copy."""
+# The shape of a directory the "dependabot" key of repo-infra.json may list
+# (#117): below the top and without a trailing slash, in characters YAML reads
+# as a plain string. `*` is Dependabot's glob. check also refuses . and ..
+DIRECTORY = re.compile(r"(?:/[A-Za-z0-9._*-]+)+")
+
+
+def dependabot_entry(ecosystem, directories=()):
+    """The entry for one ecosystem: at directory /, or at / and `directories`
+    when repo-infra.json lists any for it (#117). generations.json records
+    only the asset, and `published_base` finds it by stripping this text, so a
+    change here must keep stripping the old text, or every copy of an older
+    version reads edited. tests/fixtures/dependabot/v3-cargo-npm.yml holds a
+    frozen v3 copy."""
+    where = ("    directories:\n" + "".join(f"      - {d}\n" for d in ("/", *directories))
+             if directories else "    directory: /\n")
     return (f"  - package-ecosystem: {ecosystem}\n"
-            "    directory: /\n"
-            "    schedule:\n"
+            + where
+            + "    schedule:\n"
             "      interval: weekly\n"
             "    labels:\n"
             "      - dependencies\n"
             "      - no-changelog\n")
 
 
-def render(piece, called):
+def render(piece, called, directories=None):
     """`piece` as a repository holds it whose callers call the pieces named
-    in `called`. Only dependabot differs from its asset."""
+    in `called` and whose repo-infra.json lists `directories` per ecosystem.
+    Only dependabot differs from its asset."""
     if piece.name != DEPENDABOT:
         return piece
+    directories = directories or {}
     ecosystems = sorted({ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS})
-    text = piece.files[piece.target] + "".join(map(dependabot_entry, ecosystems))
+    text = piece.files[piece.target] + "".join(
+        dependabot_entry(e, directories.get(e, ())) for e in ecosystems)
     return replace(piece, files={piece.target: text})
+
+
+# The entry with directories, for any ecosystem and any list `render` can write.
+_LISTED_ENTRY = re.compile(
+    rb"  - package-ecosystem: (?:%s)\n    directories:\n      - /\n"
+    rb"(?:      - %s\n)+    schedule:\n      interval: weekly\n"
+    rb"    labels:\n      - dependencies\n      - no-changelog\n\Z"
+    % (b"|".join(re.escape(e.encode()) for e in sorted(set(ECOSYSTEMS.values()))),
+       DIRECTORY.pattern.encode()))
 
 
 def published_base(name, data):
     """The bytes of a copy of piece `name` without the entries `render`
-    appends: the text generations.json records a version by."""
+    appends, in every form it has written: the text generations.json records
+    a version by."""
     if name != DEPENDABOT:
         return data
     entries = [dependabot_entry(e).encode("utf-8") for e in sorted(set(ECOSYSTEMS.values()))]
@@ -275,6 +298,9 @@ def published_base(name, data):
         for entry in entries:
             if data.endswith(entry):
                 data, stripped = data[:-len(entry)], True
+        listed = _LISTED_ENTRY.search(data)
+        if listed:
+            data, stripped = data[:listed.start()], True
     return data
 
 

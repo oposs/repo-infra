@@ -126,7 +126,8 @@ def test_prepare_refuses_then_cleans_up_before_it_writes_anything():
 
 def test_finish_checks_everything_before_it_creates_the_draft():
     s = script(FINISH_PIECE, "finish", FINISH)
-    for guard in ("refusedReleaseFiles", "undeclaredReleaseFiles", "decodeText", "missingAssets"):
+    for guard in ("refusedReleaseFiles", "undeclaredReleaseFiles", "decodeText", "missingAssets",
+                  "collidingAssets"):
         assert s.index(guard) < s.index("createRelease"), guard
 
 

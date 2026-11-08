@@ -17,8 +17,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+
+## 2.11.0 - 2026-11-07
+### New
+- A repository with further Cargo, npm, bun, pip or Go projects below the top, such as `tools/stylegen` with its own `Cargo.lock`, can now get Dependabot updates for them: list the directories under the new `dependabot` key of `.github/repo-infra.json`, for example `"dependabot": {"cargo": ["/tools/stylegen"]}`. `apply` writes the ecosystem's entry in `.github/dependabot.yml` (`dependabot` v4) with `directories:`, `/` first, and the same weekly schedule and labels. `check` reports a path that does not start with `/`, a duplicate, and an ecosystem no CI piece of the callers builds. (#117)
+
+### Changed
+- The *Plugin lint* job of `ri-ci-checkmk-plugin` now checks the whole repository with `ruff check .`, so lint findings in `tests/` fail CI; before, only `local/` was checked. It installs ruff 0.17.4 instead of the newest release, so a new ruff release no longer turns a plugin's CI red without a change in the plugin (#133).
+
+### Fixed
+- A release whose `release_assets` names a file with `~`, such as `"wg-wrangler_*~bookworm_amd64.deb"`, stayed a draft after it was tagged and uploaded: `finalize` failed with `v0.5.0 is missing wg-wrangler_*~bookworm_amd64.deb`, because GitHub lists the file with `.` in place of `~`. `Create release PR` and `finalize` now compare the patterns as GitHub lists the files, so both checks agree. `Create release PR` refuses two built files that GitHub would list under one name, such as `x_1~rc1.deb` and `x_1.rc1.deb` (#137).
+- The release guide describes how to make a release public by hand when `finalize` fails because of the repository's own configuration, which a re-run cannot fix (#137).
+
+## 2.10.2 - 2026-11-07
+### Changed
+- The onboarding guide says that a version file holds the last released version between releases. A placeholder such as `"unreleased"` makes the publish check on main fail with "CHANGES.md says 1.1.3 but these disagree", and Create release PR then refuses to start.
+
+### Fixed
 - `ri-publish-gitea` stopped with `wg-wrangler_0.5.0.bookworm_amd64.deb: no glob in "gitea_packages.debian.distributions" matches it`, because GitHub lists a `.deb` built as `wg-wrangler_0.5.0~bookworm_amd64.deb` with `.` in place of `~`. The job now takes the name, version and architecture of each `.deb` from the package itself, so globs such as `"wg-wrangler_*~noble_*.deb"` match again. A re-run after a partial upload no longer fails with `Gitea answered 409 but lists no such file` for a `.deb` whose version has a `~`, for example `1.0.0~rc.1` (#129).
-- `ri-release-nfpm` no longer checks the file name of a `.deb` it builds, because `ri-publish-gitea` no longer reads it; `.rpm` names are checked as before.
+- On a re-run after a partial upload, `ri-publish-gitea` failed with `Gitea answered 409 but lists no such file` for an `.rpm` whose version has a `~` or that carries an epoch. It now reads name, version and architecture from the `.rpm` itself, as it does for a `.deb`.
+- `ri-release-nfpm` no longer checks the file names of the `.deb` and `.rpm` files it builds, because `ri-publish-gitea` no longer reads them.
 
 ## 2.10.1 - 2026-11-05
 ### Fixed

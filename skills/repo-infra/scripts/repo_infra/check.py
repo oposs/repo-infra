@@ -18,7 +18,15 @@ from collections import namedtuple
 
 from . import callers
 from .markers import parse_markers
-from .pieces import ASSETS, load_pieces, load_published, published_base, render
+from .pieces import (
+    ASSETS,
+    DIRECTORY,
+    ECOSYSTEMS,
+    load_pieces,
+    load_published,
+    published_base,
+    render,
+)
 from .report import Item
 
 PieceState = namedtuple("PieceState", "state installed edited")
@@ -27,7 +35,7 @@ CONFIG = ".github/repo-infra.json"
 # What the borrowed release machinery reads (release-pr.yml, lib/*.js), and
 # the exceptions the shape review reads (D32).
 KEYS = ("version_files", "release_assets", "release_files", "gitea_packages",
-        "moving_major_tag", "rust", "exceptions")
+        "moving_major_tag", "rust", "exceptions", "dependabot")
 OBSOLETE = ("ecosystems", "ci", "ci_local", "publish", "build", "publish_local",
             "release_build", "release_build_local", "answers")
 # D30 removed `skip`; D32 gave its purpose to `exceptions`, keyed by rule id.
@@ -229,11 +237,80 @@ def called_pieces(docs, pieces):
     return found
 
 
-def rendered(pieces, docs):
-    """`pieces` as the repository whose workflows are `docs` holds them (#92):
-    dependabot lists the ecosystems of the pieces the callers call."""
+def read_config(repo_root):
+    """The object in .github/repo-infra.json, or {} when there is none."""
+    path = pathlib.Path(repo_root) / CONFIG
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return config if isinstance(config, dict) else {}
+
+
+def dependabot_problems(value, called):
+    """What is wrong with the "dependabot" key of repo-infra.json (#117): an
+    object of Dependabot ecosystems, each with the directories besides / its
+    entry covers. An ecosystem needs an entry to add them to, so one of the
+    callers' CI pieces must build it."""
+    where = f'"dependabot" in {CONFIG}'
+    if not isinstance(value, dict):
+        return [f"{where} must be an object that maps an ecosystem to a list of "
+                "directories"]
+    built = {ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS}
+    problems = []
+    for ecosystem, directories in value.items():
+        key = f'"dependabot.{ecosystem}" in {CONFIG}'
+        builders = sorted(name for name, e in ECOSYSTEMS.items() if e == ecosystem)
+        if ecosystem == "github-actions":
+            problems.append(f"{key}: the github-actions entry is the piece's own text "
+                            "and stays at directory /")
+            continue
+        if not builders:
+            problems.append(f"{key}: {ecosystem} is no ecosystem the pieces write an entry "
+                            f"for; the keys are {', '.join(sorted(set(ECOSYSTEMS.values())))}")
+            continue
+        if ecosystem not in built:
+            problems.append(f"{key}: no caller calls {' or '.join(builders)} at the top "
+                            f"level, so there is no {ecosystem} entry to add directories to")
+            continue
+        if not isinstance(directories, list) or not all(
+                isinstance(d, str) for d in directories):
+            problems.append(f"{key} must be a list of directories")
+            continue
+        if not directories:
+            problems.append(f"{key} is empty; list a directory or remove the key")
+        seen = set()
+        for directory in directories:
+            if directory == "/":
+                problems.append(f'{key}: "/" is always in the entry; list only the '
+                                "other directories")
+            elif not DIRECTORY.fullmatch(directory) or {".", ".."} & set(
+                    directory.split("/")):
+                problems.append(f'{key}: "{directory}" must start with /, end without /, '
+                                "hold no . or .. and use only letters, digits and . _ - *")
+            elif directory in seen:
+                problems.append(f'{key}: "{directory}" is listed twice')
+            seen.add(directory)
+    return problems
+
+
+def dependabot_directories(config, called):
+    """The directories per ecosystem `render` adds to the dependabot entries:
+    the "dependabot" key of `config`, or none while check reports it."""
+    value = (config or {}).get("dependabot")
+    if value is None or dependabot_problems(value, called):
+        return {}
+    return value
+
+
+def rendered(pieces, docs, config=None):
+    """`pieces` as the repository whose workflows are `docs` and whose
+    repo-infra.json is `config` holds them (#92): dependabot lists the
+    ecosystems of the pieces the callers call, each with the directories the
+    config lists for it (#117)."""
     called = called_pieces(docs, pieces)
-    return {name: render(piece, called) for name, piece in pieces.items()}
+    directories = dependabot_directories(config, called)
+    return {name: render(piece, called, directories) for name, piece in pieces.items()}
 
 
 def piece_items(repo_root, pieces, published, called=None):
@@ -253,8 +330,9 @@ def piece_items(repo_root, pieces, published, called=None):
             if gone and state.installed == piece.version:
                 detail = f"{', '.join(gone)} is missing; apply restores it"
             elif state.installed == piece.version:
-                detail = (f"{piece.target} lists other ecosystems than the CI pieces the "
-                          "callers call; apply rewrites it")
+                detail = (f"{piece.target} lists other ecosystems or directories than the "
+                          f"callers' CI pieces and \"dependabot\" in {CONFIG} ask for; "
+                          "apply rewrites it")
             else:
                 detail = (f"v{state.installed} installed, v{piece.version} available; "
                           "apply replaces it")
@@ -418,7 +496,7 @@ def _reasons(value):
         isinstance(reason, str) and reason.strip() for reason in value.values())
 
 
-def config_items(repo_root, docs):
+def config_items(repo_root, docs, called=None):
     path = pathlib.Path(repo_root) / CONFIG
     if not path.is_file():
         return [Item("config", "repo-infra.json", "missing",
@@ -483,6 +561,12 @@ def config_items(repo_root, docs):
             debian.get("distributions") if isinstance(debian, dict) else None)
         if problem:
             items.append(Item("config", "gitea_packages", "problem", problem))
+    if "dependabot" in config:
+        if called is None:
+            called = called_pieces(docs, load_pieces())
+        problems = dependabot_problems(config["dependabot"], called)
+        if problems:
+            items.append(Item("config", "dependabot", "problem", "; ".join(problems)))
     return items
 
 
@@ -666,7 +750,7 @@ def classify_remote(facts):
 
 def run(repo_root, facts, assets=ASSETS):
     docs = callers.read_workflows(repo_root)
-    pieces = rendered(load_pieces(assets), docs)
+    pieces = rendered(load_pieces(assets), docs, read_config(repo_root))
     called = called_pieces(docs, pieces)
     published = load_published(assets)
     home = is_home(repo_root)
@@ -675,7 +759,7 @@ def run(repo_root, facts, assets=ASSETS):
             + ([] if home else layout_items(repo_root, pieces))
             + core_call_items(docs, pieces)
             + callers.validate(docs, pieces, assets, home=home)
-            + config_items(repo_root, docs)
+            + config_items(repo_root, docs, called)
             + path_filter_items(docs)
             + action_pin_items(repo_root, pieces)
             + classify_remote(facts))

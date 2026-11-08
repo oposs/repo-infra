@@ -737,7 +737,7 @@ publish:
 
 ## Release flow: called from changelog.yml, ci.yml and release-pr.yml
 
-### dependabot v3
+### dependabot v4
 
 Installed at `.github/dependabot.yml`.
 
@@ -747,7 +747,7 @@ Installed at `.github/dependabot.yml`.
 
 **The repository supplies:** The no-changelog label.
 
-**Produces:** Below the github-actions entry, check and apply expect one weekly entry at directory / for each ecosystem the callers' CI pieces build: cargo for ri-ci-rust and ri-ci-rust-musl, npm for ri-ci-node-pnpm, bun for ri-ci-node-bun, pip for ri-ci-python, gomod for ri-ci-go. The other CI pieces add none, and neither does a call that passes `repository`.
+**Produces:** Below the github-actions entry, check and apply expect one weekly entry for each ecosystem the callers' CI pieces build: cargo for ri-ci-rust and ri-ci-rust-musl, npm for ri-ci-node-pnpm, bun for ri-ci-node-bun, pip for ri-ci-python, gomod for ri-ci-go. The other CI pieces add none, and neither does a call that passes `repository`. The entry reads directory /. When the "dependabot" key of .github/repo-infra.json lists directories for its ecosystem, as in {"cargo": ["/tools/gen"]}, it reads directories instead: / first, then the listed ones in their order.
 
 ### ri-changelog
 

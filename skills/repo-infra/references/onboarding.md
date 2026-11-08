@@ -399,6 +399,12 @@ plugin named `oposs_smart_error`:
 The patterns are JavaScript regular expressions with the `m` flag, so `^`
 anchors at the start of any line. The first match is replaced.
 
+Between releases every version file holds the version of the newest released
+`## X.Y.Z` heading in CHANGES.md, as `Cargo.toml` does. Never commit a
+placeholder such as `"unreleased"`: `ri-publish-tag` checks the files on every
+CHANGES.md push to main and fails with "CHANGES.md says 1.1.3 but these
+disagree: <file>", and that failing check then makes Create release PR refuse.
+
 Go, the GitHub Action and Perl `Makefile.PL` repositories have no entry here.
 Name the file that holds their version if they keep one.
 

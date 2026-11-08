@@ -97,6 +97,12 @@ as rule ids.
   tags, and a floating major tag is a promise to keep it working forever.
 - `rust`: the crates `ri-ci-rust` lints and tests (D24, below). It stays because
   `lib/rust-plan.js` reads it at run time (Decision G of D30).
+- `dependabot`: further directories per ecosystem for `.github/dependabot.yml`,
+  for a Cargo, npm, bun, pip or Go project that is not part of the one at the
+  top, for example `{"cargo": ["/tools/gen"]}` (#117). The ecosystem's entry
+  then reads `directories:` with `/` first. `check` refuses a path that does not
+  start with `/`, ends in `/`, holds `.` or `..`, or is listed twice, and an
+  ecosystem no caller's CI piece builds.
 - `exceptions`: one reason per rule id of `references/project-shape.md`, for a
   rule that does not apply to this repository (D32). `check` reports a value
   that is not an object of non-empty strings; only the shape review reads the
@@ -403,7 +409,10 @@ only `.github/dependabot.yml`, so the ecosystem of the repository's own code
 cannot be a piece of its own, and a repository may not edit the piece to add
 it. From v3 on, `check` and `apply` append one entry per ecosystem the callers'
 CI pieces build (the table is `ECOSYSTEMS` in `pieces.py`, the list is in the
-piece's header), and a call that passes `repository` counts for none.
+piece's header), and a call that passes `repository` counts for none. From
+v4 on, an entry reads `directories:` instead of `directory: /` when the
+`dependabot` key of `.github/repo-infra.json` lists directories for its
+ecosystem (#117).
 `generations.json` records the asset, which is the file for a repository that
 calls none of them; `check` strips the appended entries before it looks for the
 version, and the bytes are current only when they equal the file rendered for

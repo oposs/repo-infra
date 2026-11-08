@@ -83,3 +83,40 @@ test('absent arguments are not a crash', () => {
   assert.deepEqual(assets.missingAssets(undefined, ['*.deb']), ['*.deb']);
   assert.deepEqual(assets.missingAssets(RELEASE, undefined), []);
 });
+
+// The names GitHub gave these files on a draft release, 2026-11-07.
+const PUBLISHED = {
+  'a+b~c.txt': 'a+b.c.txt',
+  'p~~q.txt': 'p.q.txt',
+  'd..e.txt': 'd.e.txt',
+  'f~.g.txt': 'f.g.txt',
+  'h.~i.txt': 'h.i.txt',
+  'j~-k.txt': 'j.-k.txt',
+  'x_1.0-2+git3~rc1_amd64.deb': 'x_1.0-2+git3.rc1_amd64.deb',
+};
+
+test('publishedName gives the name GitHub lists the asset under', () => {
+  for (const [built, listed] of Object.entries(PUBLISHED)) {
+    assert.equal(assets.publishedName(built), listed, built);
+  }
+});
+
+test('a pattern with ~ gives the same answer before the merge and after the tag (#137)', () => {
+  // wg-wrangler v0.5.0: release-finish saw the built name, finalize the listed one.
+  const pattern = 'wg-wrangler_*~bookworm_amd64.deb';
+  assert.deepEqual(assets.missingAssets(['wg-wrangler_0.5.0~bookworm_amd64.deb'], [pattern]), []);
+  assert.deepEqual(assets.missingAssets(['wg-wrangler_0.5.0.bookworm_amd64.deb'], [pattern]), []);
+  // A pattern without the separator matches both forms too.
+  for (const name of ['wg-wrangler_0.5.0~noble_amd64.deb', 'wg-wrangler_0.5.0.noble_amd64.deb']) {
+    assert.equal(assets.matches(name, 'wg-wrangler_*noble_amd64.deb'), true, name);
+  }
+  // Still the whole name, and the other distribution does not count.
+  assert.deepEqual(assets.missingAssets(['wg-wrangler_0.5.0.noble_amd64.deb'], [pattern]), [pattern]);
+});
+
+test('collidingAssets names built files GitHub would publish under one name', () => {
+  assert.deepEqual(assets.collidingAssets(['x_1~rc1.deb', 'x_1.rc1.deb', 'y.tar.gz', 'a..b', 'a.b']),
+    [['x_1~rc1.deb', 'x_1.rc1.deb'], ['a..b', 'a.b']]);
+  assert.deepEqual(assets.collidingAssets(['x_1~rc1.deb', 'x_1~rc2.deb']), []);
+  assert.deepEqual(assets.collidingAssets(undefined), []);
+});
