@@ -76,8 +76,8 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
   the merge, and its pull request skips `ci.yml`. `references/release-flow.md`
 - D30, D33: pieces and callers instead of detection and assembly; workflows are
   called at `@v2` instead of copied. This file.
-- D32, D34, D35: a project has a shape, with exceptions; an input that drops a
-  requirement needs them; Go archives take Rust names. `references/project-shape.md`
+- D32, D34 to D36: a shape with exceptions; inputs that drop a requirement need
+  them; Go takes Rust names; Mac installers are notarized. `project-shape.md`
 
 ## Traps that stay
 
