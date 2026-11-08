@@ -14,10 +14,11 @@ test:
 test-js:
 	node --test .github/workflows/lib/*.test.js
 
-# The same command and scope as ci-python's Lint job. uvx fetches ruff, so the
-# gate does not depend on which python3 comes first on PATH.
+# The same command, ruff version and scope as ci-python's Lint job. uvx
+# fetches ruff, so the gate does not depend on which python3 comes first on
+# PATH.
 lint:
-	uvx ruff check .
+	uvx ruff@0.17.4 check .
 
 check: lint test test-js
 
