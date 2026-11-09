@@ -12,12 +12,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 2.12.0 - 2026-11-09
+### New
 - A Mac app or tool shipped as a `.pkg` or `.dmg` can now be released signed and notarized: `ri-release-macos-signed` runs the project's build with the Developer ID certificates from the secrets `MACOS_CERTS_P12` and `MACOS_CERTS_PASSWORD`, then notarizes, staples and checks every file with the App Store Connect key in `NOTARY_KEY_P8`, `NOTARY_KEY_ID` and `NOTARY_ISSUER`. A missing secret, a wrong .p12 password, a missing Installer certificate for a `.pkg` or a rejected notary key fails the job before the build and names the secret; there is no unsigned mode. Stapling and the Gatekeeper check are tried up to five times, because Apple's ticket server drops a connection now and then after a notarization was accepted.
 
 ### Changed
 - The *Lint* job of `ri-ci-python` installs ruff 0.17.4 instead of the newest release, so a new ruff release no longer turns a project's CI red without a change in the project. `make lint` in repo-infra uses the same version.
-
-### Fixed
 
 ## 2.11.0 - 2026-11-07
 ### New
