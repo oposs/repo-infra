@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+
+### Fixed
+
+## 2.12.1 - 2026-11-10
+### Changed
 - `apply --item actions-open-pr` no longer raises the default token permission (`default_workflow_permissions`) to `write`; it only allows Actions to create and approve pull requests. `check` reports the item `ok` with a `read` default, and when the setting is off it says `Create release PR cannot open its pull request` (#143).
 
 ### Fixed
