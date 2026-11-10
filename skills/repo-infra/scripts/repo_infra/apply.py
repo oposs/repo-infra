@@ -406,15 +406,16 @@ def apply_admin_item(gh, repo, name, facts, assets_root, repo_root):
         return "created the no-changelog label"
 
     if name == "actions-open-pr":
+        # The default token permission is written back unchanged: no piece
+        # needs write, and a repository that chose read keeps it (#143).
         gh.run(["gh", "api", "--method", "PUT",
                 f"repos/{repo}/actions/permissions/workflow",
-                "-f", "default_workflow_permissions=write",
+                "-f", f"default_workflow_permissions={facts.workflow_permissions}",
                 "-F", "can_approve_pull_request_reviews=true"])
         after, landed = _read_back(
             lambda: json.loads(
                 gh.run(["gh", "api", f"repos/{repo}/actions/permissions/workflow"])),
-            lambda after: (after["can_approve_pull_request_reviews"]
-                           and after["default_workflow_permissions"] == "write"))
+            lambda after: after["can_approve_pull_request_reviews"])
         if not landed:
             # The 2.3.1 hint named an organisation policy for oetiker/tvision-rs,
             # which a user owns and which therefore has none (#93).

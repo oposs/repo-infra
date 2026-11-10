@@ -736,10 +736,14 @@ def classify_remote(facts):
     items.append(Item("administration", "no-changelog-label", "ok" if has_label else "missing",
                       "" if has_label else "dependabot requests it; it does not exist"))
 
-    ok = facts.can_approve_pr and facts.workflow_permissions == "write"
+    # Only the pull request setting counts. Every repo-infra workflow declares
+    # its own permissions, so the default token permission does not; and the
+    # detail says what breaks, because cmk-oposs_zpool_iostat read this item as
+    # optional and met it at its first release (#143).
+    ok = facts.can_approve_pr
     items.append(Item("administration", "actions-open-pr", "ok" if ok else "missing",
-        "" if ok else f"can_approve_pull_request_reviews = {facts.can_approve_pr}, "
-                      f"default_workflow_permissions = {facts.workflow_permissions}"))
+        "" if ok else "Create release PR cannot open its pull request: "
+                      "can_approve_pull_request_reviews = False"))
 
     deletes = facts.delete_branch_on_merge
     items.append(Item("administration", "delete-merged-branches", "ok" if deletes else "missing",

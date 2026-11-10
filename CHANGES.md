@@ -14,8 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+- `apply --item actions-open-pr` no longer raises the default token permission (`default_workflow_permissions`) to `write`; it only allows Actions to create and approve pull requests. `check` reports the item `ok` with a `read` default, and when the setting is off it says `Create release PR cannot open its pull request` (#143).
 
 ### Fixed
+- When the repository does not allow Actions to create pull requests, Create release PR ended with `HttpError: GitHub Actions is not permitted to create or approve pull requests.` after it had pushed the release branch. It now names the setting (Settings, Actions, General, "Allow GitHub Actions to create and approve pull requests") and `repo-infra apply --item actions-open-pr`, and says that re-running the failed jobs reuses the branch (#143).
 
 ## 2.12.0 - 2026-11-09
 ### New
