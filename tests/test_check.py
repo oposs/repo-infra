@@ -284,6 +284,20 @@ def test_actions_that_cannot_open_a_pull_request_is_missing():
     assert remote_states(remote(can_approve_pr=False))["actions-open-pr"] == "missing"
 
 
+def test_actions_that_cannot_open_a_pull_request_names_the_release_it_breaks():
+    # oposs/cmk-oposs_zpool_iostat read it as optional administration and met
+    # it at its first release, after release/v0.4.0 was pushed (#143).
+    item = next(i for i in remote(can_approve_pr=False) if i.name == "actions-open-pr")
+    assert "Create release PR cannot open its pull request" in item.detail
+
+
+def test_a_read_only_default_token_does_not_stop_actions_opening_a_pull_request():
+    # Every repo-infra workflow declares its own permissions, so the default
+    # token permission does not matter; cmk-oposs_zpool_iostat released with
+    # read (#143).
+    assert remote_states(remote(workflow_permissions="read"))["actions-open-pr"] == "ok"
+
+
 def test_merged_branches_left_behind_are_missing():
     item = next(i for i in remote(delete_branch_on_merge=False)
                 if i.name == "delete-merged-branches")

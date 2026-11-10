@@ -138,6 +138,28 @@ def test_workflow_permissions_are_written_and_read_back(tmp_path):
     assert any("PUT" in " ".join(c) for c in recorder.calls)
 
 
+def test_actions_open_pr_keeps_the_default_token_permission(tmp_path):
+    # The item used to raise the default token to write as well. No piece
+    # needs that, and a repository that chose read keeps it (#143).
+    recorder = Recorder({"/actions/permissions/workflow": json.dumps(
+        {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": True})})
+    message = apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr",
+                               facts(workflow_permissions="read"), ASSETS, tmp_path)
+    put = next(c for c in recorder.calls if "PUT" in c)
+    assert "default_workflow_permissions=read" in put
+    assert "can_approve_pull_request_reviews=true" in put
+    assert message == "allowed Actions to create and approve pull requests"
+
+
+def test_actions_open_pr_leaves_a_write_default_at_write(tmp_path):
+    recorder = Recorder({"/actions/permissions/workflow": json.dumps(
+        {"default_workflow_permissions": "write", "can_approve_pull_request_reviews": True})})
+    apply_admin_item(Gh(run=recorder), "o/r", "actions-open-pr",
+                     facts(workflow_permissions="write"), ASSETS, tmp_path)
+    put = next(c for c in recorder.calls if "PUT" in c)
+    assert "default_workflow_permissions=write" in put
+
+
 def test_workflow_permissions_that_do_not_stick_are_an_error(tmp_path):
     recorder = Recorder({"/actions/permissions/workflow": json.dumps(
         {"default_workflow_permissions": "read", "can_approve_pull_request_reviews": False})})

@@ -252,13 +252,21 @@ jobs:
               'If main moves before the merge, this pull request cannot be merged: close',
               'it and dispatch Create release PR again. Do not press **Update branch**.',
             ].join('\n');
-            const { data: pr } = await github.rest.pulls.create({
-              owner, repo,
-              head: branch,
-              base: context.payload.repository.default_branch,
-              title: `Release ${tag}`,
-              body,
-            });
+            let pr;
+            try {
+              ({ data: pr } = await github.rest.pulls.create({
+                owner, repo,
+                head: branch,
+                base: context.payload.repository.default_branch,
+                title: `Release ${tag}`,
+                body,
+              }));
+            } catch (error) {
+              const refusal = releaseLib.pullRequestRefusal(error, { branch });
+              if (!refusal) throw error;
+              core.setFailed(refusal);
+              return;
+            }
             core.notice(`Release pull request opened: ${pr.html_url}`);
 
             // 8. Opened first, so a release that went stale while it built is

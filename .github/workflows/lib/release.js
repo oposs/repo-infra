@@ -197,6 +197,24 @@ function untaggedMessage(version) {
     + 'pull request that moves its entries back under [Unreleased].';
 }
 
+// pulls.create refuses with 403 "GitHub Actions is not permitted to create or
+// approve pull requests." when the repository setting is off. The run cannot
+// see the setting beforehand: reading it needs the Administration permission,
+// which a workflow token cannot be granted. So the refusal itself is turned
+// into the fix (oposs/cmk-oposs_zpool_iostat, #143). Any other error is the
+// caller's to rethrow.
+function pullRequestRefusal(error, { branch }) {
+  if (!error || error.status !== 403
+      || !/not permitted to create or approve pull requests/i.test(String(error.message))) {
+    return null;
+  }
+  return 'GitHub Actions may not open pull requests in this repository, so the release '
+    + `pull request for ${branch} was not opened. Turn on Settings -> Actions -> General -> `
+    + '"Allow GitHub Actions to create and approve pull requests", or run '
+    + '`repo-infra apply --item actions-open-pr`, then re-run the failed jobs of this run; '
+    + `the re-run reuses ${branch}.`;
+}
+
 // The release pull request whose merge put this version on main, found by its
 // release branch (pulls.list). Not by the recorded head: for a commit off the
 // default branch GitHub lists only open pull requests. Not context.sha: a failed
@@ -291,5 +309,5 @@ module.exports = {
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
   staleReleasePr, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
-  fetchParkedRuns, verdictOutputs, releaseTitle,
+  fetchParkedRuns, verdictOutputs, releaseTitle, pullRequestRefusal,
 };

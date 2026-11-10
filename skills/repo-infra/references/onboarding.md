@@ -468,8 +468,11 @@ review, and each is outward-facing. Apply them one at a time with `apply
    branch, and refuses with "not on main yet" until they are. A required check
    whose workflow does not exist blocks every pull request, including the one
    that would install it.
-5. **`actions-open-pr`**: lets Actions create and approve pull requests, which
-   Create release PR needs.
+5. **`actions-open-pr`**: lets Actions create and approve pull requests, and
+   leaves the default token permission as it is. Without it the first release
+   fails at its last step, after the release branch is pushed: Create release
+   PR cannot open its pull request. The run cannot check the setting before
+   it starts, because a workflow token cannot read it.
 6. **`delete-merged-branches`**: switches on "Automatically delete head
    branches", so a merged release pull request does not leave its
    `release/vX.Y.Z` branch behind.

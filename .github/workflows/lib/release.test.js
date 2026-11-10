@@ -416,3 +416,26 @@ test('the draft release is created with releaseTitle, and nothing renames it lat
     }
   }
 });
+
+// oposs/cmk-oposs_zpool_iostat: pulls.create answered 403 "GitHub Actions is not
+// permitted to create or approve pull requests." after release/v0.4.0 was pushed,
+// and the run ended with that bare HttpError (#143).
+const notPermitted = () => Object.assign(
+  new Error('GitHub Actions is not permitted to create or approve pull requests.'),
+  { status: 403 });
+
+test('a pull request Actions may not open names the setting and the apply item', () => {
+  const message = r.pullRequestRefusal(notPermitted(), { branch: 'release/v0.4.0' });
+  assert.match(message, /Allow GitHub Actions to create and approve pull requests/);
+  assert.match(message, /apply --item actions-open-pr/);
+  assert.match(message, /release\/v0\.4\.0/);
+  assert.match(message, /re-run/i);
+});
+
+test('any other pull request error is not mistaken for the Actions setting', () => {
+  const other = Object.assign(new Error('Validation Failed'), { status: 422 });
+  assert.equal(r.pullRequestRefusal(other, { branch: 'release/v1.0.0' }), null);
+  const forbidden = Object.assign(new Error('Resource not accessible by integration'),
+    { status: 403 });
+  assert.equal(r.pullRequestRefusal(forbidden, { branch: 'release/v1.0.0' }), null);
+});
