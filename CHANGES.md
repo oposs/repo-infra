@@ -12,10 +12,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
-- `ri-ci-rust`, `ri-ci-rust-musl`, `ri-release-rust-binaries`, `ri-publish-crates-io`, `ri-ci-go` and `ri-release-go-binaries` take an optional `submodules` input (`'false'`, `'true'` or `'recursive'`) that checks out the git submodules with the repository. A crate whose `build.rs` compiles sources from a submodule no longer stops in these pieces with its "sources missing" panic. (#147, #148)
-- `ri-ci-node-pnpm` takes an optional `directory` input for a project whose `package.json` and `pnpm-lock.yaml` are in a subdirectory, for example `directory: player`. Every command runs there, and `.github/dependabot.yml` gets an npm entry for `/player`. (#151)
 
 ### Changed
+
+### Fixed
+
+## 2.12.2 - 2026-11-11
+### New
+- `ri-ci-rust`, `ri-ci-rust-musl`, `ri-release-rust-binaries`, `ri-publish-crates-io`, `ri-ci-go` and `ri-release-go-binaries` take an optional `submodules` input (`'false'`, `'true'` or `'recursive'`) that checks out the git submodules with the repository. A crate whose `build.rs` compiles sources from a submodule no longer stops in these pieces with its "sources missing" panic. (#147, #148)
+- `ri-ci-node-pnpm` takes an optional `directory` input for a project whose `package.json` and `pnpm-lock.yaml` are in a subdirectory, for example `directory: player`. Every command runs there, and `.github/dependabot.yml` gets an npm entry for `/player`. (#151)
 
 ### Fixed
 - `apply --item man` installed `build/man.mk` without `build/man-deflist.lua`, which only a second `apply --item man-lua` added. `apply --item <piece>` now also installs each piece the named piece needs that is not there yet, as a bare `apply` does. (#153)
