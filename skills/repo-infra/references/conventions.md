@@ -100,7 +100,8 @@ as rule ids.
 - `dependabot`: further directories per ecosystem for `.github/dependabot.yml`,
   for a Cargo, npm, bun, pip or Go project that is not part of the one at the
   top, for example `{"cargo": ["/tools/gen"]}` (#117). The ecosystem's entry
-  then reads `directories:` with `/` first. `check` refuses a path that does not
+  then reads `directories:`, with `/` first when a caller builds the ecosystem
+  at the top. `check` refuses a path that does not
   start with `/`, ends in `/`, holds `.` or `..`, or is listed twice, and an
   ecosystem no caller's CI piece builds.
 - `exceptions`: one reason per rule id of `references/project-shape.md`, for a
@@ -412,7 +413,10 @@ CI pieces build (the table is `ECOSYSTEMS` in `pieces.py`, the list is in the
 piece's header), and a call that passes `repository` counts for none. From
 v4 on, an entry reads `directories:` instead of `directory: /` when the
 `dependabot` key of `.github/repo-infra.json` lists directories for its
-ecosystem (#117).
+ecosystem (#117). A call that passes a `directory` below the top, such as
+`ri-ci-node-pnpm` with `directory: player`, puts that directory in its
+ecosystem's entry, and `/` stays out of the entry unless another call builds
+the ecosystem at the top (#151).
 `generations.json` records the asset, which is the file for a repository that
 calls none of them; `check` strips the appended entries before it looks for the
 version, and the bytes are current only when they equal the file rendered for

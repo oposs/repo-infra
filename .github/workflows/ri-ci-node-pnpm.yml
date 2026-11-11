@@ -1,7 +1,8 @@
 # repo-infra: ri-ci-node-pnpm v2
 #
 # Purpose: Install with pnpm, then check, test and build.
-# Choose: package.json and pnpm-lock.yaml, and no other lockfile.
+# Choose: package.json and pnpm-lock.yaml, and no other lockfile, at the top or in
+#   one directory named by `directory`.
 # Supplies: The package.json scripts check, test and build.
 # Call:
 #   node:
@@ -24,6 +25,11 @@ on:
         type: string
         required: false
         default: ${{ github.repository }}
+      directory:
+        description: The directory that holds package.json and pnpm-lock.yaml, relative to the repository (#151).
+        type: string
+        required: false
+        default: .
 
 permissions:
   contents: read
@@ -33,6 +39,9 @@ jobs:
     name: Node checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ${{ inputs.directory }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,6 +56,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: ${{ inputs.directory }}/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 

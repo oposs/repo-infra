@@ -241,7 +241,7 @@ def test_listed_directories_follow_the_top_in_their_order(tmp_path):
 
 def test_the_listed_entry_is_the_entry_function():
     assert pieces.dependabot_entry(
-        "cargo", ["/tools/stylegen", "/tools/icongen", "/tools/fontgen"]) == SHADCN_CARGO
+        "cargo", ["/", "/tools/stylegen", "/tools/icongen", "/tools/fontgen"]) == SHADCN_CARGO
 
 
 def test_an_ecosystem_without_a_list_keeps_the_v3_entry(tmp_path):
@@ -308,8 +308,8 @@ WHERE = '"dependabot.cargo" in .github/repo-infra.json'
     ({"cargo": "/a"}, f"{WHERE} must be a list of directories"),
     ({"cargo": [1]}, f"{WHERE} must be a list of directories"),
     ({"cargo": []}, f"{WHERE} is empty; list a directory or remove the key"),
-    ({"cargo": ["/"]}, f'{WHERE}: "/" is always in the entry; list only the other '
-                       "directories"),
+    ({"cargo": ["/"]}, f'{WHERE}: "/" is in the entry when a caller builds cargo at '
+                       "the top; list only the other directories"),
     ({"cargo": ["/a", "/a"]}, f'{WHERE}: "/a" is listed twice'),
     ({"github-actions": ["/a"]},
      '"dependabot.github-actions" in .github/repo-infra.json: the github-actions entry '
@@ -318,8 +318,8 @@ WHERE = '"dependabot.cargo" in .github/repo-infra.json'
      '"dependabot.maven" in .github/repo-infra.json: maven is no ecosystem the pieces '
      "write an entry for; the keys are bun, cargo, gomod, npm, pip"),
     ({"npm": ["/web"]},
-     '"dependabot.npm" in .github/repo-infra.json: no caller calls ri-ci-node-pnpm at '
-     "the top level, so there is no npm entry to add directories to"),
+     '"dependabot.npm" in .github/repo-infra.json: no caller calls ri-ci-node-pnpm, so '
+     "there is no npm entry to add directories to"),
 ])
 def test_a_wrong_key_is_a_problem(tmp_path, value, problem):
     root = repo(tmp_path, "ri-ci-rust", config={"dependabot": value})
@@ -329,7 +329,7 @@ def test_a_wrong_key_is_a_problem(tmp_path, value, problem):
 def test_an_ecosystem_names_every_piece_that_builds_it(tmp_path):
     root = repo(tmp_path, "ri-ci-python", config={"dependabot": {"cargo": ["/a"]}})
     assert dependabot_config(root) == [
-        f"{WHERE}: no caller calls ri-ci-rust or ri-ci-rust-musl at the top level, so "
+        f"{WHERE}: no caller calls ri-ci-rust or ri-ci-rust-musl, so "
         "there is no cargo entry to add directories to"]
 
 
@@ -347,3 +347,44 @@ def test_a_directory_must_be_a_clean_path_below_the_top(tmp_path, directory):
 def test_a_clean_directory_passes(tmp_path, directory):
     root = repo(tmp_path, "ri-ci-rust", config={"dependabot": {"cargo": [directory]}})
     assert dependabot_config(root) == []
+
+
+# #151: a CI piece called with a `directory` below the top builds the project
+# there, so its ecosystem's entry covers that directory, and / only when a
+# caller also calls a piece of that ecosystem at the top.
+def player(tmp_path, *top, config=None, dependabot=None):
+    root = repo(tmp_path, *top, config=config, dependabot=dependabot)
+    with open(root / ".github/workflows/ci.yml", "a", encoding="utf-8") as f:
+        f.write("  player:\n    uses: oposs/repo-infra/.github/workflows/ri-ci-node-pnpm.yml@v2\n"
+                "    with:\n      directory: player\n")
+    return root
+
+
+def single(ecosystem, directory):
+    return entry(ecosystem).replace("    directory: /\n", f"    directory: {directory}\n")
+
+
+def test_a_call_in_a_directory_gives_its_ecosystem_that_directory(tmp_path):
+    assert rendered(player(tmp_path)) == BASE + single("npm", "/player")
+
+
+def test_a_call_in_a_directory_leaves_the_top_level_ecosystems_at_the_top(tmp_path):
+    assert rendered(player(tmp_path, "ri-ci-rust")) == BASE + entry("cargo") + single(
+        "npm", "/player")
+
+
+def test_a_top_level_call_and_a_directory_call_list_both(tmp_path):
+    root = player(tmp_path, "ri-ci-node-pnpm")
+    assert rendered(root) == BASE + pieces.dependabot_entry("npm", ["/", "/player"])
+
+
+def test_the_key_adds_to_an_ecosystem_built_only_below_the_top(tmp_path):
+    root = player(tmp_path, config={"dependabot": {"npm": ["/web"]}})
+    assert rendered(root) == BASE + pieces.dependabot_entry("npm", ["/player", "/web"])
+    assert not [i for i in check.config_items(root, callers.read_workflows(root))
+                if i.name == "dependabot"]
+
+
+def test_an_entry_at_a_directory_reads_current(tmp_path):
+    root = player(tmp_path, dependabot=BASE + single("npm", "/player"))
+    assert state(root) == ("current", "v4")

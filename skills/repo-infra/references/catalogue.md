@@ -135,6 +135,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-go.yml@v2`.
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
 | `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `submodules` | string | no | `false` | Check out git submodules: 'false', 'true' or 'recursive' (#147). |
 
 **Permissions it needs:** contents: read
 
@@ -201,7 +202,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-node-pnpm.yml@v2`.
 
 **Purpose:** Install with pnpm, then check, test and build.
 
-**Choose it when:** package.json and pnpm-lock.yaml, and no other lockfile.
+**Choose it when:** package.json and pnpm-lock.yaml, and no other lockfile, at the top or in one directory named by `directory`.
 
 **The repository supplies:** The package.json scripts check, test and build.
 
@@ -209,6 +210,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-node-pnpm.yml@v2`.
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
 | `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `directory` | string | no | `.` | The directory that holds package.json and pnpm-lock.yaml, relative to the repository (#151). |
 
 **Permissions it needs:** contents: read
 
@@ -305,6 +307,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-rust.yml@v2`.
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
 | `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `submodules` | string | no | `false` | Check out git submodules: 'false', 'true' or 'recursive' (#147). |
 
 **Permissions it needs:** contents: read
 
@@ -329,6 +332,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-rust-musl.yml@v2`.
 |---|---|---|---|---|
 | `ref` | string | no | `''` | The commit to check out; empty takes the commit that triggered the run (D28). |
 | `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `submodules` | string | no | `false` | Check out git submodules: 'false', 'true' or 'recursive' (#147). |
 
 **Permissions it needs:** contents: read
 
@@ -387,6 +391,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2`.
 | `version` | string | yes |  | The version the release builds, from release-build.yml. |
 | `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
 | `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `submodules` | string | no | `false` | Check out git submodules: 'false', 'true' or 'recursive' (#147). |
 | `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
 | `package` | string | no | `.` | The main package that builds `bin`, as go build takes it, for example ./cmd/mytool. |
 | `version_var` | string | no | `''` | A string variable the build sets to the version with -ldflags -X, for example main.version; empty sets none. |
@@ -571,6 +576,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-rust-binaries.yml@v2`.
 | `version` | string | yes |  | The version the release builds, from release-build.yml. |
 | `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
 | `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `submodules` | string | no | `false` | Check out git submodules: 'false', 'true' or 'recursive' (#147). |
 | `bin` | string | yes |  | The binary to build; the archives and their top folder are named after it. |
 | `extra_paths` | string | no | `''` | Space-separated paths of files or folders, relative to the repository root, that every archive carries under <bin>/ at the same relative path, for example examples or docs/config.toml; empty adds none. A path that does not exist fails the run. |
 | `targets` | string | no | `x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-illumos x86_64-apple-darwin aarch64-apple-darwin x86_64-pc-windows-msvc aarch64-pc-windows-msvc` | Space-separated target triples to build (D34); all seven unless set. A name the piece does not build fails the run. |
@@ -630,6 +636,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-publish-crates-io.yml@v2`.
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `head` | string | yes |  | The commit the release was built from, from ri-publish-tag. |
+| `submodules` | string | no | `false` | Check out git submodules: 'false', 'true' or 'recursive' (#147). |
 
 **Permissions it needs:** id-token: write, contents: read
 

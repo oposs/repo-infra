@@ -245,15 +245,16 @@ ECOSYSTEMS = {"ri-ci-go": "gomod", "ri-ci-node-bun": "bun", "ri-ci-node-pnpm": "
 DIRECTORY = re.compile(r"(?:/[A-Za-z0-9._*-]+)+")
 
 
-def dependabot_entry(ecosystem, directories=()):
-    """The entry for one ecosystem: at directory /, or at / and `directories`
-    when repo-infra.json lists any for it (#117). generations.json records
-    only the asset, and `published_base` finds it by stripping this text, so a
+def dependabot_entry(ecosystem, directories=("/",)):
+    """The entry for one ecosystem at `directories`: `directory:` for one,
+    `directories:` for several (#117, #151). generations.json records only
+    the asset, and `published_base` finds it by stripping this text, so a
     change here must keep stripping the old text, or every copy of an older
     version reads edited. tests/fixtures/dependabot/v3-cargo-npm.yml holds a
     frozen v3 copy."""
-    where = ("    directories:\n" + "".join(f"      - {d}\n" for d in ("/", *directories))
-             if directories else "    directory: /\n")
+    directories = list(directories)
+    where = (f"    directory: {directories[0]}\n" if len(directories) == 1 else
+             "    directories:\n" + "".join(f"      - {d}\n" for d in directories))
     return (f"  - package-ecosystem: {ecosystem}\n"
             + where
             + "    schedule:\n"
@@ -263,26 +264,34 @@ def dependabot_entry(ecosystem, directories=()):
             "      - no-changelog\n")
 
 
-def render(piece, called, directories=None):
+def render(piece, called, directories=None, below=None):
     """`piece` as a repository holds it whose callers call the pieces named
-    in `called` and whose repo-infra.json lists `directories` per ecosystem.
-    Only dependabot differs from its asset."""
+    in `called` at the top, and the ecosystems in `below` ({ecosystem:
+    [directory]}) in directories below it (#151), and whose repo-infra.json
+    lists `directories` per ecosystem. Only dependabot differs from its
+    asset."""
     if piece.name != DEPENDABOT:
         return piece
-    directories = directories or {}
-    ecosystems = sorted({ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS})
-    text = piece.files[piece.target] + "".join(
-        dependabot_entry(e, directories.get(e, ())) for e in ecosystems)
+    directories, below = directories or {}, below or {}
+    top = {ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS}
+    text = piece.files[piece.target]
+    for ecosystem in sorted(top | set(below)):
+        where = (["/"] if ecosystem in top else []) + list(below.get(ecosystem, ()))
+        where += [d for d in directories.get(ecosystem, ()) if d not in where]
+        text += dependabot_entry(ecosystem, where)
     return replace(piece, files={piece.target: text})
 
 
-# The entry with directories, for any ecosystem and any list `render` can write.
+# The entry at any directory or directories, for any ecosystem: every form
+# `render` can write.
+_WHERE = rb"(?:/|%s)" % DIRECTORY.pattern.encode()
 _LISTED_ENTRY = re.compile(
-    rb"  - package-ecosystem: (?:%s)\n    directories:\n      - /\n"
-    rb"(?:      - %s\n)+    schedule:\n      interval: weekly\n"
+    rb"  - package-ecosystem: (?:%s)\n"
+    rb"    (?:directory: %s\n|directories:\n(?:      - %s\n)+)"
+    rb"    schedule:\n      interval: weekly\n"
     rb"    labels:\n      - dependencies\n      - no-changelog\n\Z"
     % (b"|".join(re.escape(e.encode()) for e in sorted(set(ECOSYSTEMS.values()))),
-       DIRECTORY.pattern.encode()))
+       _WHERE, _WHERE))
 
 
 def published_base(name, data):

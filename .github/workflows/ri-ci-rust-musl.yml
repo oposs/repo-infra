@@ -24,6 +24,11 @@ on:
         type: string
         required: false
         default: ${{ github.repository }}
+      submodules:
+        description: "Check out git submodules: 'false', 'true' or 'recursive' (#147)."
+        type: string
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -48,6 +53,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       # No `targets:` on purpose. cross compiles inside its own image, which
       # already carries the musl std for the target; the runner's toolchain is

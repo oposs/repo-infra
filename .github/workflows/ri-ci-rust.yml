@@ -25,6 +25,11 @@ on:
         type: string
         required: false
         default: ${{ github.repository }}
+      submodules:
+        description: "Check out git submodules: 'false', 'true' or 'recursive' (#147)."
+        type: string
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -48,6 +53,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       # The library of the commit this piece was loaded from (D33): repo-infra
       # at the release v2 points at, or the commit under test in repo-infra.
@@ -103,6 +109,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -146,6 +153,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       - uses: dtolnay/rust-toolchain@stable
 
