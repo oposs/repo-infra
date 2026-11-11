@@ -16,6 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `apply --item man` installed `build/man.mk` without `build/man-deflist.lua`, which only a second `apply --item man-lua` added. `apply --item <piece>` now also installs each piece the named piece needs that is not there yet, as a bare `apply` does. (#153)
+- The `man-pages` skill told to run `apply --item ri-ci-man`, which refuses with "is called, not installed", and showed the call as `uses: ./.github/workflows/ri-ci-man.yml`. It now shows the call `uses: oposs/repo-infra/.github/workflows/ri-ci-man.yml@v2` and a single `apply --item man`. (#154)
 
 ## 2.12.1 - 2026-11-10
 ### Changed
