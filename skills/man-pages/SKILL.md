@@ -163,21 +163,20 @@ warning. A table of short cells, such as a key and a one-word action, fits.
    man/
    ```
 
-3. Install the `man` and `man-lua` pieces and call `ri-ci-man` from `ci.yml`:
+3. Install the `man` piece and call `ri-ci-man` from `ci.yml`:
 
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item man
-   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item man-lua
-   python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item ri-ci-man
    ```
 
-   They install `build/man.mk`, `build/man-deflist.lua` and
-   `.github/workflows/ri-ci-man.yml`. Add the call to `ci.yml` and list its job
-   in the `needs:` of `ci-passed`:
+   This installs `build/man.mk` and, because `man` needs it, the `man-lua`
+   piece with `build/man-deflist.lua`. `ri-ci-man` is called from repo-infra,
+   not installed. Add the call to `ci.yml` and list its job in the `needs:` of
+   `ci-passed`:
 
    ```yaml
    man:
-     uses: ./.github/workflows/ri-ci-man.yml
+     uses: oposs/repo-infra/.github/workflows/ri-ci-man.yml@v2
      with:
        ref: ${{ inputs.ref }}
    ```

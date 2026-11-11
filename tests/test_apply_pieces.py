@@ -633,3 +633,33 @@ def test_apply_on_a_current_repository_commits_nothing(monkeypatch, capsys, stor
     assert log_subjects(repo) == before
     assert "installed" not in capsys.readouterr().out
     assert git(repo, "status", "--porcelain") == ""
+
+
+def test_apply_item_also_installs_the_pieces_it_needs(monkeypatch, tmp_path):
+    # #153: `apply --item man` left out man-lua, which man declares in Pieces:.
+    user = workflow_piece("ri-y", 1, header="# Pieces: lib-x\n")
+    store = make_assets(tmp_path / "assets", {"ri-y": user, "lib-x": LIB2})
+    root = tmp_path / "bare"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "commit", "-q", "--allow-empty", "-m", "start")
+    run_apply(monkeypatch, store, root, "--item", "ri-y")
+    assert git(root, "log", "--format=%s").splitlines()[:2] == [
+        "Install lib-x v2 from the repo-infra standard",
+        "Install ri-y v1 from the repo-infra standard"]
+    assert (root / ".github/workflows/lib-x/a.js").read_text(encoding="utf-8") == LIB2["a.js"]
+
+
+def test_apply_item_leaves_a_needed_piece_that_is_installed(monkeypatch, capsys, tmp_path):
+    user = workflow_piece("ri-y", 1, header="# Pieces: lib-x\n")
+    store = make_assets(tmp_path / "assets", {"ri-y": user, "lib-x": LIB1})
+    root = tmp_path / "bare"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    for f, t in LIB1.items():
+        install(root, f".github/workflows/lib-x/{f}", t)
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "start")
+    run_apply(monkeypatch, store, root, "--item", "ri-y")
+    assert git(root, "log", "--format=%s").splitlines()[:2] == [
+        "Install ri-y v1 from the repo-infra standard", "start"]

@@ -72,6 +72,22 @@ def _pending(root, pieces, states, published, store):
     return names + [name for name, plan in plans.items() if plan.candidates]
 
 
+def _with_needs(item, pieces, states):
+    """--item and, after it, each byte piece it needs, directly or through
+    another, that is not installed (#153), as a bare apply adds them. A
+    requirement an installed or a remote piece meets is left alone; one no
+    piece meets takes its first alternative."""
+    names = [item]
+    for name in names:
+        for alternatives in pieces[name].requires:
+            if any(dep in names or dep not in pieces
+                   or (dep in states and states[dep].state != "absent")
+                   for dep in alternatives):
+                continue
+            names.append(alternatives[0])
+    return names
+
+
 def _files(root, pieces):
     """The pieces apply installs, as the callers and repo-infra.json of `root`
     render them (#92, #117)."""
@@ -93,7 +109,8 @@ LOST = ("The migration removed these local changes; git keeps them. Port each to
 
 def _v1_layout(args):
     """True when a bare apply migrates (D33): a consumer that still has a
-    file of the v1 layout. --item installs the one piece it names."""
+    file of the v1 layout. --item installs the piece it names and the
+    pieces it needs."""
     return (args.item is None and not checking.is_home(args.root)
             and bool(checking.layout_items(args.root, load_pieces(ASSETS))))
 
@@ -123,7 +140,8 @@ def apply_command(args):
     # byte pieces only.
     files = _files(args.root, pieces)
     states = _states(args.root, files, published)
-    names = [args.item] if args.item else _pending(args.root, files, states, published, pieces)
+    names = (_with_needs(args.item, files, states) if args.item
+             else _pending(args.root, files, states, published, pieces))
     if names or _v1_layout(args):
         blocker = release_in_progress(args.root, facts)
         if blocker:
@@ -147,15 +165,21 @@ def apply_command(args):
                     print(f"  {line}")
         files = _files(args.root, pieces)
         states = _states(args.root, files, published)
-        names = [args.item] if args.item else _pending(args.root, files, states, published, pieces)
+        names = (_with_needs(args.item, files, states) if args.item
+                 else _pending(args.root, files, states, published, pieces))
     notes, kept = [], []
+
+    def merged_from(name):
+        # --from is the merged file of the named piece, never of one it needs.
+        return args.from_file if name == args.item else None
+
     try:
         for name in names:
             piece, state = files[name], states[name]
             since = plan_piece(args.root, piece, state, published.get(name, {})).since
             written = changed(args.root, install_piece(args.root, piece, state,
                                                        published.get(name, {}),
-                                                       merged=args.from_file))
+                                                       merged=merged_from(name)))
             kept += [f"{path}: carries local edits and {name} v{piece.version} no longer "
                      "ships it; remove it by hand if nothing uses it"
                      for path in kept_edits(piece, state)]
@@ -168,7 +192,7 @@ def apply_command(args):
                 else:
                     print(f"{name}: already v{piece.version}")
                 continue
-            merged = args.from_file is not None and any(
+            merged = merged_from(name) is not None and any(
                 (pathlib.Path(args.root) / path).is_file()
                 and (pathlib.Path(args.root) / path).read_text(encoding="utf-8")
                 != piece.files.get(path) for path in written)

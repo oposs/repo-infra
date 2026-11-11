@@ -121,7 +121,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --ite
 
 `apply --item <piece>` does the same for one build file (`man`, `man-lua`,
 `container`, `container-m4`, `dependabot`), and installs it when it is not there
-yet. It installs build files only: a workflow piece is called from a caller, and
+yet. A piece it needs that is not there is installed with it: `apply --item man`
+also installs `man-lua`. It installs build files only: a workflow piece is called from a caller, and
 `apply --item ri-ci-python` refuses with "is called, not installed". It does not
 migrate. The release check of step 1 applies to it as well.
 
