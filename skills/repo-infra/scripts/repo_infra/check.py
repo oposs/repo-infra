@@ -212,16 +212,14 @@ def core_call_items(docs, pieces):
             and not callers.calls(docs, pathlib.PurePosixPath(piece.target).name)]
 
 
-def called_pieces(docs, pieces):
-    """The remote pieces a job of `docs` calls, through ./ or at @v2 (D33).
-    A call that passes `repository` builds another repository's code:
-    repo-infra's gate-mtuspy.yml calls ri-ci-rust for mtuspy. A call that
-    passes a `directory` below the top builds the project there, and check
-    reads only the top level (D-a2): repo-infra's own `container` job builds
-    tests/fixtures/container-make."""
+def _calls(docs, pieces):
+    """(piece, directory) for each job of `docs` that calls a remote piece of
+    the calling repository, through ./ or at @v2 (D33). A call that passes
+    `repository` builds another repository's code: repo-infra's
+    gate-mtuspy.yml calls ri-ci-rust for mtuspy. `directory` is "." for the
+    top level."""
     files = {pathlib.PurePosixPath(piece.target).name: name
              for name, piece in pieces.items() if piece.remote}
-    found = set()
     for doc in docs.values():
         for job in callers.jobs(doc).values():
             target = callers.normal_uses(job.get("uses"))
@@ -231,9 +229,32 @@ def called_pieces(docs, pieces):
             directory = given.get("directory") or "."
             if directory in ("null", "Null", "NULL", "~"):
                 directory = "."
-            top = pathlib.PurePosixPath(directory)
-            if target in files and not given.get("repository") and str(top) == ".":
-                found.add(files[target])
+            if target in files and not given.get("repository"):
+                yield files[target], str(pathlib.PurePosixPath(directory))
+
+
+def called_pieces(docs, pieces):
+    """The remote pieces a job of `docs` calls at the top level. A call that
+    passes a `directory` below the top builds the project there, and check
+    reads only the top level (D-a2): repo-infra's own `container` job builds
+    tests/fixtures/container-make."""
+    return {name for name, directory in _calls(docs, pieces) if directory == "."}
+
+
+def ecosystems_below(docs, pieces):
+    """{ecosystem: [directory]} for the CI pieces a job calls in a directory
+    below the top (#151): ri-ci-node-pnpm with `directory: player` builds
+    an npm project at /player, which Dependabot then watches. A directory
+    given as an expression names no directory before the run, and is left
+    out."""
+    found = {}
+    for name, directory in _calls(docs, pieces):
+        where = "/" + directory.removeprefix("./")
+        if (name in ECOSYSTEMS and directory != "." and DIRECTORY.fullmatch(where)
+                and not {".", ".."} & set(where.split("/")[1:])):
+            found.setdefault(ECOSYSTEMS[name], [])
+            if where not in found[ECOSYSTEMS[name]]:
+                found[ECOSYSTEMS[name]].append(where)
     return found
 
 
@@ -247,7 +268,7 @@ def read_config(repo_root):
     return config if isinstance(config, dict) else {}
 
 
-def dependabot_problems(value, called):
+def dependabot_problems(value, called, below=None):
     """What is wrong with the "dependabot" key of repo-infra.json (#117): an
     object of Dependabot ecosystems, each with the directories besides / its
     entry covers. An ecosystem needs an entry to add them to, so one of the
@@ -256,7 +277,7 @@ def dependabot_problems(value, called):
     if not isinstance(value, dict):
         return [f"{where} must be an object that maps an ecosystem to a list of "
                 "directories"]
-    built = {ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS}
+    built = {ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS} | set(below or {})
     problems = []
     for ecosystem, directories in value.items():
         key = f'"dependabot.{ecosystem}" in {CONFIG}'
@@ -270,8 +291,8 @@ def dependabot_problems(value, called):
                             f"for; the keys are {', '.join(sorted(set(ECOSYSTEMS.values())))}")
             continue
         if ecosystem not in built:
-            problems.append(f"{key}: no caller calls {' or '.join(builders)} at the top "
-                            f"level, so there is no {ecosystem} entry to add directories to")
+            problems.append(f"{key}: no caller calls {' or '.join(builders)}, so "
+                            f"there is no {ecosystem} entry to add directories to")
             continue
         if not isinstance(directories, list) or not all(
                 isinstance(d, str) for d in directories):
@@ -282,8 +303,8 @@ def dependabot_problems(value, called):
         seen = set()
         for directory in directories:
             if directory == "/":
-                problems.append(f'{key}: "/" is always in the entry; list only the '
-                                "other directories")
+                problems.append(f'{key}: "/" is in the entry when a caller builds '
+                                f"{ecosystem} at the top; list only the other directories")
             elif not DIRECTORY.fullmatch(directory) or {".", ".."} & set(
                     directory.split("/")):
                 problems.append(f'{key}: "{directory}" must start with /, end without /, '
@@ -294,11 +315,11 @@ def dependabot_problems(value, called):
     return problems
 
 
-def dependabot_directories(config, called):
+def dependabot_directories(config, called, below=None):
     """The directories per ecosystem `render` adds to the dependabot entries:
     the "dependabot" key of `config`, or none while check reports it."""
     value = (config or {}).get("dependabot")
-    if value is None or dependabot_problems(value, called):
+    if value is None or dependabot_problems(value, called, below):
         return {}
     return value
 
@@ -308,9 +329,10 @@ def rendered(pieces, docs, config=None):
     repo-infra.json is `config` holds them (#92): dependabot lists the
     ecosystems of the pieces the callers call, each with the directories the
     config lists for it (#117)."""
-    called = called_pieces(docs, pieces)
-    directories = dependabot_directories(config, called)
-    return {name: render(piece, called, directories) for name, piece in pieces.items()}
+    called, below = called_pieces(docs, pieces), ecosystems_below(docs, pieces)
+    directories = dependabot_directories(config, called, below)
+    return {name: render(piece, called, directories, below)
+            for name, piece in pieces.items()}
 
 
 def piece_items(repo_root, pieces, published, called=None):
@@ -564,7 +586,8 @@ def config_items(repo_root, docs, called=None):
     if "dependabot" in config:
         if called is None:
             called = called_pieces(docs, load_pieces())
-        problems = dependabot_problems(config["dependabot"], called)
+        problems = dependabot_problems(config["dependabot"], called,
+                                       ecosystems_below(docs, load_pieces()))
         if problems:
             items.append(Item("config", "dependabot", "problem", "; ".join(problems)))
     return items

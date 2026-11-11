@@ -34,6 +34,11 @@ on:
         type: string
         required: false
         default: ${{ github.repository }}
+      submodules:
+        description: "Check out git submodules: 'false', 'true' or 'recursive' (#147)."
+        type: string
+        required: false
+        default: 'false'
       bin:
         description: The binary to build; the archives and their top folder are named after it.
         type: string
@@ -72,6 +77,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       # The pages are built once, with the pandoc ri-ci-man checks them with,
       # and every archive of the release carries the same files.
@@ -164,6 +170,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       # The library of the commit this piece was loaded from (D33): repo-infra
       # at the release v2 points at, or the commit under test in repo-infra.

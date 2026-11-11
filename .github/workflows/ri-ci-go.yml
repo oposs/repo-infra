@@ -24,6 +24,11 @@ on:
         type: string
         required: false
         default: ${{ github.repository }}
+      submodules:
+        description: "Check out git submodules: 'false', 'true' or 'recursive' (#147)."
+        type: string
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -38,6 +43,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       # go-version-file rather than a literal: the toolchain directive in go.mod
       # is the repository's own answer, and dependabot can see it.
@@ -58,6 +64,7 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
 
       - uses: actions/setup-go@v7
         with:
