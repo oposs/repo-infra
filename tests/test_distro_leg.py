@@ -180,3 +180,53 @@ def test_a_drifted_image_fails_with_both_codenames(tmp_path, tools):
     assert done.returncode != 0
     assert "debian-13 expects trixie, the image says bookworm" in done.stderr
     assert packages(repo) == []
+
+
+DYNAMIC = LIB / "distro-dynamic.sh"
+
+
+@pytest.mark.parametrize(("image", "files", "expected"), [
+    ("debian-13", ["/bin/ls"], "true"),
+    # A shared library has no interpreter but names the libraries it needs.
+    ("debian-13", ["/lib/x86_64-linux-gnu/libz.so.1.3.1"], "true"),
+    # Debian's ldconfig is a static PIE: a dynamic section, nothing needed.
+    ("debian-13", ["/sbin/ldconfig"], "false"),
+    ("debian-13", ["/etc/os-release"], "false"),
+    ("debian-13", [], "false"),
+    ("debian-13", ["/sbin/ldconfig", "/bin/ls"], "true"),
+    ("alpine-3.24", ["/bin/busybox"], "true"),
+    # The musl loader needs nothing and has no interpreter of its own.
+    ("alpine-3.24", ["/lib/ld-musl-x86_64.so.1"], "false"),
+])
+def test_the_stage_is_dynamic_only_with_an_interpreter_or_a_needed_library(
+        image, files, expected, podman):
+    copies = " && ".join(f"cp {f} /stage/" for f in files) or ":"
+    done = subprocess.run(
+        [podman, "run", "--rm", "--memory=1g", "--security-opt", "label=disable",
+         "-v", f"{LIB}:/ri:ro", RELEASES[image]["image"], "sh", "-ec",
+         f"mkdir /stage && {copies} && sh /ri/distro-dynamic.sh /stage"],
+        capture_output=True, text=True, timeout=600)
+    assert (done.returncode, done.stdout, done.stderr) == (0, f"{expected}\n", "")
+
+
+def test_a_static_program_packs_without_dependencies_and_installs(tmp_path, tools):
+    repo = checkout(tmp_path, lambda text: text.replace("-O2 -o", "-O2 -static -o"))
+    done = leg(tmp_path, tools, "debian-13")
+    assert done.returncode == 0, done.stdout + done.stderr
+    deb = repo / "packages" / EXPECTED["debian-13"]
+    depends = subprocess.run(["dpkg-deb", "--field", str(deb), "Depends"],
+                             capture_output=True, text=True, check=True)
+    assert depends.stdout.strip() == ""
+    assert f"distro-leg.sh: installed {EXPECTED['debian-13']} on debian-13" in done.stdout
+
+
+def test_a_dynamic_program_whose_config_drops_the_dependencies_fails(tmp_path, tools):
+    repo = checkout(tmp_path)
+    config = repo / "pkg" / "nfpm.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("[${DEPENDS}]", "[]"),
+                      encoding="utf-8")
+    subprocess.run(["git", "-c", "user.name=test", "-c", "user.email=test@example.org",
+                    "commit", "-qam", "no depends"], cwd=repo, check=True)
+    done = leg(tmp_path, tools, "debian-13")
+    assert done.returncode != 0
+    assert "declares no dependencies although the stage holds ELF files" in done.stderr

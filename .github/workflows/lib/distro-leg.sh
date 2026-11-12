@@ -79,11 +79,7 @@ make check || fail "make check failed"
 make install DESTDIR=/stage || fail "make install DESTDIR=/stage failed"
 [ -n "$(ls -A /stage)" ] || fail "make install wrote nothing under /stage"
 sh /ri/distro-deps.sh "$1" /stage > /out/depends || fail "distro-deps.sh found no answer"
-# ELF files by their first four bytes, as distro-deps.sh finds them.
-find /stage -type f | while IFS= read -r f; do
-    if [ "$(od -A n -t x1 -N 4 "$f" | tr -d " \n")" = 7f454c46 ]; then echo true; break; fi
-done > /out/has-elf
-[ -s /out/has-elf ] || echo false > /out/has-elf
+sh /ri/distro-dynamic.sh /stage > /out/has-elf || fail "distro-dynamic.sh found no answer"
 cp /etc/os-release /out/os-release
 if [ "$1" = rpm ]; then rpm --eval "%{dist}" > /out/rpm-dist; fi'
 "$ENGINE" run --rm --security-opt label=disable -e REPO_INFRA_USE_CONTAINER=no \
