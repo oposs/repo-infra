@@ -723,7 +723,7 @@ finalize:
 
 Called as `oposs/repo-infra/.github/workflows/ri-publish-gitea.yml@v2`.
 
-**Purpose:** Upload the release's .deb and .rpm files to a Gitea package registry.
+**Purpose:** Upload the release's .deb, .rpm and .apk files to a Gitea package registry.
 
 **Choose it when:** The project ships packages to Gitea.
 

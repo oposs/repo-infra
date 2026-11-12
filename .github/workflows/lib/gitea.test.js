@@ -65,7 +65,7 @@ function rpm(file) {
 
 test('an rpm is named from its header, not from the asset name', () => {
   assert.deepEqual(rpm('tool-1.0.0~rc.1-1.x86_64.rpm'), {
-    kind: 'rpm', name: 'tool', version: '1.0.0~rc.1-1', arch: 'x86_64',
+    kind: 'rpm', name: 'tool', version: '1.0.0~rc.1-1', release: '1', arch: 'x86_64',
     file: 'tool-1.0.0~rc.1-1.x86_64.rpm', asset: 'tool-1.0.0.rc.1-1.x86_64.rpm',
   });
 });
@@ -288,4 +288,106 @@ test('the wait between the attempts is the one given', async () => {
   await g.fetchRetry(async () => answers[n++](), 'https://g/x', {}, 'a.rpm',
     { sleep: (ms) => { waits.push(ms); return Promise.resolve(); }, waitMs: 1234 });
   assert.deepEqual(waits, [1234]);
+});
+
+// Built by tests/fixtures/gitea-routing/build.sh with nfpm 2.47.0.
+const ROUTING = path.join(__dirname, '../../../tests/fixtures/gitea-routing');
+const routed = (file) => fs.readFileSync(path.join(ROUTING, file));
+const APK_NAME = 'tool-1.4.0-r0-alpine3.24-x86_64.apk';
+
+test('a deb built for trixie goes to trixie without a map', () => {
+  assert.deepEqual(g.debianDistribution(CFG, 'x_1.4.0.trixie-1_amd64.deb', '1.4.0~trixie-1'),
+    { ok: true, distribution: 'trixie' });
+});
+
+test('a codename needs the ~ and ends at the release or the next separator', () => {
+  const at = (version) => g.debianDistribution(CFG, 'x.deb', version).distribution;
+  assert.equal(at('1.4.0~noble'), 'noble');
+  assert.equal(at('1.4.0~jammy+b1'), 'jammy');
+  assert.equal(at('1.4.0~resolute-2'), 'resolute');
+  // Not a codename: a pre-release, an unknown word, a word that only starts like one.
+  assert.equal(at('1.0.0~rc.1-1'), 'stable');
+  assert.equal(at('1.4.0~trixiefoo-1'), 'stable');
+  assert.equal(at('1.4.0.trixie-1'), 'stable');
+});
+
+test('the map still wins over the codename', () => {
+  const cfg = g.packageConfig({ gitea_packages: { url: 'https://x', owner: 'o', debian: {
+    distributions: { 'x_*.deb': 'mine' } } } });
+  assert.deepEqual(g.debianDistribution(cfg, 'x_1.4.0~trixie-1_amd64.deb', '1.4.0~trixie-1'),
+    { ok: true, distribution: 'mine' });
+  // A file the map does not cover still takes its codename.
+  assert.deepEqual(g.debianDistribution(cfg, 'y_1.4.0~noble-1_amd64.deb', '1.4.0~noble-1'),
+    { ok: true, distribution: 'noble' });
+});
+
+test('a static deb without a codename stays in debian.distribution', () => {
+  assert.deepEqual(g.debianDistribution(CFG, 'mdmost_0.5.0-1_amd64.deb', '0.5.0-1'),
+    { ok: true, distribution: 'stable' });
+});
+
+test('the trixie fixture is read from its control data and routed', () => {
+  const file = 'tool_1.4.0~trixie-1_amd64.deb';
+  const v = g.debPackage(control('tool', '1.4.0~trixie-1', 'amd64'), 'tool_1.4.0.trixie-1_amd64.deb');
+  assert.deepEqual(g.debianDistribution(CFG, v.pkg.file, v.pkg.version),
+    { ok: true, distribution: 'trixie' });
+  assert.equal(v.pkg.file, file);
+});
+
+test('an el9 rpm goes to the el9 group, under rpm.group when set', () => {
+  const pkg = g.rpmPackage(routed('tool-1.4.0-1.el9.x86_64.rpm'), 'tool-1.4.0-1.el9.x86_64.rpm').pkg;
+  assert.equal(pkg.release, '1.el9');
+  assert.equal(g.uploadUrl(CFG, pkg),
+    'https://gitea.oetiker.ch/api/packages/oposs/rpm/el9/upload?sign=true');
+  assert.equal(g.uploadUrl({ ...CFG, group: 'rocky' }, pkg),
+    'https://gitea.oetiker.ch/api/packages/oposs/rpm/rocky/el9/upload?sign=true');
+});
+
+test('rpm release and dist: fc45 and el10 route, an unknown or absent dist does not', () => {
+  assert.equal(g.rpmGroup(CFG, '1.el10'), 'el10');
+  assert.equal(g.rpmGroup(CFG, '1.fc45'), 'fc45');
+  assert.equal(g.rpmGroup({ ...CFG, group: 'x/y' }, '3.fc45'), 'x/y/fc45');
+  assert.equal(g.rpmGroup(CFG, '1'), '');
+  assert.equal(g.rpmGroup({ ...CFG, group: 'rocky' }, '1'), 'rocky');
+  assert.equal(g.rpmGroup(CFG, '1.el7'), '');
+  assert.equal(g.rpmGroup(CFG, '1.el9.extra'), '');
+});
+
+test('an rpm without a dist tag keeps the url it had', () => {
+  assert.equal(g.uploadUrl(CFG, rpm('tool-1.0.0~rc.1-1.x86_64.rpm')),
+    'https://gitea.oetiker.ch/api/packages/oposs/rpm/upload?sign=true');
+});
+
+test('an apk is read from .PKGINFO and its file name', () => {
+  assert.deepEqual(g.apkPackage(routed(APK_NAME), APK_NAME), {
+    ok: true,
+    pkg: { kind: 'alpine', name: 'tool', version: '1.4.0-r0', arch: 'x86_64', branch: 'v3.24',
+      file: 'tool-1.4.0-r0.apk', asset: APK_NAME },
+  });
+});
+
+test('an apk goes to its Alpine branch', () => {
+  const pkg = g.apkPackage(routed(APK_NAME), APK_NAME).pkg;
+  assert.equal(g.uploadUrl(CFG, pkg),
+    'https://gitea.oetiker.ch/api/packages/oposs/alpine/v3.24/main');
+  assert.equal(g.filesUrl(CFG, pkg),
+    'https://gitea.oetiker.ch/api/v1/packages/oposs/alpine/tool/1.4.0-r0/files');
+});
+
+test('an apk without an alpine part in its name, or not an apk, is refused', () => {
+  const noBranch = g.apkPackage(routed(APK_NAME), 'tool-1.4.0-r0-x86_64.apk');
+  assert.equal(noBranch.ok, false);
+  assert.match(noBranch.message, /^tool-1\.4\.0-r0-x86_64\.apk: .*alpine<major\.minor>/);
+  assert.deepEqual(g.apkPackage(Buffer.from('junk'), APK_NAME),
+    { ok: false, message: `${APK_NAME}: not an apk package (no readable .PKGINFO)` });
+  const cut = routed(APK_NAME).subarray(0, 40);
+  assert.equal(g.apkPackage(cut, APK_NAME).ok, false);
+});
+
+test('a 409 for an apk compares the SHA-256, apk files are not re-signed', () => {
+  const pkg = g.apkPackage(routed(APK_NAME), APK_NAME).pkg;
+  assert.equal(g.conflictVerdict(pkg, 'abc', [{ name: pkg.file, sha256: 'abc' }]).ok, true);
+  const v = g.conflictVerdict(pkg, 'abc', [{ name: pkg.file, sha256: 'def' }]);
+  assert.equal(v.ok, false);
+  assert.match(v.message, /different/);
 });

@@ -74,7 +74,7 @@ def test_the_credential_reaches_the_script_only_through_env():
 
 def test_it_refuses_before_uploading_anything():
     s = script()
-    for guard in ("packageConfig", "missingCredentials", "no .deb or .rpm"):
+    for guard in ("packageConfig", "missingCredentials", "no .deb, .rpm or .apk"):
         assert s.index(guard) < s.index("method: 'PUT'"), guard
 
 

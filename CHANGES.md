@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `ri-publish-gitea` uploads `.apk` files to the Alpine branch named in the file name (`-alpine3.24-` goes to `alpine/v3.24/main`). A `.deb` whose version has `~<codename>`, such as `1.4.0~trixie-1`, goes to that apt distribution without a `debian.distributions` map, and an `.rpm` whose release ends in a dist tag, such as `1.el9`, goes to the group `el9` (below `rpm.group` when that is set). An `.rpm` without a dist tag goes where it always did.
 
 ### Changed
 
