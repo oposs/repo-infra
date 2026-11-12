@@ -124,6 +124,20 @@ def test_alpine_drops_a_soname_the_stage_provides(images, tmp_path):
     assert any(line.startswith("so:libc.musl-") for line in lines), result.stdout
 
 
+def test_rpm_drops_a_library_the_stage_provides(images, tmp_path):
+    # rpmbuild would pair the Requires on a staged library with an automatic
+    # Provides; nfpm writes none, so dnf would refuse the package.
+    shutil.copytree(FIXTURE, tmp_path / "src")
+    result = in_container(images("almalinux-10"), tmp_path,
+                          "cd /w/src && { make && make install DESTDIR=/w/stage; } >&2\n"
+                          "mkdir -p /w/stage/usr/lib64/hello && cp \"$(readlink -f /usr/lib64/libz.so.1)\" /w/stage/usr/lib64/hello/\n"
+                          "sh /ri/distro-deps.sh rpm /w/stage")
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert "libz.so.1()(64bit)" not in lines, result.stdout
+    assert "libc.so.6()(64bit)" in lines, result.stdout
+
+
 @pytest.mark.parametrize("distro", ["debian-13", "almalinux-10", "alpine-3.24"])
 def test_a_stage_without_elf_prints_nothing(distro, images, tmp_path):
     family = RELEASES[distro]["family"]

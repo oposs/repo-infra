@@ -67,7 +67,11 @@ deb)
     ;;
 rpm)
     /usr/lib/rpm/rpmdeps --requires "$@" > "$work/out"
-    grep -v '^rpmlib(' "$work/out" > "$work/deps" || true
+    # A library the stage ships itself is the package's own. rpmbuild would
+    # add the matching Provides; nfpm adds none, so dnf would refuse a
+    # package that requires it.
+    /usr/lib/rpm/rpmdeps --provides "$@" > "$work/provided"
+    grep -v '^rpmlib(' "$work/out" | grep -vxF -f "$work/provided" > "$work/deps" || true
     ;;
 apk)
     # #F keeps the file name off each line, which scanelf appends when it
