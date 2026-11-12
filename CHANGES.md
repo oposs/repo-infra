@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `ri-publish-gitea` sent rpm packages for a `gitea_packages.rpm.group` with a slash, such as `rocky/el9`, to the group `rocky%2Fel9` instead of `rocky/el9`. The slash now stays a path separator, so the packages land in the group whose `rocky/el9.repo` users add.
 
 ## 2.13.0 - 2026-11-11
 ### New

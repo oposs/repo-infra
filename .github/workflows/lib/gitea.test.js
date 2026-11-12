@@ -93,6 +93,15 @@ test('upload urls follow the Gitea API, rpm is always signed', () => {
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/el9/upload?sign=true');
 });
 
+// Gitea's documented groups include rocky/el9 and test/fc38; encoding the
+// whole group sent them to rocky%2Fel9.
+test('an rpm group with a slash keeps the slash and encodes each segment', () => {
+  assert.equal(g.uploadUrl({ ...CFG, group: 'rocky/el9' }, rpm('tool-1.0.0~rc.1-1.x86_64.rpm')),
+    'https://gitea.oetiker.ch/api/packages/oposs/rpm/rocky/el9/upload?sign=true');
+  assert.equal(g.uploadUrl({ ...CFG, group: 'a b/el9' }, rpm('tool-1.0.0~rc.1-1.x86_64.rpm')),
+    'https://gitea.oetiker.ch/api/packages/oposs/rpm/a%20b/el9/upload?sign=true');
+});
+
 test('the files url names type, package and version', () => {
   assert.equal(g.filesUrl(CFG, deb('mdmost', '1.0.0~rc.1-1')),
     'https://gitea.oetiker.ch/api/v1/packages/oposs/debian/mdmost/1.0.0~rc.1-1/files');
