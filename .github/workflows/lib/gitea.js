@@ -166,8 +166,11 @@ function uploadUrl(cfg, pkg) {
     return `${base}/debian/pool/${seg(pkg.distribution || cfg.distribution)}/${seg(cfg.component)}/upload`;
   }
   // Gitea's generated .repo sets gpgcheck=1, so an unsigned rpm would not
-  // install. Gitea signs with its per-owner key.
-  return `${base}/rpm${cfg.group ? `/${seg(cfg.group)}` : ''}/upload?sign=true`;
+  // install. Gitea signs with its per-owner key. A group may hold a slash
+  // (Gitea documents rocky/el9), so each segment is encoded on its own;
+  // encoding the whole group sent rocky/el9 to rocky%2Fel9.
+  const group = cfg.group ? `/${cfg.group.split('/').map(seg).join('/')}` : '';
+  return `${base}/rpm${group}/upload?sign=true`;
 }
 
 function filesUrl(cfg, pkg) {
