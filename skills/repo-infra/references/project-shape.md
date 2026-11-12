@@ -308,11 +308,11 @@ then `<gitea-url>/api/packages/<gitea-owner>/rpm/<dist>.repo`, for example
 dist tag keeps the paths above.
 
 AlmaLinux takes many libraries and Perl modules from EPEL and CRB, so the
-snippet for AlmaLinux turns them on first:
+snippet for AlmaLinux turns them on first (`crb` comes with `epel-release`):
 
 ```sh
-sudo dnf install epel-release
-sudo dnf config-manager --set-enabled crb
+sudo dnf install -y epel-release
+sudo crb enable
 ```
 
 Alpine, for a project on `ri-release-distro-packages`. `<branch>` is the
