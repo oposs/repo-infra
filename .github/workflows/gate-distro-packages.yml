@@ -8,6 +8,8 @@ name: Gate (distro packages)
 # secret.
 on:
   workflow_dispatch:
+  push:
+    branches: [design/distro-packages]
 
 permissions:
   contents: read
