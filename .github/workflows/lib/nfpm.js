@@ -22,14 +22,19 @@ function isObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parsePackagers(text) {
+// allowEmpty is for ri-release-distro-packages, where '' and '{}' mean "the
+// release's own packager, nothing extra". `piece` names the caller in the
+// refusals.
+function parsePackagers(text, allowed = ['deb', 'rpm'], allowEmpty = false,
+  piece = 'ri-release-nfpm') {
+  if (allowEmpty && text.trim() === '') return {};
   let packagers;
   try {
     packagers = JSON.parse(text);
   } catch (error) {
     throw new Error(`packagers is not JSON: ${error.message.replace(/\s+/g, ' ')}`);
   }
-  const valid = isObject(packagers) && Object.keys(packagers).length > 0
+  const valid = isObject(packagers) && (allowEmpty || Object.keys(packagers).length > 0)
     && Object.values(packagers).every((extra) => isObject(extra)
       && Object.values(extra).every((value) => typeof value === 'string'));
   if (!valid) {
@@ -37,15 +42,16 @@ function parsePackagers(text) {
       + '{"deb": {}, "rpm": {"NAME": "value"}}: one key per packager, '
       + 'each mapping variable names to strings');
   }
-  const unknown = Object.keys(packagers).filter((p) => p !== 'deb' && p !== 'rpm').sort();
+  const unknown = Object.keys(packagers).filter((p) => !allowed.includes(p)).sort();
   if (unknown.length > 0) {
-    throw new Error(`packagers names ${unknown.join(', ')}; ri-release-nfpm builds deb and rpm`);
+    throw new Error(`packagers names ${unknown.join(', ')}; ${piece} builds `
+      + allowed.join(' and '));
   }
   for (const [packager, extra] of Object.entries(packagers)) {
     const shadowed = Object.keys(extra).filter((key) => OWN.includes(key)).sort();
     if (shadowed.length > 0) {
       throw new Error(`packagers.${packager} sets ${shadowed.join(', ')}, `
-        + 'which ri-release-nfpm sets itself');
+        + `which ${piece} sets itself`);
     }
   }
   return packagers;
@@ -96,6 +102,17 @@ function readBack(packager, path, exec) {
       version: exec('dpkg-deb', ['--field', path, 'Version']).trim(),
       files: exec('dpkg-deb', ['--contents', path]).split('\n')
         .filter((line) => line && !line.startsWith('d')),
+    };
+  }
+  if (packager === 'apk') {
+    // Alpine packages are two or three concatenated gzip streams, hence
+    // --ignore-zeros. The dot files (.PKGINFO, .SIGN.*) are metadata.
+    const pkginfo = exec('tar', ['--ignore-zeros', '-xzOf', path, '.PKGINFO']);
+    const pkgver = pkginfo.split('\n').map((l) => l.match(/^pkgver = (.*)$/)).find(Boolean);
+    return {
+      version: pkgver ? pkgver[1].trim() : '',
+      files: exec('tar', ['--ignore-zeros', '-tzf', path]).split('\n')
+        .filter((line) => line && !line.startsWith('.') && !line.endsWith('/')),
     };
   }
   return {
@@ -187,4 +204,4 @@ function run(env, io = nodeIo()) {
   return lines;
 }
 
-module.exports = { parsePackagers, parseTargets, expand, rfc3339, run };
+module.exports = { parsePackagers, parseTargets, expand, rfc3339, readBack, run };
