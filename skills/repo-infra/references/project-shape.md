@@ -271,7 +271,7 @@ targets still needs `native-targets`.
 ## Install snippets
 
 One snippet per channel. `<owner>` and `<repo>` name the GitHub repository,
-`<bin>` the program, the formula and the archives. `<deb-name>` and `<rpm-name>`
+`<bin>` the program, the formula and the archives. `<deb-name>`, `<rpm-name>` and `<apk-name>`
 are the package names (Smalti publishes `fonts-smalti` and `smalti-fonts`).
 `<gitea-url>` and `<gitea-owner>` come from `gitea_packages`, and so do
 `<distribution>` and `<component>` (`gitea_packages.debian`, default `stable`
@@ -301,7 +301,7 @@ With `gitea_packages.rpm.group` set, the repository file is
 `<gitea-url>/api/packages/<gitea-owner>/rpm/<group>.repo`.
 
 An `.rpm` of `ri-release-distro-packages` has a release that ends in a dist tag
-(`1.el9`, `1.el10`, `1.fc43`), and `ri-publish-gitea` uploads it to the group
+(`1.el9`, `1.el10`, `1.fc45`), and `ri-publish-gitea` uploads it to the group
 named by the tag, below `rpm.group` when that is set. The repository file is
 then `<gitea-url>/api/packages/<gitea-owner>/rpm/<dist>.repo`, for example
 `rpm/el10.repo`, or `rpm/<group>/<dist>.repo` with a group. An `.rpm` without a
@@ -317,10 +317,12 @@ sudo crb enable
 
 Alpine, for a project on `ri-release-distro-packages`. `<branch>` is the
 release of the system, such as `v3.24`; the package is signed with the key of
-the Gitea owner:
+the Gitea owner. `curl -J` saves the key under the file name Gitea gives it,
+which `apk` needs to find the key (busybox `wget` ignores that name; `apk add
+curl` first on a bare image):
 
 ```sh
-sudo wget -O /etc/apk/keys/<gitea-owner>.rsa.pub <gitea-url>/api/packages/<gitea-owner>/alpine/key
+cd /etc/apk/keys && sudo curl -JO <gitea-url>/api/packages/<gitea-owner>/alpine/key
 echo "<gitea-url>/api/packages/<gitea-owner>/alpine/<branch>/main" | sudo tee -a /etc/apk/repositories
 sudo apk update && sudo apk add <apk-name>
 ```

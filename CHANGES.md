@@ -13,10 +13,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 - `ri-release-distro-packages` builds a `.deb`, `.rpm` and `.apk` for each listed release (Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04, AlmaLinux 9 and 10, the newest Fedora, the two newest Alpine) of a program that links system libraries, and runs `make check` on every release. The `distributions` input narrows the list, and a call that sets it needs the `linux-packages` exception.
-- `ri-publish-gitea` sends the packages of a release to that release's apt distribution, rpm group or Alpine branch: `.apk` files go to `alpine/v3.24/main` for `-alpine3.24-` in the name, and a `.deb` with `~trixie` in its version goes to `trixie`. An `.rpm` whose release ends in a dist tag now lands one path level deeper when `rpm.group` is set (group `rocky/el9` and release `1.el9` go to `rocky/el9/el9`), and an `.apk` without `-alpine<version>-` in its name, such as an Android app, is left alone.
-- The `.apk` read-back of `ri-release-nfpm` no longer logs GNU tar's "Ignoring unknown extended header keyword" warning.
+- `ri-publish-gitea` sends the packages of a release to that release's apt distribution, rpm group or Alpine branch: `.apk` files go to `alpine/v3.24/main` for `-alpine3.24-` in the name, and a `.deb` with `~trixie` in its version goes to `trixie`. An `.apk` without `-alpine<version>-` in its name, such as an Android app, is left alone.
 
 ### Changed
+- `ri-publish-gitea` puts an `.rpm` whose release ends in a dist tag one path level deeper when `rpm.group` is set: group `rocky/el9` and release `1.el9` now go to `rocky/el9/el9`.
+- With `gitea_packages.debian.distributions` set, a `.deb` that no glob matches no longer stops the job when its version names a known codename, such as `~trixie`; it goes to that distribution. A `.deb` without a known codename still stops the job.
 
 ### Fixed
 - `ri-publish-gitea` sent rpm packages for a `gitea_packages.rpm.group` with a slash, such as `rocky/el9`, to the group `rocky%2Fel9` instead of `rocky/el9`. The slash now stays a path separator, so the packages land in the group whose `rocky/el9.repo` users add.

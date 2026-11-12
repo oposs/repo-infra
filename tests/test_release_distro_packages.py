@@ -113,6 +113,9 @@ def test_collect_needs_packages_and_checks_the_plan():
     check = steps("collect")["Check every leg made one package"]
     assert check["env"] == {"MATRIX": "${{ needs.plan.outputs.matrix }}"}
     assert "${{" not in check["run"]
+    # A missing artifact folder must reach the ::error:: line: under pipefail a
+    # failing find inside the pipeline would end the script silently.
+    assert '[ -d "collected/release-asset-packages-$leg" ]' in check["run"]
 
 
 def test_permissions_are_contents_read():
