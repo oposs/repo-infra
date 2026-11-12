@@ -389,5 +389,21 @@ test('a 409 for an apk compares the SHA-256, apk files are not re-signed', () =>
   assert.equal(g.conflictVerdict(pkg, 'abc', [{ name: pkg.file, sha256: 'abc' }]).ok, true);
   const v = g.conflictVerdict(pkg, 'abc', [{ name: pkg.file, sha256: 'def' }]);
   assert.equal(v.ok, false);
-  assert.match(v.message, /different/);
+  assert.match(v.message, /none of them this asset/);
+});
+
+test('an Android .apk, or any .apk without -alpine<major.minor>-, is not an Alpine package', () => {
+  assert.equal(g.isAlpineApk(APK_NAME), true);
+  assert.equal(g.isAlpineApk('app-release.apk'), false);
+  assert.equal(g.isAlpineApk('tool-1.4.0-r0-alpine3.24-x86_64.apk.sig'), false);
+  assert.equal(g.isAlpineApk('tool-alpine3.24-x86_64.deb'), false);
+});
+
+test('a 409 for an apk whose file name both architectures share accepts any matching copy', () => {
+  const pkg = g.apkPackage(routed(APK_NAME), APK_NAME).pkg;
+  const listing = [{ name: pkg.file, sha256: 'other-arch' }, { name: pkg.file, sha256: 'abc' }];
+  assert.equal(g.conflictVerdict(pkg, 'abc', listing).ok, true);
+  const v = g.conflictVerdict(pkg, 'zzz', listing);
+  assert.equal(v.ok, false);
+  assert.match(v.message, /2 file\(s\) of this name, none of them this asset \(x86_64, v3\.24\)/);
 });

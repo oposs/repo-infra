@@ -211,6 +211,12 @@ function pkginfoOf(buf) {
   return null;
 }
 
+// An .apk is an Alpine package only when the piece named it so; an Android
+// app is an .apk too, and a release may carry one.
+function isAlpineApk(name) {
+  return /\.apk$/.test(name) && /-alpine\d+\.\d+-/.test(name);
+}
+
 function apkPackage(buf, asset) {
   const info = pkginfoOf(buf);
   if (info === null) {
@@ -278,7 +284,20 @@ function conflictVerdict(pkg, assetSha256, files) {
   if (stored.length === 0) {
     return { ok: false, message: `${pkg.file}: Gitea answered 409 but lists no such file` };
   }
-  if (pkg.kind === 'debian' || pkg.kind === 'alpine') {
+  if (pkg.kind === 'alpine') {
+    // The stored name has no architecture, so the x86_64 and the aarch64
+    // build of one version share it, and the listing holds both. This asset
+    // is there when any copy has its SHA-256.
+    if (stored.some((f) => f.sha256 === assetSha256)) {
+      return { ok: true, message: `${pkg.file}: already uploaded, SHA-256 matches` };
+    }
+    return {
+      ok: false,
+      message: `${pkg.file}: Gitea holds ${stored.length} file(s) of this name, none of them `
+        + `this asset (${pkg.arch}, ${pkg.branch})`,
+    };
+  }
+  if (pkg.kind === 'debian') {
     // Gitea keeps one file per distribution and component under a version,
     // and its file listing does not say which is which. A file name listed
     // more than once is accepted only when every copy is this asset.
@@ -328,6 +347,6 @@ async function fetchRetry(fetchFn, url, init, file, { attempts = 2, waitMs = 100
 }
 
 module.exports = {
-  packageConfig, globMatches, debianDistribution, rpmGroup, debPackage, rpmPackage, apkPackage, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
+  packageConfig, globMatches, debianDistribution, rpmGroup, debPackage, rpmPackage, apkPackage, isAlpineApk, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
   fetchRetry,
 };

@@ -25,7 +25,8 @@
 # trixie); otherwise to "debian.distribution". An .rpm whose release ends in
 # a dist tag (1.el9) goes to the group of that tag, below "rpm.group" when
 # that is set. An .apk goes to the Alpine branch in its file name
-# (-alpine3.24-) as alpine/v3.24/main. Gitea signs the Debian and RPM metadata and, with ?sign=true, each rpm, with its own
+# (-alpine3.24-) as alpine/v3.24/main; any other .apk, an Android app for
+# one, is not a package and is left alone. Gitea signs the Debian and RPM metadata and, with ?sign=true, each rpm, with its own
 # per-owner key; no repository holds a signing key.
 #
 # The credential is a dedicated Gitea user's token, scope write:package, in
@@ -123,7 +124,7 @@ jobs:
             for (const asset of assets) {
               const kind = /\.deb$/.test(asset.name) ? 'deb'
                 : /\.rpm$/.test(asset.name) ? 'rpm'
-                : /\.apk$/.test(asset.name) ? 'apk' : null;
+                : gitea.isAlpineApk(asset.name) ? 'apk' : null;
               if (!kind) continue;
               const { data } = await github.rest.repos.getReleaseAsset({
                 owner, repo, asset_id: asset.id,
