@@ -1,0 +1,18 @@
+# The build image of the D38 fixture. container-make builds it with the
+# default base; ri-release-distro-packages passes the image of each release
+# and stops at build-deps. It is built with no build context, so the package
+# names of every family live here and not in a script beside it.
+ARG BASE=docker.io/library/debian:13
+FROM ${BASE} AS build-deps
+RUN . /etc/os-release; \
+    case " $ID $ID_LIKE " in \
+      *" debian "*) \
+        apt-get update \
+        && apt-get install -y --no-install-recommends gcc libc6-dev make zlib1g-dev \
+        && rm -rf /var/lib/apt/lists/* ;; \
+      *" fedora "*) \
+        dnf install -y gcc make zlib-devel && dnf clean all ;; \
+      *" alpine "*) \
+        apk add --no-cache gcc musl-dev make zlib-dev ;; \
+      *) echo "no build dependencies for $ID" >&2; exit 1 ;; \
+    esac

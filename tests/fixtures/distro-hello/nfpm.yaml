@@ -1,0 +1,21 @@
+# The packages of the D38 fixture, read by ri-release-distro-packages. The
+# piece fills in every dollar-brace name before nfpm reads this file: STAGE
+# is the make install tree, DEPENDS the libraries the detector found.
+name: hello
+arch: "${ARCH}"
+platform: linux
+version: "${VERSION}"
+version_schema: none
+release: "${PKG_RELEASE}"
+mtime: "${MTIME}"
+maintainer: Tobias Oetiker <tobi@oetiker.ch>
+license: MIT
+description: |
+  Prints a greeting and the zlib version
+  A test program for the distribution packages of repo-infra.
+depends: [${DEPENDS}]
+contents:
+  - src: ${STAGE}/usr/bin/hello
+    dst: /usr/bin/hello
+    file_info:
+      mode: 0755
