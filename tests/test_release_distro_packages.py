@@ -117,3 +117,24 @@ def test_collect_needs_packages_and_checks_the_plan():
 
 def test_permissions_are_contents_read():
     assert doc()["permissions"] == {"contents": "read"}
+
+
+GATE = ROOT / ".github/workflows/gate-distro-packages.yml"
+
+
+def test_the_gate_calls_the_piece_on_the_fixture():
+    """Dispatched by hand, it builds tests/fixtures/distro-hello with the piece
+    and the library of the dispatched commit, every release the piece knows."""
+    gate = load(GATE)
+    # PyYAML reads the bare key on as True.
+    assert gate[True] == {"workflow_dispatch": None}
+    assert gate["permissions"] == {"contents": "read"}
+    assert gate["jobs"] == {"packages": {
+        "uses": "./.github/workflows/ri-release-distro-packages.yml",
+        "with": {
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.sha }}",
+            "directory": "tests/fixtures/distro-hello",
+            "version": "0.0.0",
+        },
+    }}
