@@ -1,0 +1,257 @@
+# repo-infra: ri-release-distro-packages v2
+#
+# Purpose: Build one deb, rpm or apk package per distribution release and architecture inside that release's own container, and install each in a clean container of the same release (D38).
+# Choose: The program links system libraries, so one static build cannot serve every distribution (D38).
+# Supplies: In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once and put in `directory`/man.
+# Produces: The artifacts release-asset-packages-<distro>-<amd64|arm64>, one package file each; list them in release_assets.
+# Call:
+#   packages:
+#     uses: oposs/repo-infra/.github/workflows/ri-release-distro-packages.yml@v2
+#     with:
+#       version: ${{ inputs.version }}
+#       ref: ${{ inputs.ref }}
+#       distributions: debian-13 almalinux-10
+
+name: Build the Linux packages per distribution
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version the release builds, from release-build.yml.
+        type: string
+        required: true
+      ref:
+        description: The release branch commit to build, from release-build.yml (D28).
+        type: string
+        required: true
+      repository:
+        description: The repository to check out; the calling repository unless set (D33).
+        type: string
+        required: false
+        default: ${{ github.repository }}
+      submodules:
+        description: Whether to check out submodules, true, false or recursive.
+        type: string
+        required: false
+        default: 'false'
+      directory:
+        description: The folder in the repository that holds the Containerfile, the Makefile and the nfpm config.
+        type: string
+        required: false
+        default: .
+      config:
+        description: Path of the nfpm configuration in `directory`, for example nfpm.yaml.
+        type: string
+        required: false
+        default: nfpm.yaml
+      packagers:
+        description: JSON object with one key per packager, deb, rpm or apk, each value an object of further variable names and their values for that packager. The default {} gives every release the nfpm variables of its own packager only.
+        type: string
+        required: false
+        default: '{}'
+      distributions:
+        description: Space-separated releases to build, for example debian-13 almalinux-10. Empty builds every release the piece knows.
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  # One leg per release and architecture, cut down to the releases
+  # `distributions` names. A name the piece does not build fails here, before
+  # any runner starts.
+  plan:
+    name: Choose the releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
+      - name: Choose the releases
+        id: plan
+        uses: actions/github-script@v9
+        env:
+          DISTRIBUTIONS: ${{ inputs.distributions }}
+        with:
+          script: |
+            const { distroPlan } = require(`${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib/distro.js`);
+            try {
+              core.setOutput('matrix', JSON.stringify(distroPlan(process.env.DISTRIBUTIONS)));
+            } catch (error) {
+              core.setFailed(error.message);
+            }
+
+  # The pages are built once, with the pandoc ri-ci-man checks them with, and
+  # every package carries the same files: the image of a leg has no pandoc, so
+  # make there finds the pages built and does not try to build them.
+  man:
+    name: Build the man pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      present: ${{ steps.detect.outputs.present }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
+
+      - name: Look for the man page build
+        id: detect
+        env:
+          DIRECTORY: ${{ inputs.directory }}
+        run: |
+          if [ -f "$DIRECTORY/build/man.mk" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install pandoc
+        if: ${{ steps.detect.outputs.present == 'true' }}
+        env:
+          PANDOC_VERSION: 3.12.1
+          PANDOC_SHA256: b4217ac7c54067c442f9d4cd38bcd0c184a43f3e7053431a12263a6f92a33ba2
+        run: |
+          deb="$RUNNER_TEMP/pandoc-$PANDOC_VERSION-1-amd64.deb"
+          curl -fsSL --retry 5 -o "$deb" \
+            "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-1-amd64.deb"
+          echo "$PANDOC_SHA256  $deb" | sha256sum -c -
+          sudo dpkg -i "$deb"
+
+      - name: Build the man pages
+        if: ${{ steps.detect.outputs.present == 'true' }}
+        env:
+          DIRECTORY: ${{ inputs.directory }}
+        run: make -C "$DIRECTORY" man
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.detect.outputs.present == 'true' }}
+        with:
+          name: man-pages
+          path: ${{ inputs.directory }}/man/
+          if-no-files-found: error
+
+  packages:
+    name: ${{ matrix.distro }} ${{ matrix.arch }}
+    needs: [plan, man]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
+
+      # The library of the commit this piece was loaded from (D33).
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .repo-infra
+          sparse-checkout: .github/workflows/lib
+
+      - name: Fetch the man pages
+        if: ${{ needs.man.outputs.present == 'true' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: man-pages
+          path: ${{ inputs.directory }}/man
+
+      # The same pin as ri-release-nfpm; the arm64 runner needs the arm64
+      # build of that release, hence the second checksum.
+      - name: Install nfpm
+        env:
+          NFPM_VERSION: 2.47.0
+          NFPM_SHA256: 0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783
+          NFPM_SHA256_ARM64: 1c0f5f2999b9a974bfb04fdb0cc3306096de530ac5dbb25d739cc5f5219c919c
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          if [ "$ARCH" = arm64 ]; then
+            suffix=arm64
+            sha=$NFPM_SHA256_ARM64
+          else
+            suffix=x86_64
+            sha=$NFPM_SHA256
+          fi
+          tarball="nfpm_${NFPM_VERSION}_Linux_${suffix}.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/$tarball"
+          echo "$sha  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/nfpm"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/nfpm" nfpm
+          echo "$RUNNER_TEMP/nfpm" >> "$GITHUB_PATH"
+
+      # dpkg-deb is on the runner; the rpm legs read the .rpm back with rpm.
+      - name: Install rpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      # Plain docker with its default driver: the leg builds the project's
+      # Containerfile FROM a localhost image it built a step before, and only
+      # the default driver finds that image without a registry. No buildx
+      # docker-container driver is set up here for that reason.
+      - name: Build the package
+        env:
+          ENGINE: docker
+          IMAGE: ${{ matrix.image }}
+          DISTRO: ${{ matrix.distro }}
+          ARCH: ${{ matrix.arch }}
+          VERSION: ${{ inputs.version }}
+          DIRECTORY: ${{ inputs.directory }}
+          CONFIG: ${{ inputs.config }}
+          PACKAGERS: ${{ inputs.packagers }}
+          LIB: ${{ github.workspace }}/.repo-infra/.github/workflows/lib
+        run: sh "$LIB/distro-leg.sh"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-asset-packages-${{ matrix.distro }}-${{ matrix.arch }}
+          path: packages/
+          if-no-files-found: error
+
+  # A failed leg already fails its own job; this one fails the release when an
+  # artifact is missing or holds more than the one package a leg writes.
+  collect:
+    name: Check the packages
+    needs: [plan, packages]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-asset-packages-*
+          path: collected
+
+      - name: Check every leg made one package
+        env:
+          MATRIX: ${{ needs.plan.outputs.matrix }}
+        run: |
+          set -euo pipefail
+          bad=0
+          while read -r leg; do
+            files=$(find "collected/release-asset-packages-$leg" -maxdepth 1 -type f 2>/dev/null | wc -l)
+            if [ "$files" -ne 1 ]; then
+              echo "::error::release-asset-packages-$leg holds $files files; every leg makes one package"
+              bad=1
+            fi
+          done < <(jq -r '.include[] | "\(.distro)-\(.arch)"' <<< "$MATRIX")
+          exit $bad
