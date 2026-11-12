@@ -283,3 +283,25 @@ test('an apk read-back reports version and files from the tar listing', () => {
   const back = readBack('apk', 'p.apk', io.exec);
   assert.deepEqual(back, { version: '1.4.0-r0', files: ['usr/bin/lectover'] });
 });
+
+test('without RUNNER_TEMP the config goes to the system temp folder', () => {
+  // os.tmpdir() honours TMPDIR, so a machine that keeps /tmp off limits is obeyed.
+  const saved = process.env.TMPDIR;
+  process.env.TMPDIR = '/scratch/elsewhere';
+  try {
+    const { io, written } = fakeIo();
+    pack(env({ RUNNER_TEMP: undefined }), io);
+    assert.deepEqual([...written.keys()], ['/scratch/elsewhere/nfpm-debian-13-amd64.yaml']);
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
+  }
+});
+
+test('HAS_ELF other than true or false fails before nfpm runs', () => {
+  for (const value of [undefined, '', 'yes', 'TRUE']) {
+    const { io, calls } = fakeIo();
+    assert.throws(() => pack(env({ HAS_ELF: value }), io),
+      new RegExp(`HAS_ELF is "${value || ''}"; expected true or false`));
+    assert.equal(calls.filter((c) => c.command === 'nfpm').length, 0);
+  }
+});

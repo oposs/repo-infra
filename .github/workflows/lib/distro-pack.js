@@ -9,7 +9,7 @@
 
 const { byDistro } = require('./distro.js');
 const {
-  parsePackagers, expand, rfc3339, readBack,
+  parsePackagers, expand, rfc3339, readBack, APK_TAR,
 } = require('./nfpm.js');
 
 const PIECE = 'ri-release-distro-packages';
@@ -90,7 +90,7 @@ function readDepends(family, path, exec) {
     return exec('rpm', ['-qp', '--requires', path]).split('\n')
       .map((d) => d.trim()).filter((d) => d && !d.startsWith('rpmlib('));
   }
-  return exec('tar', ['--ignore-zeros', '-xzOf', path, '.PKGINFO']).split('\n')
+  return exec('tar', [...APK_TAR, '-xzOf', path, '.PKGINFO']).split('\n')
     .map((l) => l.match(/^depend = (.*)$/)).filter(Boolean).map((m) => m[1].trim());
 }
 
@@ -115,6 +115,11 @@ function pack(env, io = nodeIo()) {
   const release = byDistro(env.DISTRO);
   if (!release) throw new Error(`DISTRO ${env.DISTRO} is not a release this piece builds`);
   const family = release.family;
+  // The leg script sets it from the stage; anything else is a caller bug that
+  // would silently skip the dependency check.
+  if (env.HAS_ELF !== 'true' && env.HAS_ELF !== 'false') {
+    throw new Error(`HAS_ELF is "${env.HAS_ELF || ''}"; expected true or false`);
+  }
   const packagers = parsePackagers(env.PACKAGERS || '', ['deb', 'rpm', 'apk'], true, PIECE);
   // A caller that names only rpm extras still gets deb and apk legs.
   const extra = packagers[family] || {};
@@ -135,7 +140,9 @@ function pack(env, io = nodeIo()) {
     version: env.VERSION, release, osRelease, depends, epoch, stage: env.STAGE,
     arch: env.ARCH, rpmDist: env.RPM_DIST,
   });
-  const expanded = `${env.RUNNER_TEMP || '/tmp'}/nfpm-${env.DISTRO}-${env.ARCH}.yaml`;
+  // os.tmpdir() honours TMPDIR, which a machine without a usable /tmp sets.
+  const temp = env.RUNNER_TEMP || require('os').tmpdir();
+  const expanded = `${temp}/nfpm-${env.DISTRO}-${env.ARCH}.yaml`;
   io.write(expanded, expand(template, { ...extra, ...own }, env.CONFIG));
   io.mkdir('packages');
   const before = new Set(io.list('packages'));

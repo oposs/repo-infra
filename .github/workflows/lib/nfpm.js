@@ -96,6 +96,8 @@ function variables({ version, epoch, packager, target, stage, extra }) {
   };
 }
 
+const APK_TAR = ['--ignore-zeros', '--warning=no-unknown-keyword'];
+
 function readBack(packager, path, exec) {
   if (packager === 'deb') {
     return {
@@ -106,12 +108,13 @@ function readBack(packager, path, exec) {
   }
   if (packager === 'apk') {
     // Alpine packages are two or three concatenated gzip streams, hence
-    // --ignore-zeros. The dot files (.PKGINFO, .SIGN.*) are metadata.
-    const pkginfo = exec('tar', ['--ignore-zeros', '-xzOf', path, '.PKGINFO']);
+    // --ignore-zeros. The dot files (.PKGINFO, .SIGN.*) are metadata. GNU
+    // tar warns about the APK-TOOLS.checksum.SHA1 header of every file.
+    const pkginfo = exec('tar', [...APK_TAR, '-xzOf', path, '.PKGINFO']);
     const pkgver = pkginfo.split('\n').map((l) => l.match(/^pkgver = (.*)$/)).find(Boolean);
     return {
       version: pkgver ? pkgver[1].trim() : '',
-      files: exec('tar', ['--ignore-zeros', '-tzf', path]).split('\n')
+      files: exec('tar', [...APK_TAR, '-tzf', path]).split('\n')
         .filter((line) => line && !line.startsWith('.') && !line.endsWith('/')),
     };
   }
@@ -204,4 +207,6 @@ function run(env, io = nodeIo()) {
   return lines;
 }
 
-module.exports = { parsePackagers, parseTargets, expand, rfc3339, readBack, run };
+module.exports = {
+  parsePackagers, parseTargets, expand, rfc3339, readBack, run, APK_TAR,
+};
