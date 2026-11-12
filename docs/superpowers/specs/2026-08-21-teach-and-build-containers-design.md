@@ -148,6 +148,8 @@ image plus its ecosystem toolchain. **The moment it needs an additional system
 package, the standard can no longer build it, and that is the signal to raise
 the question with the human.**
 
+A release build over the threshold has `ri-release-distro-packages` since D38.
+
 **The threshold decides when to ask. It does not decide the answer.** Whether a
 given repository goes to containers is a discussion, not a detection — this is
 stage 1 of the teach path, not an automatic rewrite. Containerization is the

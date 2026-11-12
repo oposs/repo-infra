@@ -179,11 +179,15 @@ registry.
 
 Met by:
 
-- a Rust or Go program: amd64 and arm64 packages built from the musl archives
-  by `ri-release-nfpm`;
-- an interpreted program that bundles native modules (SmokePing's
-  `thirdparty/` compiles XS modules such as `FCGI` and `Socket6`): packages per
-  architecture;
+- a static Rust or Go program: amd64 and arm64 packages built from the musl
+  archives by `ri-release-nfpm`;
+- a program that links system libraries, whether Rust, Go or an interpreted
+  program with native modules (SmokePing's `thirdparty/` compiles XS modules
+  such as `FCGI` and `Socket6`): `ri-release-distro-packages` builds a `.deb`,
+  `.rpm` or `.apk` per release and architecture in an image of that release
+  (D38). The `Containerfile` takes `ARG BASE` and names its tool stage
+  `build-deps`, and the `Makefile` has `check` and `install DESTDIR=`; see the
+  second Containerfile contract in `conventions.md`;
 - an interpreted program or data that depends only on distribution packages:
   `noarch` packages, as Smalti builds them.
 
@@ -200,9 +204,9 @@ Met by: For a Rust or Go program, `ri-release-homebrew`, which bottles the formu
 and rewrites it on each release from the template under "Formula template".
 For an interpreted program, a formula that builds from the source archive.
 
-No piece builds the interpreted variants of `linux-packages` and `homebrew`
-beyond what `ri-release-source-tarball` covers. The SmokePing onboarding proves
-the rest first.
+No piece builds the interpreted variant of `homebrew` beyond what
+`ri-release-source-tarball` covers. The SmokePing onboarding proves the rest
+first.
 
 ### `macos-signed`
 
@@ -245,11 +249,17 @@ either that sets it needs these exceptions:
 |---|---|
 | any target | `native-targets` |
 | `x86_64-apple-darwin` or `aarch64-apple-darwin` | also `homebrew` |
-| `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` | also `homebrew` and `linux-packages` |
+| `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` | also `homebrew` and `linux-packages`, unless the repository calls `ri-release-distro-packages` |
 
 `ri-release-homebrew` refuses to run without both mac archives and both musl
 archives, and `ri-release-nfpm` builds from the musl archives, so a repository
 with these exceptions does not call the piece behind them.
+
+`ri-release-distro-packages` has `distributions` (D38), which names the releases
+to build; unset builds every release the piece knows. A call that sets it needs
+the exception `linux-packages`, and its text names the releases left out and
+the reason. A call without it meets `linux-packages`. Leaving out the musl
+targets still needs `native-targets`.
 
 ## Badges
 
@@ -267,7 +277,9 @@ are the package names (Smalti publishes `fonts-smalti` and `smalti-fonts`).
 `<distribution>` and `<component>` (`gitea_packages.debian`, default `stable`
 and `main`). A project with `gitea_packages.debian.distributions` publishes one
 distribution per release codename; its snippet writes
-`$(. /etc/os-release && echo $VERSION_CODENAME)` for `<distribution>`.
+`$(. /etc/os-release && echo $VERSION_CODENAME)` for `<distribution>`. The
+`.deb` files of `ri-release-distro-packages` need no such map: `ri-publish-gitea`
+reads the codename from the version (`1.4.0~trixie-1`).
 
 Debian and Ubuntu:
 
@@ -287,6 +299,31 @@ sudo dnf install <rpm-name>
 
 With `gitea_packages.rpm.group` set, the repository file is
 `<gitea-url>/api/packages/<gitea-owner>/rpm/<group>.repo`.
+
+An `.rpm` of `ri-release-distro-packages` has a release that ends in a dist tag
+(`1.el9`, `1.el10`, `1.fc43`), and `ri-publish-gitea` uploads it to the group
+named by the tag, below `rpm.group` when that is set. The repository file is
+then `<gitea-url>/api/packages/<gitea-owner>/rpm/<dist>.repo`, for example
+`rpm/el10.repo`, or `rpm/<group>/<dist>.repo` with a group. An `.rpm` without a
+dist tag keeps the paths above.
+
+AlmaLinux takes many libraries and Perl modules from EPEL and CRB, so the
+snippet for AlmaLinux turns them on first:
+
+```sh
+sudo dnf install epel-release
+sudo dnf config-manager --set-enabled crb
+```
+
+Alpine, for a project on `ri-release-distro-packages`. `<branch>` is the
+release of the system, such as `v3.24`; the package is signed with the key of
+the Gitea owner:
+
+```sh
+sudo wget -O /etc/apk/keys/<gitea-owner>.rsa.pub <gitea-url>/api/packages/<gitea-owner>/alpine/key
+echo "<gitea-url>/api/packages/<gitea-owner>/alpine/<branch>/main" | sudo tee -a /etc/apk/repositories
+sudo apk update && sudo apk add <apk-name>
+```
 
 Homebrew:
 

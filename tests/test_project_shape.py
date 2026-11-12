@@ -72,7 +72,12 @@ def test_the_install_snippets_settle_the_differences_of_issue_57():
     assert "sudo install -d -m 0755 /etc/apt/keyrings" in blocks
     assert "/etc/apt/keyrings/gitea-<gitea-owner>.asc" in blocks
     assert "-o /etc/yum.repos.d/<gitea-owner>.repo" in blocks
-    assert "config-manager" not in blocks
+    # The plain dnf snippet stays free of plugin commands; only the AlmaLinux
+    # snippet turns CRB on, and it is the only place config-manager appears.
+    assert blocks.count("config-manager") == 1
+    assert "config-manager --set-enabled crb" in blocks
+    assert "dnf install epel-release" in blocks
+    assert "/etc/apk/keys/<gitea-owner>.rsa.pub <gitea-url>/api/packages/<gitea-owner>/alpine/key" in blocks
     assert "/debian <distribution> <component>" in blocks
     assert "<name>" not in text()
     assert "<gitea-url>/api/packages/<gitea-owner>/rpm/<group>.repo" in text()
