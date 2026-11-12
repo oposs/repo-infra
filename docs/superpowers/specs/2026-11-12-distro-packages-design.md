@@ -124,7 +124,7 @@ The same nfpm config `ri-release-nfpm` reads, with its contents taken from
 The piece sets the variables `ri-release-nfpm` sets today (`VERSION`,
 `SOURCE_DATE_EPOCH`, `MTIME`, `PACKAGER`, `STAGE`, `ARCH`) and `packagers`
 works as there, keyed by packager (`deb`, `rpm`, now `apk`). For a value that
-differs per release, the piece also sets `RELEASE` (its own name, for example
+differs per release, the piece also sets `DISTRO` (its own name, for example
 `debian-12`), `ID` and `VERSION_ID` from `/etc/os-release`, and `CODENAME`
 (empty where the release has none); the config uses them through `${...}`
 like the others. A release a program cannot serve at all, for example Alpine
@@ -150,8 +150,16 @@ ELF file under `/stage`:
 
 The piece installs the detector's package in the build container itself
 (`dpkg-dev`, `rpm-build`, `pax-utils`), so the project's `Containerfile` does
-not list it. It merges the result into the expanded nfpm config as the
-`depends` of each packager, after the entries the project wrote.
+not list it. The result reaches the config as the variable `DEPENDS`: the
+detected names, each in double quotes, joined with `, `. The config writes
+`depends: [${DEPENDS}]`, or `depends: ["curl", ${DEPENDS}]` with an entry of
+its own; this is a YAML flow sequence, so the piece never parses or rewrites
+the project's YAML.
+
+The package version comes the same way. The config writes
+`version: ${VERSION}`, `version_schema: none` and `release: ${PKG_RELEASE}`;
+the piece sets `VERSION` to `<version>~<codename>` for deb and `<version>`
+otherwise, and `PKG_RELEASE` to `1`, `1.<dist>` for rpm and `0` for apk.
 
 ## Versions and file names
 
@@ -184,11 +192,19 @@ the project's `RUN` (owner, 2026-11-12). The rpm install snippet for AlmaLinux
 tells users to turn them on too (`dnf install epel-release` and
 `dnf config-manager --set-enabled crb`).
 
+## Where the project is
+
+The piece takes `repository` (D33), `submodules` (#147) and `directory`, the
+folder that holds the `Containerfile`, the `Makefile` and `nfpm.yaml`
+(default `.`). `directory` lets repo-infra prove the piece on a fixture
+inside its own tree.
+
 ## Narrowing the list
 
 An input `distributions` names the releases to build, in the piece's own
-names (`debian-12`, `ubuntu-24.04`, `almalinux-10`, `fedora`, `alpine` and so
-on); unset builds all. As with `targets` (D34), a call that sets it needs an
+names (`debian-12`, `ubuntu-24.04`, `almalinux-10`, `fedora` for the newest
+Fedora, `alpine-3.NN` for each Alpine release); unset builds all. A caller
+that names an Alpine release fails loudly once the list drops it. As with `targets` (D34), a call that sets it needs an
 exception, here `linux-packages`, whose text gives the reason. A name the
 piece does not know fails the run. `check` reports a call that sets
 `distributions` without the exception.
@@ -325,12 +341,13 @@ Both are follow-up pull requests in those repositories, made with `apply`.
   and `AC_PREFIX_DEFAULT` instead of configure options.
 - One `Containerfile` with `ARG BASE` and a `build-deps` stage, shared with
   `container-make`, rather than one file per family.
-- The detected dependencies are merged into the nfpm config by the piece.
+- The detected dependencies reach the nfpm config as `DEPENDS` in a flow
+  sequence, so the piece does not parse YAML.
 - `linux-packages` as the exception that pairs with `distributions`.
 - `ri-publish-gitea` routes by file name.
 - Linux GPU features in the project's `Makefile`, not in Cargo's target table.
 - Two Alpine releases.
-- Per-release values in `nfpm.yaml` through the variables `RELEASE`, `ID`,
+- Per-release values in `nfpm.yaml` through the variables `DISTRO`, `ID`,
   `VERSION_ID` and `CODENAME`, with `packagers` still keyed by packager.
 - A call without `distributions` meets `linux-packages`; leaving out musl then
   needs only `native-targets`.
