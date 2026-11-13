@@ -75,7 +75,7 @@ def test_the_install_snippets_settle_the_differences_of_issue_57():
     assert "config-manager" not in blocks
     assert "sudo crb enable" in blocks
     assert "sudo dnf install -y epel-release" in blocks
-    assert "cd /etc/apk/keys && sudo curl -JO <gitea-url>/api/packages/<gitea-owner>/alpine/key" in blocks
+    assert "cd /etc/apk/keys && sudo curl -fJO <gitea-url>/api/packages/<gitea-owner>/alpine/key" in blocks
     assert "/debian <distribution> <component>" in blocks
     assert "<name>" not in text()
     assert "<gitea-url>/api/packages/<gitea-owner>/rpm/<group>.repo" in text()

@@ -152,11 +152,14 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
+      # The project and the library sit side by side: the leg mounts the
+      # project at /src, and the build there must not see repo-infra's files.
       - uses: actions/checkout@v7
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
           submodules: ${{ inputs.submodules }}
+          path: project
 
       # The library of the commit this piece was loaded from (D33).
       - uses: actions/checkout@v7
@@ -171,7 +174,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: man-pages
-          path: ${{ inputs.directory }}/man
+          path: project/${{ inputs.directory }}/man
 
       # The same pin as ri-release-nfpm; the arm64 runner needs the arm64
       # build of that release, hence the second checksum.
@@ -219,12 +222,13 @@ jobs:
           CONFIG: ${{ inputs.config }}
           PACKAGERS: ${{ inputs.packagers }}
           LIB: ${{ github.workspace }}/.repo-infra/.github/workflows/lib
+        working-directory: project
         run: sh "$LIB/distro-leg.sh"
 
       - uses: actions/upload-artifact@v7
         with:
           name: release-asset-packages-${{ matrix.distro }}-${{ matrix.arch }}
-          path: packages/
+          path: project/packages/
           if-no-files-found: error
 
   # A failed leg already fails its own job; this one fails the release when an

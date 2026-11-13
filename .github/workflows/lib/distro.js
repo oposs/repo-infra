@@ -7,7 +7,8 @@
 // list. Fedora and Alpine numbers are bumped by hand when a release appears or
 // ends: they were pinned on 2026-11-12 to Fedora 45 and Alpine 3.23 and 3.24.
 // Pinned numbers, never `latest`, so a build does not change under a caller
-// when the registry moves the tag.
+// when the registry moves the tag. A release that leaves RELEASES moves to
+// RETIRED, with its codename or dist tag, and is never deleted.
 
 const hub = 'docker.io/library';
 
@@ -23,6 +24,14 @@ const RELEASES = [
   { distro: 'alpine-3.23', image: `${hub}/alpine:3.23`, family: 'apk', branch: 'v3.23' },
   { distro: 'alpine-3.24', image: `${hub}/alpine:3.24`, family: 'apk', branch: 'v3.24' },
 ];
+
+// Releases the piece built once and builds no more. ri-publish-gitea still
+// routes their packages by codename or dist tag, so a package of an old
+// release that is published again goes to the channel it was built for.
+const RETIRED = [];
+
+// Every release a package of this piece may name: the routing table.
+const ROUTED = [...RELEASES, ...RETIRED];
 
 // Native builds on both architectures, no cross compile. amd64 first.
 const ARCHES = [
@@ -65,4 +74,4 @@ function distroPlan(text) {
   return { include };
 }
 
-module.exports = { RELEASES, distroPlan, byDistro };
+module.exports = { RELEASES, RETIRED, ROUTED, distroPlan, byDistro };
