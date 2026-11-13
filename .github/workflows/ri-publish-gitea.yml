@@ -1,6 +1,6 @@
 # repo-infra: ri-publish-gitea v2
 #
-# Purpose: Upload the release's .deb and .rpm files to a Gitea package registry.
+# Purpose: Upload the release's .deb, .rpm and .apk files to a Gitea package registry.
 # Choose: The project ships packages to Gitea.
 # Supplies: gitea_packages (url, owner, optional debian.distributions) in
 #   .github/repo-infra.json, the secret GITEA_PACKAGE_TOKEN and the variable
@@ -18,11 +18,15 @@
 #     secrets:
 #       GITEA_PACKAGE_TOKEN: ${{ secrets.GITEA_PACKAGE_TOKEN }}
 #
-# Uploads every .deb and .rpm on the release to the Gitea package
+# Uploads every .deb, .rpm and .apk on the release to the Gitea package
 # registry named in .github/repo-infra.json "gitea_packages". A .deb goes to
 # the apt distribution whose glob in "debian.distributions" matches its file
-# name, or to "debian.distribution" when there is no such map. Gitea signs
-# the Debian and RPM metadata and, with ?sign=true, each rpm, with its own
+# name; otherwise to the codename in its version (1.4.0~trixie-1 goes to
+# trixie); otherwise to "debian.distribution". An .rpm whose release ends in
+# a dist tag (1.el9) goes to the group of that tag, below "rpm.group" when
+# that is set. An .apk goes to the Alpine branch in its file name
+# (-alpine3.24-) as alpine/v3.24/main; any other .apk, an Android app for
+# one, is not a package and is left alone. Gitea signs the Debian and RPM metadata and, with ?sign=true, each rpm, with its own
 # per-owner key; no repository holds a signing key.
 #
 # The credential is a dedicated Gitea user's token, scope write:package, in
@@ -112,13 +116,15 @@ jobs:
             // By asset id through the API: browser_download_url does not
             // serve drafts. Every package is fetched before anything goes up,
             // because it is named from its own metadata (.deb control data,
-            // .rpm header): GitHub turns `~` into `.` in asset names, and
+            // .rpm header, .apk .PKGINFO): GitHub turns `~` into `.` in asset names, and
             // Gitea stores the file under the metadata's name and version.
             const dir = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'gitea-'));
             const packages = [];
             const unreadable = [];
             for (const asset of assets) {
-              const kind = /\.deb$/.test(asset.name) ? 'deb' : /\.rpm$/.test(asset.name) ? 'rpm' : null;
+              const kind = /\.deb$/.test(asset.name) ? 'deb'
+                : /\.rpm$/.test(asset.name) ? 'rpm'
+                : gitea.isAlpineApk(asset.name) ? 'apk' : null;
               if (!kind) continue;
               const { data } = await github.rest.repos.getReleaseAsset({
                 owner, repo, asset_id: asset.id,
@@ -129,6 +135,8 @@ jobs:
               let read;
               if (kind === 'rpm') {
                 read = gitea.rpmPackage(fs.readFileSync(local), asset.name);
+              } else if (kind === 'apk') {
+                read = gitea.apkPackage(fs.readFileSync(local), asset.name);
               } else {
                 let control;
                 try {
@@ -148,7 +156,7 @@ jobs:
               }
               packages.push({ asset, pkg: read.pkg, local });
             }
-            // Every .deb and .rpm is uploaded; one that cannot be read is a
+            // Every .deb, .rpm and .apk is uploaded; one that cannot be read is a
             // failure, not a file to skip.
             if (unreadable.length > 0) {
               core.setFailed(`Cannot upload: ${unreadable.join('; ')}.`);
@@ -160,7 +168,7 @@ jobs:
             const unplaced = [];
             for (const { pkg } of packages) {
               if (pkg.kind !== 'debian') continue;
-              const placed = gitea.debianDistribution(cfg, pkg.file);
+              const placed = gitea.debianDistribution(cfg, pkg.file, pkg.version);
               if (placed.ok) pkg.distribution = placed.distribution;
               else unplaced.push(placed.message);
             }
@@ -172,7 +180,7 @@ jobs:
               return;
             }
             if (packages.length === 0) {
-              core.setFailed('The release carries no .deb or .rpm, so '
+              core.setFailed('The release carries no .deb, .rpm or .apk, so '
                 + 'publish-gitea-packages would upload nothing. Attached: '
                 + `${assets.map((a) => a.name).join(', ') || 'nothing'}.`);
               return;
@@ -201,7 +209,8 @@ jobs:
                 return;
               }
               if (res.ok) {
-                const where = pkg.kind === 'debian' ? `, distribution ${pkg.distribution}` : '';
+                const where = pkg.kind === 'debian' ? `, distribution ${pkg.distribution}`
+                  : pkg.kind === 'alpine' ? `, branch ${pkg.branch}` : '';
                 core.notice(`${asset.name}: uploaded to ${cfg.owner}'s ${pkg.kind} registry${where}.`);
                 continue;
               }

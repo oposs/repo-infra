@@ -3,6 +3,9 @@
 // publish-gitea-packages (D27): which release assets are packages, where
 // Gitea wants them, and what a 409 on a re-run means.
 
+const zlib = require('zlib');
+const { RELEASES } = require('./distro.js');
+
 const CONFIG = '.github/repo-infra.json';
 // What Gitea accepts as a distribution or component in the upload path.
 const SYMBOL = /^[a-zA-Z0-9][a-zA-Z0-9.~+_-]*$/;
@@ -58,16 +61,30 @@ function globMatches(glob, name) {
   return new RegExp(`^${re}$`, 's').test(name);
 }
 
-// The distribution a .deb goes to. Without a map every .deb goes to
-// debian.distribution. With a map, a file no glob or several globs match is
-// an error: falling back would put a package built for one release into the
-// channel of another.
-function debianDistribution(cfg, file) {
+// The codename a deb version names: ri-release-distro-packages builds
+// <v>~<codename>-1, so a version with ~trixie belongs to trixie. A word that
+// only starts like a codename (~trixiefoo) or a pre-release (~rc.1) is none.
+function versionCodename(version) {
+  const text = String(version || '');
+  const known = RELEASES.filter((r) => r.codename).map((r) => r.codename);
+  return known.find((c) => new RegExp(`~${c}(?![A-Za-z0-9])`).test(text)) || null;
+}
+
+// The distribution a .deb goes to. The map wins. A file the map does not
+// cover takes the codename in its version, and without one goes to
+// debian.distribution -- except with a map, where a file nothing claims is
+// an error when it names no codename either, and several matching globs are
+// always an error: falling back would put a package built for one release
+// into the channel of another. The version comes from the control data
+// because GitHub renames `~` in asset names (#129).
+function debianDistribution(cfg, file, version) {
   const globs = Object.keys(cfg.distributions || {});
-  if (globs.length === 0) return { ok: true, distribution: cfg.distribution };
+  const codename = versionCodename(version);
+  if (globs.length === 0) return { ok: true, distribution: codename || cfg.distribution };
   const hits = globs.filter((glob) => globMatches(glob, file));
   if (hits.length === 1) return { ok: true, distribution: cfg.distributions[hits[0]] };
   if (hits.length === 0) {
+    if (codename) return { ok: true, distribution: codename };
     return {
       ok: false,
       message: `${file}: no glob in "gitea_packages.debian.distributions" matches it`,
@@ -78,6 +95,16 @@ function debianDistribution(cfg, file) {
     message: `${file}: several globs in "gitea_packages.debian.distributions" match it (`
       + `${hits.join(', ')})`,
   };
+}
+
+// The rpm group for a release such as 1.el9: <dist>, or <group>/<dist> under
+// rpm.group, when the release ends in a dist tag the piece builds. Any other
+// release keeps cfg.group, so an rpm without a tag goes where it always did.
+function rpmGroup(cfg, release) {
+  const tag = /\.([a-z]+[0-9]+)$/.exec(String(release || ''));
+  const dist = tag && RELEASES.some((r) => r.dist === tag[1]) ? tag[1] : null;
+  if (!dist) return cfg.group;
+  return cfg.group ? `${cfg.group}/${dist}` : dist;
 }
 
 // GitHub renames release assets: `~` becomes `.`, so a .deb built as
@@ -153,8 +180,70 @@ function rpmPackage(buf, asset) {
   const version = `${t.epoch && t.epoch !== '0' ? `${t.epoch}-` : ''}${t.version}-${t.release}`;
   return {
     ok: true,
-    pkg: { kind: 'rpm', name: t.name, version, arch: t.arch,
+    pkg: { kind: 'rpm', name: t.name, version, release: t.release, arch: t.arch,
       file: `${t.name}-${version}.${t.arch}.rpm`, asset },
+  };
+}
+
+// An .apk is two or three gzip streams, each a tar: the signature, the
+// control part with .PKGINFO, then the files. gunzip joins the streams;
+// the tar reader skips the zero blocks that end each one. Gitea reads name,
+// version and arch from .PKGINFO. The Alpine branch is not in the package:
+// ri-release-distro-packages puts it in the file name as -alpine<major.minor>-.
+function pkginfoOf(buf) {
+  let tar;
+  try {
+    tar = zlib.gunzipSync(buf);
+  } catch (err) {
+    return null;
+  }
+  let at = 0;
+  while (at + 512 <= tar.length) {
+    const name = tar.toString('utf8', at, at + 100).replace(/\0.*$/s, '');
+    const size = parseInt(tar.toString('utf8', at + 124, at + 136).replace(/\0.*$/s, '').trim() || '0', 8);
+    if (name === '' || Number.isNaN(size)) {
+      at += 512;
+      continue;
+    }
+    if (name === '.PKGINFO') return tar.toString('utf8', at + 512, at + 512 + size);
+    at += 512 + Math.ceil(size / 512) * 512;
+  }
+  return null;
+}
+
+// An .apk is an Alpine package only when the piece named it so; an Android
+// app is an .apk too, and a release may carry one.
+function isAlpineApk(name) {
+  return /\.apk$/.test(name) && /-alpine\d+\.\d+-/.test(name);
+}
+
+function apkPackage(buf, asset) {
+  const info = pkginfoOf(buf);
+  if (info === null) {
+    return { ok: false, message: `${asset}: not an apk package (no readable .PKGINFO)` };
+  }
+  const fields = {};
+  for (const line of info.split('\n')) {
+    const m = /^(pkgname|pkgver|arch) = (.*?)\s*$/.exec(line);
+    if (m) fields[m[1]] = m[2];
+  }
+  const missing = ['pkgname', 'pkgver', 'arch'].filter((k) => !fields[k]);
+  if (missing.length > 0) {
+    return { ok: false, message: `${asset}: .PKGINFO has no ${missing.join(', ')}` };
+  }
+  const tag = /-alpine(\d+\.\d+)-/.exec(asset);
+  if (!tag) {
+    return {
+      ok: false,
+      message: `${asset}: the file name has no -alpine<major.minor>- part, so the `
+        + 'Alpine branch it belongs to is unknown',
+    };
+  }
+  const { pkgname: name, pkgver: version, arch } = fields;
+  return {
+    ok: true,
+    pkg: { kind: 'alpine', name, version, arch, branch: `v${tag[1]}`,
+      file: `${name}-${version}.apk`, asset },
   };
 }
 
@@ -165,11 +254,15 @@ function uploadUrl(cfg, pkg) {
   if (pkg.kind === 'debian') {
     return `${base}/debian/pool/${seg(pkg.distribution || cfg.distribution)}/${seg(cfg.component)}/upload`;
   }
+  if (pkg.kind === 'alpine') {
+    return `${base}/alpine/${seg(pkg.branch)}/main`;
+  }
   // Gitea's generated .repo sets gpgcheck=1, so an unsigned rpm would not
   // install. Gitea signs with its per-owner key. A group may hold a slash
   // (Gitea documents rocky/el9), so each segment is encoded on its own;
   // encoding the whole group sent rocky/el9 to rocky%2Fel9.
-  const group = cfg.group ? `/${cfg.group.split('/').map(seg).join('/')}` : '';
+  const rpmPath = rpmGroup(cfg, pkg.release);
+  const group = rpmPath ? `/${rpmPath.split('/').map(seg).join('/')}` : '';
   return `${base}/rpm${group}/upload?sign=true`;
 }
 
@@ -191,6 +284,19 @@ function conflictVerdict(pkg, assetSha256, files) {
   if (stored.length === 0) {
     return { ok: false, message: `${pkg.file}: Gitea answered 409 but lists no such file` };
   }
+  if (pkg.kind === 'alpine') {
+    // The stored name has no architecture, so the x86_64 and the aarch64
+    // build of one version share it, and the listing holds both. This asset
+    // is there when any copy has its SHA-256.
+    if (stored.some((f) => f.sha256 === assetSha256)) {
+      return { ok: true, message: `${pkg.file}: already uploaded, SHA-256 matches` };
+    }
+    return {
+      ok: false,
+      message: `${pkg.file}: Gitea holds ${stored.length} file(s) of this name, none of them `
+        + `this asset (${pkg.arch}, ${pkg.branch})`,
+    };
+  }
   if (pkg.kind === 'debian') {
     // Gitea keeps one file per distribution and component under a version,
     // and its file listing does not say which is which. A file name listed
@@ -203,7 +309,7 @@ function conflictVerdict(pkg, assetSha256, files) {
         ok: false,
         message: `${pkg.file}: Gitea holds ${stored.length} files of this name in `
           + 'different distributions or components, not all of them this asset, and its '
-          + `listing does not say which one is in ${pkg.distribution}`,
+          + `listing does not say which one is in ${pkg.distribution || pkg.branch}`,
       };
     }
     return { ok: false, message: `${pkg.file}: Gitea holds a different file under this version` };
@@ -241,6 +347,6 @@ async function fetchRetry(fetchFn, url, init, file, { attempts = 2, waitMs = 100
 }
 
 module.exports = {
-  packageConfig, globMatches, debianDistribution, debPackage, rpmPackage, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
+  packageConfig, globMatches, debianDistribution, rpmGroup, debPackage, rpmPackage, apkPackage, isAlpineApk, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
   fetchRetry,
 };

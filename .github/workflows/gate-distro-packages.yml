@@ -1,0 +1,22 @@
+name: Gate (distro packages)
+
+# The proof of ri-release-distro-packages (D38). Dispatched by hand, it builds
+# tests/fixtures/distro-hello with the piece and the library of the dispatched
+# commit, one leg per release the piece knows and architecture, and installs
+# each package in a clean container of its release. Its artifacts stay in
+# this run and never reach a release. It runs no publish piece and needs no
+# secret.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    uses: ./.github/workflows/ri-release-distro-packages.yml
+    with:
+      repository: ${{ github.repository }}
+      ref: ${{ github.sha }}
+      directory: tests/fixtures/distro-hello
+      version: 0.0.0

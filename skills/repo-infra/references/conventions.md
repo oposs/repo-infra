@@ -249,6 +249,17 @@ file, as in the D18 contract. Its points differ, and the autotools points
    `rust-toolchain.toml` names the same version in the `Containerfile` with
    `RUN rustup toolchain install <version>`. Otherwise rustup downloads it into
    `/usr/local/rustup` on every run, outside the cache volume.
+8. **For `ri-release-distro-packages` (D38), take the base image as an
+   argument and name the tool stage.** Start with
+   `ARG BASE=docker.io/library/debian:13` and
+   `FROM ${BASE} AS build-deps`. `container-make` builds with the default; the
+   piece builds with `--build-arg BASE=<image of the release> --target
+   build-deps`. A D18 `Containerfile` keeps its later stages after
+   `build-deps`, which the piece does not build.
+9. **Install the build dependencies of every family in one `RUN`.** It reads
+   `ID` and `ID_LIKE` from `/etc/os-release` and runs `apt-get`, `dnf` or `apk`
+   with that family's package names. The image is built without a build
+   context, so the list stays in the `Containerfile`.
 
 ### Detecting the container
 

@@ -132,6 +132,10 @@
       "kind": "remote",
       "group": "release-build"
     },
+    "ri-release-distro-packages": {
+      "kind": "remote",
+      "group": "release-build"
+    },
     "ri-release-homebrew": {
       "kind": "remote",
       "group": "release-build"

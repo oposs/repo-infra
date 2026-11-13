@@ -372,6 +372,40 @@ release-pr-current:
 
 ## Release build: called from release-build.yml
 
+### ri-release-distro-packages
+
+Called as `oposs/repo-infra/.github/workflows/ri-release-distro-packages.yml@v2`.
+
+**Purpose:** Build one deb, rpm or apk package per distribution release and architecture inside that release's own container, and install each in a clean container of the same release (D38).
+
+**Choose it when:** The program links system libraries, so one static build cannot serve every distribution (D38).
+
+**The repository supplies:** In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once and put in `directory`/man.
+
+**Produces:** The artifacts release-asset-packages-<distro>-<amd64|arm64>, one package file each; list them in release_assets.
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `version` | string | yes |  | The version the release builds, from release-build.yml. |
+| `ref` | string | yes |  | The release branch commit to build, from release-build.yml (D28). |
+| `repository` | string | no | `${{ github.repository }}` | The repository to check out; the calling repository unless set (D33). |
+| `submodules` | string | no | `false` | Whether to check out submodules, true, false or recursive. |
+| `directory` | string | no | `.` | The folder in the repository that holds the Containerfile, the Makefile and the nfpm config. |
+| `config` | string | no | `nfpm.yaml` | Path of the nfpm configuration in `directory`, for example nfpm.yaml. |
+| `packagers` | string | no | `{}` | JSON object with one key per packager, deb, rpm or apk, each value an object of further variable names and their values for that packager. The default {} gives every release the nfpm variables of its own packager only. |
+| `distributions` | string | no | `''` | Space-separated releases to build, for example debian-13 almalinux-10. Empty builds every release the piece knows. |
+
+**Permissions it needs:** contents: read
+
+```yaml
+packages:
+  uses: oposs/repo-infra/.github/workflows/ri-release-distro-packages.yml@v2
+  with:
+    version: ${{ inputs.version }}
+    ref: ${{ inputs.ref }}
+    distributions: debian-13 almalinux-10
+```
+
 ### ri-release-go-binaries
 
 Called as `oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2`.
@@ -689,7 +723,7 @@ finalize:
 
 Called as `oposs/repo-infra/.github/workflows/ri-publish-gitea.yml@v2`.
 
-**Purpose:** Upload the release's .deb and .rpm files to a Gitea package registry.
+**Purpose:** Upload the release's .deb, .rpm and .apk files to a Gitea package registry.
 
 **Choose it when:** The project ships packages to Gitea.
 
