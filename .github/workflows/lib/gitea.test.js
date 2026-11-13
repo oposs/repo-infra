@@ -353,6 +353,22 @@ test('rpm release and dist: fc45 and el10 route, an unknown or absent dist does 
   assert.equal(g.rpmGroup(CFG, '1.el9.extra'), '');
 });
 
+// Every codename and dist tag the piece has built for. A release bump that
+// deletes one instead of moving it to RETIRED in distro.js would send a
+// package of that release, published again, to the wrong channel.
+const BUILT_FOR = {
+  codenames: ['bookworm', 'trixie', 'jammy', 'noble', 'resolute'],
+  dists: ['el9', 'el10', 'fc45'],
+};
+
+test('a release that leaves the build list still routes', () => {
+  for (const c of BUILT_FOR.codenames) {
+    assert.deepEqual(g.debianDistribution(CFG, `x_1.0~${c}-1_amd64.deb`, `1.0~${c}-1`),
+      { ok: true, distribution: c });
+  }
+  for (const d of BUILT_FOR.dists) assert.equal(g.rpmGroup(CFG, `1.${d}`), d);
+});
+
 test('an rpm without a dist tag keeps the url it had', () => {
   assert.equal(g.uploadUrl(CFG, rpm('tool-1.0.0~rc.1-1.x86_64.rpm')),
     'https://gitea.oetiker.ch/api/packages/oposs/rpm/upload?sign=true');

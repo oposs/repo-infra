@@ -64,7 +64,7 @@ done
 # handed back to that user afterwards, as build/container-make.mk does; the
 # runner could not remove them otherwise. REPO_INFRA_USE_CONTAINER=no keeps a
 # container-make project's `make check` from starting a container of its own.
-build='set -u
+build='set -eu
 fail() { echo "distro-leg.sh: $*" >&2; exit 1; }
 owner=$(stat -c %u /src) && group=$(stat -c %g /src) || fail "cannot stat the checkout at /src"
 handback() { find /src /stage /out ! -user "$owner" -exec chown -h "$owner:$group" {} + 2>/dev/null || :; }

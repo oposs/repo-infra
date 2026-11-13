@@ -4,7 +4,7 @@
 // Gitea wants them, and what a 409 on a re-run means.
 
 const zlib = require('zlib');
-const { RELEASES } = require('./distro.js');
+const { ROUTED } = require('./distro.js');
 
 const CONFIG = '.github/repo-infra.json';
 // What Gitea accepts as a distribution or component in the upload path.
@@ -66,7 +66,7 @@ function globMatches(glob, name) {
 // only starts like a codename (~trixiefoo) or a pre-release (~rc.1) is none.
 function versionCodename(version) {
   const text = String(version || '');
-  const known = RELEASES.filter((r) => r.codename).map((r) => r.codename);
+  const known = ROUTED.filter((r) => r.codename).map((r) => r.codename);
   return known.find((c) => new RegExp(`~${c}(?![A-Za-z0-9])`).test(text)) || null;
 }
 
@@ -102,7 +102,7 @@ function debianDistribution(cfg, file, version) {
 // release keeps cfg.group, so an rpm without a tag goes where it always did.
 function rpmGroup(cfg, release) {
   const tag = /\.([a-z]+[0-9]+)$/.exec(String(release || ''));
-  const dist = tag && RELEASES.some((r) => r.dist === tag[1]) ? tag[1] : null;
+  const dist = tag && ROUTED.some((r) => r.dist === tag[1]) ? tag[1] : null;
   if (!dist) return cfg.group;
   return cfg.group ? `${cfg.group}/${dist}` : dist;
 }

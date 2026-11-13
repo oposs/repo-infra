@@ -16,3 +16,10 @@ RUN . /etc/os-release; \
         apk add --no-cache gcc musl-dev make zlib-dev ;; \
       *) echo "no build dependencies for $ID" >&2; exit 1 ;; \
     esac
+
+# A D18 project keeps the stage that copies the tree and builds it. The piece
+# builds with no context and stops at build-deps, so this stage must never be
+# built there: its COPY has nothing to copy, and the RUN fails if it ever runs.
+FROM build-deps AS build
+COPY . /src
+RUN echo "the stage after build-deps was built" >&2; exit 1

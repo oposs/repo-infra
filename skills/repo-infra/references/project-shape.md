@@ -322,7 +322,7 @@ which `apk` needs to find the key (busybox `wget` ignores that name; `apk add
 curl` first on a bare image):
 
 ```sh
-cd /etc/apk/keys && sudo curl -JO <gitea-url>/api/packages/<gitea-owner>/alpine/key
+cd /etc/apk/keys && sudo curl -fJO <gitea-url>/api/packages/<gitea-owner>/alpine/key
 echo "<gitea-url>/api/packages/<gitea-owner>/alpine/<branch>/main" | sudo tee -a /etc/apk/repositories
 sudo apk update && sudo apk add <apk-name>
 ```

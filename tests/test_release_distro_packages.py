@@ -69,6 +69,7 @@ def test_every_input_reaches_the_library_through_env():
         "DIRECTORY": "${{ inputs.directory }}", "CONFIG": "${{ inputs.config }}",
         "PACKAGERS": "${{ inputs.packagers }}",
         "LIB": "${{ github.workspace }}/.repo-infra/.github/workflows/lib"}
+    assert leg["working-directory"] == "project"
     assert "${{" not in leg["run"]
     assert "distro-leg.sh" in leg["run"]
     assert (LIB / "distro-leg.sh").is_file()
@@ -77,7 +78,7 @@ def test_every_input_reaches_the_library_through_env():
 def test_the_artifact_name_carries_distro_and_arch():
     upload = steps("packages")["actions/upload-artifact@v7"]
     assert upload["with"]["name"] == "release-asset-packages-${{ matrix.distro }}-${{ matrix.arch }}"
-    assert upload["with"]["path"] == "packages/"
+    assert upload["with"]["path"] == "project/packages/"
     assert upload["with"]["if-no-files-found"] == "error"
 
 
@@ -96,7 +97,26 @@ def test_the_man_job_builds_only_when_man_mk_exists():
 def test_the_packages_job_fetches_the_man_pages_into_the_directory():
     fetch = steps("packages")["Fetch the man pages"]
     assert fetch["if"] == "${{ needs.man.outputs.present == 'true' }}"
-    assert fetch["with"] == {"name": "man-pages", "path": "${{ inputs.directory }}/man"}
+    assert fetch["with"] == {"name": "man-pages", "path": "project/${{ inputs.directory }}/man"}
+
+
+def test_the_library_checkout_sits_beside_the_project_not_in_it():
+    """The leg mounts the project at /src; a library inside it would be part
+    of the tree the project's make and make check see."""
+    checkouts = [s["with"] for s in doc()["jobs"]["packages"]["steps"]
+                 if s.get("uses") == "actions/checkout@v7"]
+    assert [c["path"] for c in checkouts] == ["project", ".repo-infra"]
+    assert checkouts[0]["repository"] == "${{ inputs.repository }}"
+
+
+def test_the_fixture_has_a_stage_the_piece_must_skip():
+    """The piece builds with no context and --target build-deps. The
+    fixture's later stage copies the tree and fails when run, so every leg
+    that passes proves the stage was skipped."""
+    text = (ROOT / "tests/fixtures/distro-hello/Containerfile").read_text(encoding="utf-8")
+    after = text.split("FROM ${BASE} AS build-deps", 1)[1]
+    assert "FROM build-deps AS build" in after
+    assert "COPY . /src" in after and "exit 1" in after
 
 
 def test_no_docker_driver_is_set_up():
