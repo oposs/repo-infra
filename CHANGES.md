@@ -12,6 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 2.14.0 - 2026-11-13
+### New
 - `ri-release-distro-packages` builds a `.deb`, `.rpm` and `.apk` for each listed release (Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04, AlmaLinux 9 and 10, the newest Fedora, the two newest Alpine) of a program that links system libraries, and runs `make check` on every release. The `distributions` input narrows the list, and a call that sets it needs the `linux-packages` exception.
 - `ri-publish-gitea` sends the packages of a release to that release's apt distribution, rpm group or Alpine branch: `.apk` files go to `alpine/v3.24/main` for `-alpine3.24-` in the name, and a `.deb` with `~trixie` in its version goes to `trixie`, also after `ri-release-distro-packages` stops building that release. An `.apk` without `-alpine<version>-` in its name, such as an Android app, is left alone.
 
