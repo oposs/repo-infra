@@ -5,9 +5,9 @@
 // url line directly above each sha256 line marked # mac-arm and, for each
 // further platform it ships, # mac-x86, # linux-x86 or # linux-arm, and the
 // bottle block between # BOTTLE-START and # BOTTLE-END. A marker stands in
-// the formula exactly when the archive of its platform was built. The steps in ri-release-homebrew.yml hand
-// these functions their environment and nothing else. The file system goes
-// through `io`, which the tests replace.
+// the formula exactly when the archive of its platform was built. The steps
+// in ri-release-homebrew.yml hand these functions their environment and
+// nothing else. The file system goes through `io`, which the tests replace.
 
 const MARKERS = {
   'mac-arm': 'aarch64-apple-darwin',

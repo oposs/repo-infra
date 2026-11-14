@@ -412,7 +412,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2`.
 
 **Purpose:** Build the release archives of a Go program for the seven native targets (D32), or for the ones `targets` names (D34), under the target names of ri-release-rust-binaries (D35).
 
-**Choose it when:** The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
+**Choose it when:** The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when aarch64-apple-darwin is left out, linux-packages when a musl target is left out.
 
 **The repository supplies:** go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
 
@@ -597,7 +597,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-rust-binaries.yml@v2`.
 
 **Purpose:** Build the release archives of a Rust program for the seven native targets (D32), or for the ones `targets` names (D34).
 
-**Choose it when:** The project is a Rust program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
+**Choose it when:** The project is a Rust program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when aarch64-apple-darwin is left out, linux-packages when a musl target is left out.
 
 **The repository supplies:** Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
 

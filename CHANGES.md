@@ -13,7 +13,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### New
 
-- `ri-release-homebrew` releases a formula that names only some platforms, such as `on_macos` with `on_arm` alone: it needs the archive of each platform the formula names and no others. `# mac-arm` stays required, and an archive that was built for a platform the formula leaves out still fails the release. (#150)
+- `ri-release-homebrew` releases a formula that names only some platforms, such as `on_macos` with `on_arm` alone: it needs the archive of each platform the formula names. `# mac-arm` stays required, and an archive that was built for a platform the formula leaves out still fails the release. (#150)
 
 ### Changed
 

@@ -379,9 +379,10 @@ binaries piece lists it in `extra_paths`; the formula then adds
 `pkgshare.install "examples"` to `install`, or `brew install --build-bottle`
 fails in `ri-release-homebrew`.
 
-The template carries all four platforms. A formula may leave out the `on_intel`
-block of `on_macos` and the whole `on_linux` block, or either of its blocks,
-together with their archives. The `# mac-arm` marker stays. A platform left out
+The template carries all four platforms. A formula may leave out `on_intel` of
+`on_macos`, `on_linux`, or one of the two blocks inside `on_linux`, each with its
+url and sha256 line. An archive of a platform the formula leaves out must not be
+built, or the release fails. The `# mac-arm` marker stays. A platform left out
 has no formula, and `brew install` on it fails with Homebrew's own message.
 
 ```ruby

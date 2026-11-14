@@ -59,9 +59,8 @@ jobs:
           # No Intel bottle: Homebrew moved Intel macOS to Tier 3 in
           # September 2026 and builds no Intel bottles itself. Intel Macs
           # install from the x86_64-apple-darwin archive when the formula names
-          # one, and an optional
-          # Intel leg that timed out in "Set up job" turned the whole run
-          # cancelled (mtuspy proof, 2026-10-11).
+          # one, and an optional Intel leg that timed out in "Set up job"
+          # turned the whole run cancelled (mtuspy proof, 2026-10-11).
           - os: macos-latest
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
@@ -199,9 +198,10 @@ jobs:
           path: bottles
           merge-multiple: true
 
-      # The version, the checksum of each archive the formula names and a bottle block generated
-      # from the bottles that were built (lib/homebrew.js). The result is the
-      # formula in place and release-files/Formula/<bin>.rb.
+      # The version, the checksum of each archive the formula names and a
+      # bottle block generated from the bottles that were built
+      # (lib/homebrew.js). The result is the formula in place and
+      # release-files/Formula/<bin>.rb.
       - name: Rewrite the formula
         uses: actions/github-script@v9
         env:
