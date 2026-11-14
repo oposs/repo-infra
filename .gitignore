@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 .pytest-tmp/
 __pycache__/
+
+# uv writes it on every `uv run`; the release flow does not maintain it.
+uv.lock
