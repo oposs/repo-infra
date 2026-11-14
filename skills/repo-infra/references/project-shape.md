@@ -248,12 +248,13 @@ either that sets it needs these exceptions:
 | Left out | Exceptions |
 |---|---|
 | any target | `native-targets` |
-| `x86_64-apple-darwin` or `aarch64-apple-darwin` | also `homebrew` |
-| `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` | also `homebrew` and `linux-packages`, unless the repository calls `ri-release-distro-packages` |
+| `aarch64-apple-darwin` | also `homebrew` |
+| `x86_64-unknown-linux-musl` or `aarch64-unknown-linux-musl` | also `linux-packages`, unless the repository calls `ri-release-distro-packages` |
 
-`ri-release-homebrew` refuses to run without both mac archives and both musl
-archives, and `ri-release-nfpm` builds from the musl archives, so a repository
-with these exceptions does not call the piece behind them.
+`ri-release-homebrew` needs the `aarch64-apple-darwin` archive and an archive
+for each other platform its formula names; `ri-release-nfpm` builds from the
+musl archives. A repository with these exceptions does not call the piece
+behind them.
 
 `ri-release-distro-packages` has `distributions` (D38), which names the releases
 to build; unset builds every release the piece knows. A call that sets it needs
@@ -369,14 +370,20 @@ build.
 
 ## Formula template
 
-`ri-release-homebrew` rewrites the `version` line, the four `sha256` lines found by
-their marker comments, and the block between `# BOTTLE-START` and
+`ri-release-homebrew` rewrites the `version` line, the `sha256` line of each
+platform found by its marker comment, and the block between `# BOTTLE-START` and
 `# BOTTLE-END`. Each `url` line stands directly above its `sha256` line. The
 formula belongs to the repository: it decides what else is installed, such as
 `examples/`. A path the formula installs must be in the archive, so the
 binaries piece lists it in `extra_paths`; the formula then adds
 `pkgshare.install "examples"` to `install`, or `brew install --build-bottle`
 fails in `ri-release-homebrew`.
+
+The template carries all four platforms. A formula may leave out `on_intel` of
+`on_macos`, `on_linux`, or one of the two blocks inside `on_linux`, each with its
+url and sha256 line. An archive of a platform the formula leaves out must not be
+built, or the release fails. The `# mac-arm` marker stays. A platform left out
+has no formula, and `brew install` on it fails with Homebrew's own message.
 
 ```ruby
 # Homebrew formula for <bin>. This repository is its own tap.

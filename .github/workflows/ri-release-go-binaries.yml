@@ -1,7 +1,7 @@
 # repo-infra: ri-release-go-binaries v2
 #
 # Purpose: Build the release archives of a Go program for the seven native targets (D32), or for the ones `targets` names (D34), under the target names of ri-release-rust-binaries (D35).
-# Choose: The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when a darwin or musl target is left out, linux-packages when a musl target is left out.
+# Choose: The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when aarch64-apple-darwin is left out, linux-packages when a musl target is left out.
 # Supplies: go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
 # Pieces: man, man-lua
 # Produces: The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built, with the `extra_paths` under <bin>/ for the formula to pkgshare.install; list each of them in release_assets.

@@ -53,6 +53,23 @@ class Tool < Formula
   end
 end
 `;
+// The formula with some platforms left out: each marker's url and sha256
+// line goes, then every on_* block that is left empty.
+function without(text, ...markers) {
+  let lines = text.split('\n');
+  for (const marker of markers) {
+    const i = lines.findIndex((line) => line.endsWith(` # ${marker}`));
+    lines.splice(i - 1, 2);
+  }
+  for (const block of ['on_intel do', 'on_arm do', 'on_macos do', 'on_linux do']) {
+    for (let i = lines.length - 2; i >= 0; i -= 1) {
+      if (lines[i].trim() === block && lines[i + 1].trim() === 'end') lines.splice(i, 2);
+    }
+  }
+  lines = lines.join('\n').replace(/\n{3,}/g, '\n\n').split('\n');
+  return lines.join('\n');
+}
+const ARM_ONLY = without(FORMULA, 'mac-x86', 'linux-x86', 'linux-arm');
 const ENV = { BIN: 'tool', VERSION: '1.2.3', REPOSITORY: 'owner/tool', RUNNER_TEMP: '/t' };
 
 // The shape `brew bottle --json --no-rebuild` writes: one entry per formula,
@@ -285,11 +302,20 @@ test('a missing archive fails the formula job', () => {
     /^artifacts\/tool-1\.2\.3-aarch64-unknown-linux-musl\.tar\.gz was not built$/);
 });
 
+const BUILT_ANYWAY = {
+  'mac-x86': 'x86_64-apple-darwin',
+  'linux-x86': 'x86_64-unknown-linux-musl',
+  'linux-arm': 'aarch64-unknown-linux-musl',
+};
 for (const marker of ['mac-arm', 'mac-x86', 'linux-x86', 'linux-arm', 'BOTTLE-START', 'BOTTLE-END']) {
   test(`a missing marker # ${marker} fails`, () => {
     const io = formulaJob({ formula: FORMULA.replace(` # ${marker}`, '') });
-    refusal(() => brew.rewriteFormula(ENV, io),
-      new RegExp(`^the marker # ${marker} is gone from Formula/tool\\.rb$`));
+    const target = BUILT_ANYWAY[marker];
+    const expected = target
+      ? `^the marker # ${marker} is gone from Formula/tool\\.rb, but `
+        + `artifacts/tool-1\\.2\\.3-${target}\\.tar\\.gz was built$`
+      : `^the marker # ${marker} is gone from Formula/tool\\.rb$`;
+    refusal(() => brew.rewriteFormula(ENV, io), new RegExp(expected));
   });
 }
 
@@ -313,4 +339,60 @@ test('the previous release block is replaced whole', () => {
   const inside = block(brew.rewriteFormula(ENV, formulaJob({ formula })));
   assert.doesNotMatch(inside, /v9\.9\.9|old_tag/);
   assert.match(inside, /root_url "https:\/\/github\.com\/owner\/tool\/releases\/download\/v1\.2\.3"/);
+});
+
+test('the arm-only formula keeps the mac-arm block alone', () => {
+  assert.ok(ARM_ONLY.includes('on_macos do') && ARM_ONLY.includes('# mac-arm'));
+  for (const gone of ['on_linux', 'on_intel', '# mac-x86', '# linux-']) {
+    assert.ok(!ARM_ONLY.includes(gone), gone);
+  }
+});
+
+test('an arm-only formula bottles from the arm archive alone', () => {
+  const io = fakeIo({ 'Formula/tool.rb': ARM_ONLY, ...archives('dist', ['aarch64-apple-darwin']) });
+  assert.equal(brew.pointAtArchives(ENV, io), '/t/local-formula.rb');
+  const local = io.store.get('/t/local-formula.rb');
+  assert.ok(local.includes('url "file:///w/dist/tool-1.2.3-aarch64-apple-darwin.tar.gz"'));
+  assert.ok(local.includes(digest('archive aarch64-apple-darwin')));
+  assert.ok(!local.includes('# mac-x86'));
+});
+
+test('an arm-only formula is rewritten from the arm archive alone', () => {
+  const io = fakeIo({ 'Formula/tool.rb': ARM_ONLY, ...archives('artifacts', ['aarch64-apple-darwin']),
+    'bottles/0.bottle.json': JSON.stringify(ARM),
+    'artifacts/tool-1.2.3.arm64_sonoma.bottle.tar.gz': 'bottle' });
+  const text = brew.rewriteFormula(ENV, io);
+  assert.match(text, /^ {2}version "1\.2\.3"$/m);
+  assert.ok(text.includes(`sha256 "${digest('archive aarch64-apple-darwin')}" # mac-arm\n`));
+  assert.equal(block(text).split('sha256 cellar:').length - 1, 1);
+  assert.ok(block(text).includes('arm64_sonoma'));
+  assert.ok(!text.includes('# linux-'));
+});
+
+test('other archives beside an arm-only formula are ignored', () => {
+  const io = fakeIo({ 'Formula/tool.rb': ARM_ONLY, ...archives('artifacts', ['aarch64-apple-darwin']),
+    'artifacts/tool-1.2.3-x86_64-unknown-linux-gnu.tar.gz': 'glibc',
+    'artifacts/tool_1.2.3~trixie-1_amd64.deb': 'deb',
+    'bottles/0.bottle.json': JSON.stringify(ARM),
+    'artifacts/tool-1.2.3.arm64_sonoma.bottle.tar.gz': 'bottle' });
+  assert.match(brew.rewriteFormula(ENV, io), /^ {2}version "1\.2\.3"$/m);
+});
+
+test('a built archive whose marker is gone fails', () => {
+  const bottle = fakeIo({ 'Formula/tool.rb': without(FORMULA, 'mac-x86'),
+    ...archives('dist', ['aarch64-apple-darwin', 'x86_64-apple-darwin']) });
+  refusal(() => brew.pointAtArchives(ENV, bottle),
+    /^the marker # mac-x86 is gone from Formula\/tool\.rb, but \/w\/dist\/tool-1\.2\.3-x86_64-apple-darwin\.tar\.gz was built$/);
+  refusal(() => brew.rewriteFormula(ENV, formulaJob({ formula: without(FORMULA, 'linux-arm') })),
+    /^the marker # linux-arm is gone from Formula\/tool\.rb, but artifacts\/tool-1\.2\.3-aarch64-unknown-linux-musl\.tar\.gz was built$/);
+});
+
+test('a formula without # mac-arm fails', () => {
+  const bottle = fakeIo({ 'Formula/tool.rb': without(FORMULA, 'mac-arm'),
+    ...archives('dist', ['x86_64-apple-darwin']) });
+  refusal(() => brew.pointAtArchives(ENV, bottle),
+    /^the marker # mac-arm is gone from Formula\/tool\.rb$/);
+  const io = fakeIo({ 'Formula/tool.rb': without(FORMULA, 'mac-arm'),
+    ...archives('artifacts', ['x86_64-apple-darwin', 'x86_64-unknown-linux-musl', 'aarch64-unknown-linux-musl']) });
+  refusal(() => brew.rewriteFormula(ENV, io), /^the marker # mac-arm is gone from Formula\/tool\.rb$/);
 });
