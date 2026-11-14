@@ -2,9 +2,10 @@
 
 // ri-release-homebrew (D32): the three formula steps around the bottle
 // build. The formula follows the template in references/project-shape.md: a
-// url line directly above each of the four sha256 lines marked # mac-arm,
-// # mac-x86, # linux-x86 and # linux-arm, and the bottle block between
-// # BOTTLE-START and # BOTTLE-END. The steps in ri-release-homebrew.yml hand
+// url line directly above each sha256 line marked # mac-arm and, for each
+// further platform it ships, # mac-x86, # linux-x86 or # linux-arm, and the
+// bottle block between # BOTTLE-START and # BOTTLE-END. A marker stands in
+// the formula exactly when the archive of its platform was built. The steps in ri-release-homebrew.yml hand
 // these functions their environment and nothing else. The file system goes
 // through `io`, which the tests replace.
 
@@ -20,6 +21,31 @@ const SHA = /sha256 "[0-9a-f]*"/;
 function shaLines(lines, marker) {
   const pattern = new RegExp(`${SHA.source} # ${marker}\\s*$`);
   return lines.flatMap((line, i) => (pattern.test(line) ? [i] : []));
+}
+
+// The platforms of the formula: the markers of `markers` that stand on a
+// sha256 line of `text`, in `markers` order. A marker and the archive of its
+// platform come together or the release fails; # mac-arm is always needed,
+// the bottle is built on an arm64 runner.
+function platforms(text, { formula, archive, exists, markers }) {
+  const lines = text.split('\n');
+  const problems = [];
+  const found = [];
+  for (const marker of markers) {
+    const count = shaLines(lines, marker).length;
+    if (count > 1) {
+      problems.push(`the marker # ${marker} stands on ${count} lines of ${formula}`);
+    } else if (count === 1) {
+      found.push(marker);
+      if (!exists(archive(marker))) problems.push(`${archive(marker)} was not built`);
+    } else if (marker === 'mac-arm') {
+      problems.push(`the marker # ${marker} is gone from ${formula}`);
+    } else if (exists(archive(marker))) {
+      problems.push(`the marker # ${marker} is gone from ${formula}, but ${archive(marker)} was built`);
+    }
+  }
+  if (problems.length > 0) throw new Error(problems.join('; '));
+  return found;
 }
 
 function setVersion(text, version) {
@@ -42,11 +68,11 @@ function withBlock(text, inner, formula) {
 // The release does not exist yet, so the local tap points each mac url line
 // at the archive this run built. A url line anywhere but directly above its
 // sha256 line would be left alone, and brew would fetch a GitHub url that
-// answers 404.
+// answers 404. `archives` names the platforms to point.
 function localFormula(text, { formula, version, archives }) {
   const lines = text.split('\n');
   const problems = [];
-  for (const marker of ['mac-arm', 'mac-x86']) {
+  for (const marker of Object.keys(archives)) {
     const found = shaLines(lines, marker);
     if (found.length !== 1) {
       problems.push(`${formula} needs one # ${marker} sha256 line, not ${found.length}`);
@@ -107,7 +133,7 @@ function bottleBlock(jsons, { repository, version }) {
 function releaseFormula(text, { formula, version, shas, jsons, built, repository }) {
   if (!VERSION_LINE.test(text)) throw new Error(`${formula} has no version line`);
   const lines = text.split('\n');
-  for (const marker of Object.keys(MARKERS)) {
+  for (const marker of Object.keys(shas)) {
     const found = shaLines(lines, marker);
     if (found.length === 0) throw new Error(`the marker # ${marker} is gone from ${formula}`);
     if (found.length > 1) {
@@ -145,14 +171,17 @@ function formulaOf(env, io) {
 }
 
 // Bottle leg, before `brew install --build-bottle`: the formula of the local
-// tap, written to $RUNNER_TEMP/local-formula.rb. dist/ holds the two mac
-// archives.
+// tap, written to $RUNNER_TEMP/local-formula.rb. dist/ holds the mac
+// archives, one for each of # mac-arm and # mac-x86 the formula carries.
 function pointAtArchives(env, io = nodeIo()) {
   const formula = formulaOf(env, io);
+  const archive = (marker) => `${io.cwd()}/dist/${env.BIN}-${env.VERSION}-${MARKERS[marker]}.tar.gz`;
+  const present = platforms(io.read(formula), {
+    formula, archive, exists: io.isFile, markers: ['mac-arm', 'mac-x86'],
+  });
   const archives = {};
-  for (const marker of ['mac-arm', 'mac-x86']) {
-    const path = `${io.cwd()}/dist/${env.BIN}-${env.VERSION}-${MARKERS[marker]}.tar.gz`;
-    if (!io.isFile(path)) throw new Error(`${path} was not built`);
+  for (const marker of present) {
+    const path = archive(marker);
     archives[marker] = { url: `file://${path}`, sha: io.sha256(path) };
   }
   const out = `${env.RUNNER_TEMP}/local-formula.rb`;
@@ -260,11 +289,11 @@ function renameBottles(env, io = nodeIo()) {
 function rewriteFormula(env, io = nodeIo()) {
   const formula = formulaOf(env, io);
   const shas = {};
-  for (const [marker, target] of Object.entries(MARKERS)) {
-    const archive = `artifacts/${env.BIN}-${env.VERSION}-${target}.tar.gz`;
-    if (!io.isFile(archive)) throw new Error(`${archive} was not built`);
-    shas[marker] = io.sha256(archive);
-  }
+  const archive = (marker) => `artifacts/${env.BIN}-${env.VERSION}-${MARKERS[marker]}.tar.gz`;
+  const present = platforms(io.read(formula), {
+    formula, archive, exists: io.isFile, markers: Object.keys(MARKERS),
+  });
+  for (const marker of present) shas[marker] = io.sha256(archive(marker));
   const jsons = io.list('bottles').filter((name) => name.endsWith('.bottle.json'))
     .map((name) => JSON.parse(io.read(`bottles/${name}`)));
   const text = releaseFormula(io.read(formula), {
@@ -278,6 +307,6 @@ function rewriteFormula(env, io = nodeIo()) {
 }
 
 module.exports = {
-  MARKERS, localFormula, bottleFiles, bottleBlock, releaseFormula, claimedTag, retagJson, minosOf,
+  MARKERS, platforms, localFormula, bottleFiles, bottleBlock, releaseFormula, claimedTag, retagJson, minosOf,
   pointAtArchives, renameBottles, rewriteFormula,
 };
