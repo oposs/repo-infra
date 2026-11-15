@@ -67,7 +67,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-container.yml@v2`.
 
 **Choose it when:** The project includes build/container-make.mk.
 
-**The repository supplies:** A Containerfile and a Makefile that includes build/container-make.mk; `directory` when it is not at the top level.
+**The repository supplies:** A Containerfile and a Makefile that includes build/container-make.mk; `directory` when it is not at the top level; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 
 **Needs the pieces:** container-make
 
@@ -154,7 +154,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-man.yml@v2`.
 
 **Choose it when:** The project ships a man page built from docs/manual.md (D23).
 
-**The repository supplies:** docs/manual.md and a `man` target from build/man.mk.
+**The repository supplies:** docs/manual.md and a `man` target from build/man.mk; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 
 **Needs the pieces:** man, man-lua
 
@@ -229,7 +229,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-perl-autotools.yml@v2`.
 
 **Choose it when:** configure.ac and cpanfile.
 
-**The repository supplies:** ./bootstrap, configure, and the targets all and check.
+**The repository supplies:** configure.ac with ./bootstrap, and the targets all and check; the `prepare` key in .github/repo-infra.json when ./bootstrap and ./configure are not the preparation.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -253,7 +253,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-perl-mkpl.yml@v2`.
 
 **Choose it when:** Makefile.PL and no configure.ac.
 
-**The repository supplies:** Makefile.PL and the targets thirdparty and test.
+**The repository supplies:** Makefile.PL and the targets thirdparty and test; when the tree needs preparing before make, the `prepare` key in .github/repo-infra.json.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -380,7 +380,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-distro-packages.yml@v2`
 
 **Choose it when:** The program links system libraries, so one static build cannot serve every distribution (D38).
 
-**The repository supplies:** In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once and put in `directory`/man.
+**The repository supplies:** In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once on the runner and put in `directory`/man; when the tree needs preparing before that make, configure.ac with ./bootstrap in `directory`, or the `prepare` key in .github/repo-infra.json.
 
 **Produces:** The artifacts release-asset-packages-<distro>-<amd64|arm64>, one package file each; list them in release_assets.
 
@@ -414,7 +414,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-go-binaries.yml@v2`.
 
 **Choose it when:** The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when aarch64-apple-darwin is left out, linux-packages when a musl target is left out.
 
-**The repository supplies:** go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
+**The repository supplies:** go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 
 **Needs the pieces:** man, man-lua
 
@@ -599,7 +599,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-rust-binaries.yml@v2`.
 
 **Choose it when:** The project is a Rust program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when aarch64-apple-darwin is left out, linux-packages when a musl target is left out.
 
-**The repository supplies:** Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
+**The repository supplies:** Cargo.toml whose package builds the one binary `bin` (a second one fails the build), README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 
 **Needs the pieces:** man, man-lua
 
@@ -635,7 +635,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-source-tarball.yml@v2`.
 
 **Choose it when:** The project is autotools and ships a source tarball.
 
-**The repository supplies:** ./bootstrap, configure and `make dist`.
+**The repository supplies:** configure.ac with ./bootstrap, and `make dist`; the `prepare` key in .github/repo-infra.json when ./bootstrap and ./configure are not the preparation.
 
 **Produces:** The artifact release-asset-source (`*.tar.gz`); list `*.tar.gz` in release_assets.
 

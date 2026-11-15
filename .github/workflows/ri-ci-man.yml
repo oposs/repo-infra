@@ -2,7 +2,7 @@
 #
 # Purpose: Build the man page and fail on a roff warning.
 # Choose: The project ships a man page built from docs/manual.md (D23).
-# Supplies: docs/manual.md and a `man` target from build/man.mk.
+# Supplies: docs/manual.md and a `man` target from build/man.mk; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 # Pieces: man, man-lua
 # Call:
 #   man:

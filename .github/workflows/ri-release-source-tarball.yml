@@ -2,7 +2,7 @@
 #
 # Purpose: Build the `make dist` tarball before the merge (D28).
 # Choose: The project is autotools and ships a source tarball.
-# Supplies: ./bootstrap, configure and `make dist`.
+# Supplies: configure.ac with ./bootstrap, and `make dist`; the `prepare` key in .github/repo-infra.json when ./bootstrap and ./configure are not the preparation.
 # Produces: The artifact release-asset-source (`*.tar.gz`); list `*.tar.gz` in release_assets.
 # Call:
 #   tarball:

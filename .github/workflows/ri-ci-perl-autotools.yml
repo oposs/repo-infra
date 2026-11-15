@@ -2,7 +2,7 @@
 #
 # Purpose: Bootstrap, configure, build and test an autotools Perl project.
 # Choose: configure.ac and cpanfile.
-# Supplies: ./bootstrap, configure, and the targets all and check.
+# Supplies: configure.ac with ./bootstrap, and the targets all and check; the `prepare` key in .github/repo-infra.json when ./bootstrap and ./configure are not the preparation.
 # Call:
 #   perl:
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-perl-autotools.yml@v2

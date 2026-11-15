@@ -2,7 +2,7 @@
 #
 # Purpose: Build the vendored dependencies and test a Makefile.PL project on three Perl versions.
 # Choose: Makefile.PL and no configure.ac.
-# Supplies: Makefile.PL and the targets thirdparty and test.
+# Supplies: Makefile.PL and the targets thirdparty and test; when the tree needs preparing before make, the `prepare` key in .github/repo-infra.json.
 # Call:
 #   perl:
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-perl-mkpl.yml@v2

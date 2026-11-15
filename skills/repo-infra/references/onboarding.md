@@ -113,6 +113,17 @@ into `ci-local.yml`, or into a new piece (`references/teaching-the-standard.md`)
   The missing input is a gap in the standard; teach it
   (`references/teaching-the-standard.md`) and pair the input with the
   exception, as `references/project-shape.md` says under "Exceptions".
+- **An autotools repository with a manual.** automake reads `include` in
+  `Makefile.am` itself. With `build/man.mk` v4 it stopped at
+  `build/man.mk:40: error: endif without if`, and `-include` hid the `man`
+  target from automake. Install `man` v5 and write
+  `include $(top_srcdir)/build/man.mk` in the top-level `Makefile.am`; the
+  `man-pages` skill has the lines. The pieces run `./bootstrap` and
+  `./configure` before `make man` (`references/conventions.md`, "Preparing a
+  tree before make").
+- **A tree that `make` cannot build as checked out.** A project that is not
+  autotools and needs a step before `make` (CMake, Meson, a generated
+  Makefile) names the command in `prepare` in `.github/repo-infra.json`.
 - **Old claims in the code.** A comment in `Cargo.toml` or the README about
   where the program runs was true once, or never. Step 3 replaces it with a
   compile attempt.

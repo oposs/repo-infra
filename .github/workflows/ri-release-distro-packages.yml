@@ -2,7 +2,7 @@
 #
 # Purpose: Build one deb, rpm or apk package per distribution release and architecture inside that release's own container, and install each in a clean container of the same release (D38).
 # Choose: The program links system libraries, so one static build cannot serve every distribution (D38).
-# Supplies: In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once and put in `directory`/man.
+# Supplies: In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once on the runner and put in `directory`/man; when the tree needs preparing before that make, configure.ac with ./bootstrap in `directory`, or the `prepare` key in .github/repo-infra.json.
 # Produces: The artifacts release-asset-packages-<distro>-<amd64|arm64>, one package file each; list them in release_assets.
 # Call:
 #   packages:

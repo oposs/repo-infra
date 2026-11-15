@@ -2,7 +2,7 @@
 #
 # Purpose: Run `make check` in the image the project's Containerfile builds (#94).
 # Choose: The project includes build/container-make.mk.
-# Supplies: A Containerfile and a Makefile that includes build/container-make.mk; `directory` when it is not at the top level.
+# Supplies: A Containerfile and a Makefile that includes build/container-make.mk; `directory` when it is not at the top level; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 # Pieces: container-make
 # Call:
 #   container:
