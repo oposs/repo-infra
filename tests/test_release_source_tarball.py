@@ -21,7 +21,8 @@ def test_the_tarball_job_builds_at_ref_and_uploads_a_release_asset():
     assert checkout["uses"] == "actions/checkout@v7" and checkout["with"] == {
         "repository": "${{ inputs.repository }}", "ref": REF}
     runs = [s.get("run", "") for s in job["steps"]]
-    assert "./bootstrap" in runs and "./configure" in runs
+    # The preparation step (D39) bootstraps and configures.
+    assert any("./bootstrap && ./configure" in r for r in runs)
     assert any("make dist" in r for r in runs)
     upload = job["steps"][-1]
     assert upload["uses"].startswith("actions/upload-artifact@")
