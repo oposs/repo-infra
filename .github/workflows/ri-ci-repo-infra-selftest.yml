@@ -107,6 +107,14 @@ jobs:
             sudo apt-get install -y --no-install-recommends man-db
           fi
 
+      # One pandoc-marked test runs autoreconf on a fixture project that
+      # includes build/man.mk from Makefile.am (D39). The same line as in the
+      # job above; a test pins it.
+      - name: Install the autotools host toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext podman
+
       # Only the pandoc-marked tests. The ordinary pytest job deselects them,
       # since ci-python installs no pandoc. CI is set on the runner, so a
       # missing tool fails these tests instead of skipping them.

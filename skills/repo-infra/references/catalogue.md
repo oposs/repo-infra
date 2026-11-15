@@ -947,7 +947,7 @@ Installed at `build/container-make.mk`.
 
 **Needs the pieces:** ri-ci-container
 
-### man v4
+### man v5
 
 Installed at `build/man.mk`.
 

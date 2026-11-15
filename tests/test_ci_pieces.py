@@ -162,19 +162,24 @@ def test_the_three_pieces_install_a_byte_identical_host_toolchain():
     # passing against a toolchain another piece no longer ships. Full-line
     # equality, not substring containment, catches indentation changes and
     # appended packages.
+    # D39: in the two autotools pieces the line sits in the preparation step.
+    # The selftest piece has it once per job: repo-infra-man runs automake
+    # against build/man.mk.
     expected_line = "          sudo apt-get install -y autoconf automake gettext podman"
-    for name in (
-        ".github/workflows/ri-ci-perl-autotools.yml",
-        ".github/workflows/ri-ci-repo-infra-selftest.yml",
-        ".github/workflows/ri-release-source-tarball.yml",
+    for name, count in (
+        (".github/workflows/ri-ci-perl-autotools.yml", 1),
+        (".github/workflows/ri-ci-repo-infra-selftest.yml", 2),
+        (".github/workflows/ri-release-source-tarball.yml", 1),
     ):
         text = (ROOT / name).read_text(encoding="utf-8")
         # The selftest piece also installs man-db for repo-infra-man where the
         # image lacks it; that step is pinned separately, against ri-ci-man.
         lines = [line for line in text.split("\n")
                  if "apt-get install" in line and line != MAN_DB_LINE]
-        assert len(lines) == 1, f"{name}: expected 1 apt-get install line, found {len(lines)}"
-        assert lines[0] == expected_line, f"{name}: expected {expected_line!r}, got {lines[0]!r}"
+        assert len(lines) == count, (
+            f"{name}: expected {count} apt-get install line(s), found {len(lines)}")
+        for line in lines:
+            assert line == expected_line, f"{name}: expected {expected_line!r}, got {line!r}"
 
 
 @pytest.mark.parametrize("piece", ci_workflows())
