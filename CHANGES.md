@@ -12,6 +12,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 2.16.0 - 2026-11-16
+### New
 - The `prepare` key in `.github/repo-infra.json` names a shell command, for example `"prepare": "cmake -B build"`, that every piece runs before its first `make` on the runner, in the directory it runs `make` in. It replaces `./bootstrap && ./configure` in a repository with `configure.ac`, and `check` reports a value that is not a non-empty command. These pieces now read `.github/repo-infra.json`, so a file that is not valid JSON, or a `prepare` that is not text, stops their job with a `jq` error such as `prepare must be a string`.
 
 ### Changed
