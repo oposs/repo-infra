@@ -2,7 +2,7 @@
 #
 # Purpose: Build the release archives of a Go program for the seven native targets (D32), or for the ones `targets` names (D34), under the target names of ri-release-rust-binaries (D35).
 # Choose: The project is a Go program users install (native-targets in references/project-shape.md). Set `targets` only for a program that cannot build for every target, together with the exceptions D34 pairs with it: native-targets always, homebrew when aarch64-apple-darwin is left out, linux-packages when a musl target is left out.
-# Supplies: go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names.
+# Supplies: go.mod, the main package `package` that builds the binary `bin` without cgo, README.md, LICENSE, `make man` writing man/, and every path `extra_paths` names; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 # Pieces: man, man-lua
 # Produces: The artifacts release-asset-<target>, each holding <bin>-<version>-<target>.tar.gz (.zip on Windows, without man/), one per target built, with the `extra_paths` under <bin>/ for the formula to pkgshare.install; list each of them in release_assets.
 # Call:
@@ -91,6 +91,32 @@ jobs:
             "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-1-amd64.deb"
           echo "$PANDOC_SHA256  $deb" | sha256sum -c -
           sudo dpkg -i "$deb"
+
+      # The preparation step of ri-ci-man (D39): the `prepare` key, or
+      # ./bootstrap and ./configure for a tree with configure.ac. A test pins
+      # the copies equal.
+      - name: Prepare the tree (D39)
+        env:
+          DIRECTORY: .
+        run: |
+          prepare=''
+          if [ -f .github/repo-infra.json ]; then
+            prepare=$(jq -r '.prepare | if . == null then empty
+              elif type == "string" then select(test("\\S"))
+              else error("prepare must be a string") end' .github/repo-infra.json)
+          fi
+          cd "$DIRECTORY"
+          if [ -f configure.ac ]; then
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext podman
+          prepare=${prepare:-./bootstrap && ./configure}
+          fi
+          if [ -z "$prepare" ]; then
+            echo "No prepare key and no configure.ac: nothing to prepare."
+            exit 0
+          fi
+          echo "Preparing the tree: $prepare"
+          bash -e -o pipefail -c "$prepare"
 
       - name: Build the man pages
         run: make man

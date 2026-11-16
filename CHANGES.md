@@ -12,12 +12,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- The `prepare` key in `.github/repo-infra.json` names a shell command, for example `"prepare": "cmake -B build"`, that every piece runs before its first `make` on the runner, in the directory it runs `make` in. It replaces `./bootstrap && ./configure` in a repository with `configure.ac`, and `check` reports a value that is not a non-empty command. These pieces now read `.github/repo-infra.json`, so a file that is not valid JSON, or a `prepare` that is not text, stops their job with a `jq` error such as `prepare must be a string`.
 
 ### Changed
+- `ri-ci-perl-autotools` no longer passes `--prefix=$HOME/test-install` to `configure`, which now runs with its default prefix. A project whose `make check` needs another prefix names its own command in `prepare`.
 
 ### Fixed
 - `check` no longer reports `ri-release-rust-binaries missing` with "ri-release-homebrew needs it" (or "ri-release-nfpm needs it") when the job that calls the piece waits, through `needs:`, for a workflow of the repository that uploads the `release-asset-<target>` archives itself, as lectover's `release-build-local.yml` does. (#150)
 - The formula section of project-shape.md said that `brew install` on a platform a formula leaves out fails with Homebrew's own message. Homebrew fails to load such a formula with `formula requires at least a URL`; the section now shows the shape for Apple Silicon alone, url and sha256 at the top level with `depends_on arch: :arm64` and `depends_on :macos`. (#150)
+- `ri-ci-man` and the man job of `ri-release-distro-packages` stopped with `make: *** No rule to make target 'man'` in a repository with `configure.ac`. They now run `./bootstrap && ./configure` first, as do the man jobs of `ri-release-rust-binaries` and `ri-release-go-binaries` and `ri-ci-container`.
+- `man` v5: automake stopped on `build/man.mk` with `endif without if`. The file can now be included from `Makefile.am` with `include $(top_srcdir)/build/man.mk`.
 
 ## 2.15.0 - 2026-11-14
 ### New

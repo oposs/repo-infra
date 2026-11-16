@@ -24,8 +24,10 @@ def piece():
 def run_step():
     steps = piece()["jobs"]["container"]["steps"]
     found = [s for s in steps if "run" in s]
-    assert len(found) == 1
-    return found[0]
+    # The preparation step (D39) comes first; tests/test_prepare_step.py holds it.
+    assert [s["name"] for s in found] == [
+        "Prepare the tree (D39)", "Run make check in the container"]
+    return found[1]
 
 
 def test_the_piece_declares_exactly_its_one_job():

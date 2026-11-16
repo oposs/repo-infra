@@ -2,7 +2,7 @@
 #
 # Purpose: Build one deb, rpm or apk package per distribution release and architecture inside that release's own container, and install each in a clean container of the same release (D38).
 # Choose: The program links system libraries, so one static build cannot serve every distribution (D38).
-# Supplies: In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once and put in `directory`/man.
+# Supplies: In `directory`, a Containerfile whose build-deps stage starts FROM the ARG BASE and installs the build packages, a Makefile with build, check and `install DESTDIR=` (autotools only when configure.ac exists), and an nfpm config whose contents take their sources from STAGE; the piece sets VERSION, SOURCE_DATE_EPOCH, MTIME, PACKAGER, STAGE, ARCH, DISTRO, ID, VERSION_ID, CODENAME, DEPENDS and PKG_RELEASE, packagers sets every other dollar-brace name. When `directory`/build/man.mk exists, the man pages are built once on the runner and put in `directory`/man; when the tree needs preparing before that make, configure.ac with ./bootstrap in `directory`, or the `prepare` key in .github/repo-infra.json.
 # Produces: The artifacts release-asset-packages-<distro>-<amd64|arm64>, one package file each; list them in release_assets.
 # Call:
 #   packages:
@@ -129,6 +129,33 @@ jobs:
             "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-1-amd64.deb"
           echo "$PANDOC_SHA256  $deb" | sha256sum -c -
           sudo dpkg -i "$deb"
+
+      # The preparation step of ri-ci-man (D39): the `prepare` key, or
+      # ./bootstrap and ./configure for a tree with configure.ac. A test pins
+      # the copies equal.
+      - name: Prepare the tree (D39)
+        if: ${{ steps.detect.outputs.present == 'true' }}
+        env:
+          DIRECTORY: ${{ inputs.directory }}
+        run: |
+          prepare=''
+          if [ -f .github/repo-infra.json ]; then
+            prepare=$(jq -r '.prepare | if . == null then empty
+              elif type == "string" then select(test("\\S"))
+              else error("prepare must be a string") end' .github/repo-infra.json)
+          fi
+          cd "$DIRECTORY"
+          if [ -f configure.ac ]; then
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext podman
+          prepare=${prepare:-./bootstrap && ./configure}
+          fi
+          if [ -z "$prepare" ]; then
+            echo "No prepare key and no configure.ac: nothing to prepare."
+            exit 0
+          fi
+          echo "Preparing the tree: $prepare"
+          bash -e -o pipefail -c "$prepare"
 
       - name: Build the man pages
         if: ${{ steps.detect.outputs.present == 'true' }}

@@ -33,9 +33,10 @@ PieceState = namedtuple("PieceState", "state installed edited")
 
 CONFIG = ".github/repo-infra.json"
 # What the borrowed release machinery reads (release-pr.yml, lib/*.js), and
-# the exceptions the shape review reads (D32).
+# the exceptions the shape review reads (D32), and the command the pieces run
+# before their first make (D39).
 KEYS = ("version_files", "release_assets", "release_files", "gitea_packages",
-        "moving_major_tag", "rust", "exceptions", "dependabot")
+        "moving_major_tag", "rust", "exceptions", "dependabot", "prepare")
 OBSOLETE = ("ecosystems", "ci", "ci_local", "publish", "build", "publish_local",
             "release_build", "release_build_local", "answers")
 # D30 removed `skip`; D32 gave its purpose to `exceptions`, keyed by rule id.
@@ -597,6 +598,10 @@ def config_items(repo_root, docs, called=None):
         items.append(Item("config", "exceptions", "problem",
                           "exceptions must be an object that maps each rule id of "
                           "references/project-shape.md to a non-empty reason"))
+    if "prepare" in config and not (isinstance(config["prepare"], str)
+                                    and config["prepare"].strip()):
+        items.append(Item("config", "prepare", "problem",
+                          "prepare must be a non-empty shell command, run before make (D39)"))
     if not config.get("version_files"):
         items.append(Item("config", "version_files", "problem",
                           "version_files is empty; Create release PR would bump no file"))
