@@ -7,6 +7,7 @@ error paths need no pandoc and run everywhere.
 
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 
@@ -282,3 +283,72 @@ def test_a_missing_manual_is_named(tmp_path, require):
     assert done.returncode != 0
     assert "docs/manual.md" in done.stderr
     assert not (root / "man").exists()
+
+
+# --- automake (D39) -------------------------------------------------------------
+#
+# automake reads `include` in Makefile.am itself and stops at a GNU make
+# conditional: v4 gave `build/man.mk:40: error: endif without if`.
+
+def test_man_mk_has_no_make_conditionals():
+    conditional = re.compile(r"^\s*(ifeq|ifneq|ifdef|ifndef|else|endif)\b")
+    found = [line for line in MK.read_text(encoding="utf-8").splitlines()
+             if conditional.match(line)]
+    assert found == []
+
+
+CONFIGURE_AC = """\
+AC_INIT([fixture],[1.0])
+AM_INIT_AUTOMAKE([foreign])
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
+"""
+MAKEFILE_AM = """\
+MAN_NAME = fixture
+include $(top_srcdir)/build/man.mk
+EXTRA_DIST = docs/manual.md build/man.mk build/man-deflist.lua
+"""
+
+
+def automake_tree(root, makefile_am=MAKEFILE_AM, manual=FIXTURE_MANUAL):
+    tree(root, manual=manual)
+    (root / "Makefile").unlink()
+    (root / "configure.ac").write_text(CONFIGURE_AC, encoding="utf-8")
+    (root / "Makefile.am").write_text(makefile_am, encoding="utf-8")
+    for command in (["autoreconf", "-fi"], ["./configure"]):
+        done = subprocess.run(command, cwd=root, env=make_env(), capture_output=True,
+                              text=True, timeout=300)
+        assert done.returncode == 0, (command, done.stdout, done.stderr)
+    return root
+
+
+@pytest.mark.pandoc
+def test_automake_includes_man_mk(tmp_path, require):
+    require("make", "pandoc", "autoreconf", "automake")
+    root = automake_tree(tmp_path / "repo")
+    done = make_man(root)
+    assert done.returncode == 0, done.stderr
+    assert (root / "man/fixture.1").read_text(encoding="utf-8").startswith(".")
+
+
+@pytest.mark.pandoc
+def test_under_automake_a_bare_make_does_not_build_the_man_page(tmp_path, require):
+    require("make", "pandoc", "autoreconf", "automake")
+    root = automake_tree(tmp_path / "repo")
+    done = subprocess.run(["make"], cwd=root, env=make_env(), capture_output=True,
+                          text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    assert not (root / "man").exists()
+
+
+@pytest.mark.pandoc
+def test_under_automake_a_manual_without_a_section_stops_only_make_man(tmp_path, require):
+    require("make", "pandoc", "autoreconf", "automake")
+    root = automake_tree(tmp_path / "repo",
+                         manual=FIXTURE_MANUAL.replace("section: 1\n", ""))
+    done = subprocess.run(["make"], cwd=root, env=make_env(), capture_output=True,
+                          text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    done = make_man(root)
+    assert done.returncode != 0
+    assert "no section: line in its front matter" in done.stderr

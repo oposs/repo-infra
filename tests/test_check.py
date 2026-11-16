@@ -435,6 +435,18 @@ def test_exceptions_that_are_not_an_object_of_reasons_are_a_problem(tmp_path, va
     assert found == [EXCEPTIONS_PROBLEM]
 
 
+def test_a_prepare_string_is_accepted(tmp_path):
+    # D39: the command a piece runs before its first make.
+    assert config(tmp_path, {"version_files": VERSIONS, "prepare": "cmake -B build"}) == []
+
+
+@pytest.mark.parametrize("value", ["", "  ", 3, ["a"], None])
+def test_an_empty_or_non_string_prepare_is_a_problem(tmp_path, value):
+    found = config(tmp_path, {"version_files": VERSIONS, "prepare": value})
+    assert found == [("prepare", "problem",
+                      "prepare must be a non-empty shell command, run before make (D39)")]
+
+
 def test_skip_is_told_to_become_exceptions(tmp_path):
     found = config(tmp_path, {"version_files": VERSIONS, "skip": {"ci-man": True}})
     assert found == [("skip", "problem",

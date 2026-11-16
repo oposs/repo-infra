@@ -2,7 +2,7 @@
 #
 # Purpose: Bootstrap, configure, build and test an autotools Perl project.
 # Choose: configure.ac and cpanfile.
-# Supplies: ./bootstrap, configure, and the targets all and check.
+# Supplies: configure.ac with ./bootstrap, and the targets all and check; the `prepare` key in .github/repo-infra.json when ./bootstrap and ./configure are not the preparation.
 # Call:
 #   perl:
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-perl-autotools.yml@v2
@@ -39,24 +39,41 @@ jobs:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
 
-      # The fixed host toolchain: enough to bootstrap, configure, and drive a
-      # container. It is the same for every autotools project, which is what
-      # makes it infrastructure. Deliberately no package list (D16).
+      # The preparation step of ri-ci-man (D39): it installs the fixed host
+      # toolchain and runs ./bootstrap and ./configure, or the `prepare` key
+      # of .github/repo-infra.json when the project sets one. A test pins the
+      # copies equal. The toolchain is enough to bootstrap, configure, and
+      # drive a container. It is the same for every autotools project, which
+      # is what makes it infrastructure. Deliberately no package list (D16).
       #
-      # These four commands serve both kinds of autotools repository unchanged.
+      # The same commands serve both kinds of autotools repository unchanged.
       # A containerized one configures into driver mode (D18), so `make` builds
       # its image and `make check` runs the suite inside it -- and `configure`
       # never probes the project's own dependencies on this runner. One that
       # stayed native has no Containerfile, does not call REPO_INFRA_CONTAINER,
       # and runs plain autotools here.
-      - name: Install the autotools host toolchain
+      - name: Prepare the tree (D39)
+        env:
+          DIRECTORY: .
         run: |
+          prepare=''
+          if [ -f .github/repo-infra.json ]; then
+            prepare=$(jq -r '.prepare | if . == null then empty
+              elif type == "string" then select(test("\\S"))
+              else error("prepare must be a string") end' .github/repo-infra.json)
+          fi
+          cd "$DIRECTORY"
+          if [ -f configure.ac ]; then
           sudo apt-get update
           sudo apt-get install -y autoconf automake gettext podman
-
-      - run: ./bootstrap
-
-      - run: ./configure --prefix=$HOME/test-install
+          prepare=${prepare:-./bootstrap && ./configure}
+          fi
+          if [ -z "$prepare" ]; then
+            echo "No prepare key and no configure.ac: nothing to prepare."
+            exit 0
+          fi
+          echo "Preparing the tree: $prepare"
+          bash -e -o pipefail -c "$prepare"
 
       - run: make
 

@@ -2,7 +2,7 @@
 #
 # Purpose: Build the man page and fail on a roff warning.
 # Choose: The project ships a man page built from docs/manual.md (D23).
-# Supplies: docs/manual.md and a `man` target from build/man.mk.
+# Supplies: docs/manual.md and a `man` target from build/man.mk; when the tree needs preparing before make, configure.ac with ./bootstrap, or the `prepare` key in .github/repo-infra.json.
 # Pieces: man, man-lua
 # Call:
 #   man:
@@ -39,6 +39,38 @@ jobs:
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+
+      # A tree may need preparing before `make` (D39). On isam-alarm-collector
+      # this job stopped with `make: *** No rule to make target 'man'`: the
+      # tree has only Makefile.am until ./bootstrap and ./configure have run.
+      # The project names its preparation in the `prepare` key of
+      # .github/repo-infra.json; a tree with configure.ac and no key gets the
+      # autotools one, with the fixed host toolchain (D16); any other tree gets
+      # nothing. The key is read at the checkout root and the command runs
+      # where the piece runs `make`. Every piece that runs `make` on the
+      # runner carries this step; a test pins the copies equal.
+      - name: Prepare the tree (D39)
+        env:
+          DIRECTORY: .
+        run: |
+          prepare=''
+          if [ -f .github/repo-infra.json ]; then
+            prepare=$(jq -r '.prepare | if . == null then empty
+              elif type == "string" then select(test("\\S"))
+              else error("prepare must be a string") end' .github/repo-infra.json)
+          fi
+          cd "$DIRECTORY"
+          if [ -f configure.ac ]; then
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake gettext podman
+          prepare=${prepare:-./bootstrap && ./configure}
+          fi
+          if [ -z "$prepare" ]; then
+            echo "No prepare key and no configure.ac: nothing to prepare."
+            exit 0
+          fi
+          echo "Preparing the tree: $prepare"
+          bash -e -o pipefail -c "$prepare"
 
       # pandoc converts the manual; man-db and groff-base render the result,
       # which is the only way to find out whether roff can lay the page out.

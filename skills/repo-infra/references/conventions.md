@@ -108,6 +108,9 @@ as rule ids.
   rule that does not apply to this repository (D32). `check` reports a value
   that is not an object of non-empty strings; only the shape review reads the
   ids and the reasons.
+- `prepare`: the shell command a piece runs before its first `make` (D39,
+  "Preparing a tree before make" below). `check` reports a value that is not a
+  non-empty string.
 
 `ri-publish-crates-io` carries a prerequisite that lives outside the repository:
 crates.io pins a Trusted Publisher to a *(repository, workflow filename)* pair,
@@ -126,6 +129,43 @@ once by hand with an API token (`cargo publish --workspace --locked` on the
 release commit), register the Trusted Publisher for each new crate, then re-run
 the failed jobs; the re-run finds every crate on crates.io and finishes the
 release.
+
+## Preparing a tree before make (D39)
+
+A checkout is not always ready for `make`. A repository with `configure.ac`
+has no `Makefile` until `./bootstrap` and `./configure` have run; a CMake or
+Meson project generates its build files first. Every piece that runs `make` on
+the runner therefore runs one step, `Prepare the tree (D39)`, before its first
+`make`:
+
+| `prepare` key | `configure.ac` | The step runs |
+|---|---|---|
+| set | either | the host toolchain if `configure.ac` exists, then `prepare` |
+| absent | present | the host toolchain, then `./bootstrap && ./configure` |
+| absent | absent | nothing |
+
+- `prepare` in `.github/repo-infra.json` is one shell command, for example
+  `"prepare": "cmake -B build"`. The step reads the key at the top of the
+  checkout and runs the command with `bash -e -o pipefail -c` in the directory
+  the piece runs `make` in: the top, or `directory` in `ri-ci-container` and
+  `ri-release-distro-packages`. A failure inside a pipe, such as
+  `cmake -B build | tee log`, fails the step.
+- The host toolchain is the fixed line of D16: autoconf, automake, gettext and
+  podman. A project with `configure.ac` and its own `prepare` still gets it,
+  so the command can call `./bootstrap`.
+- A command that fails fails the job. A `prepare` that is not a string fails
+  the step; an empty one counts as absent, and `check` reports both.
+- `./configure` checks the project's dependencies on the runner, also in a
+  job that only builds the man page. The project's CI job runs the same
+  `configure`, so a missing library fails there first. A project converted to
+  the container driver (D18) configures without those checks.
+- The container legs of `ri-release-distro-packages` do not run the step:
+  they run `make` in their image, and the Containerfile prepares the tree.
+
+The step has the same text in every piece. `tests/test_prepare_step.py` finds
+every job whose script calls `make` and compares its step with the one in
+`ri-ci-man`, so a new piece that runs `make` fails the test until it carries
+the step.
 
 ## The Containerfile contract (D18)
 

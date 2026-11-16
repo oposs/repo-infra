@@ -157,6 +157,22 @@ warning. A table of short cells, such as a key and a one-word action, fits.
    restores `.DEFAULT_GOAL`, so a bare `make` still builds whatever the
    Makefile already builds by default, not the man page.
 
+   An autotools project puts the lines in its top-level `Makefile.am` and
+   ships the sources of the page in the tarball:
+
+   ```make
+   MAN_NAME = mytool
+   include $(top_srcdir)/build/man.mk
+   EXTRA_DIST = docs/manual.md build/man.mk build/man-deflist.lua
+   ```
+
+   This needs `man` v5 or later. automake warns about `:=` and `$(shell)` in
+   the fragment under `-Wportability`; a project that runs automake with
+   `-Werror` adds `-Wno-portability` to `AM_INIT_AUTOMAKE`. The fragment
+   builds in the source tree and is included from the top-level `Makefile.am`
+   only: a build in a separate directory and an include from a subdirectory
+   do not find `docs/manual.md`.
+
 2. Ignore the generated page in `.gitignore`:
 
    ```text

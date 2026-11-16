@@ -2,7 +2,7 @@
 #
 # Purpose: Build the `make dist` tarball before the merge (D28).
 # Choose: The project is autotools and ships a source tarball.
-# Supplies: ./bootstrap, configure and `make dist`.
+# Supplies: configure.ac with ./bootstrap, and `make dist`; the `prepare` key in .github/repo-infra.json when ./bootstrap and ./configure are not the preparation.
 # Produces: The artifact release-asset-source (`*.tar.gz`); list `*.tar.gz` in release_assets.
 # Call:
 #   tarball:
@@ -48,16 +48,33 @@ jobs:
           ref: ${{ inputs.ref }}
 
       # `make dist` is a container call in a repository that converted to the
-      # D18 driver, and a plain automake dist in one that did not. The same two
-      # commands cover both, so long as the engine is here.
-      - name: Install the autotools host toolchain
+      # D18 driver, and a plain automake dist in one that did not. The same
+      # preparation covers both, so long as the engine is here: the step of
+      # ri-ci-man (D39), which installs the host toolchain and runs
+      # ./bootstrap and ./configure, or the `prepare` key when the project
+      # sets one. A test pins the copies equal.
+      - name: Prepare the tree (D39)
+        env:
+          DIRECTORY: .
         run: |
+          prepare=''
+          if [ -f .github/repo-infra.json ]; then
+            prepare=$(jq -r '.prepare | if . == null then empty
+              elif type == "string" then select(test("\\S"))
+              else error("prepare must be a string") end' .github/repo-infra.json)
+          fi
+          cd "$DIRECTORY"
+          if [ -f configure.ac ]; then
           sudo apt-get update
           sudo apt-get install -y autoconf automake gettext podman
-
-      - run: ./bootstrap
-
-      - run: ./configure
+          prepare=${prepare:-./bootstrap && ./configure}
+          fi
+          if [ -z "$prepare" ]; then
+            echo "No prepare key and no configure.ac: nothing to prepare."
+            exit 0
+          fi
+          echo "Preparing the tree: $prepare"
+          bash -e -o pipefail -c "$prepare"
 
       - name: Build the distribution tarball
         run: make dist
