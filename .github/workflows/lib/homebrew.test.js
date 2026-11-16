@@ -70,6 +70,16 @@ function without(text, ...markers) {
   return lines.join('\n');
 }
 const ARM_ONLY = without(FORMULA, 'mac-x86', 'linux-x86', 'linux-arm');
+// "Formula for one platform" in references/project-shape.md: the mac-arm url
+// and sha256 at the top level, because Homebrew on Linux fails to load a
+// formula with no url it sees (#150).
+const TOP_LEVEL = (() => {
+  const lines = ARM_ONLY.split('\n');
+  const start = lines.indexOf('  on_macos do');
+  const pair = lines.slice(start + 2, start + 4).map((line) => line.replace(/^ {6}/, '  '));
+  lines.splice(start, 6, ...pair, '', '  depends_on arch: :arm64', '  depends_on :macos');
+  return lines.join('\n');
+})();
 const ENV = { BIN: 'tool', VERSION: '1.2.3', REPOSITORY: 'owner/tool', RUNNER_TEMP: '/t' };
 
 // The shape `brew bottle --json --no-rebuild` writes: one entry per formula,
@@ -367,6 +377,31 @@ test('an arm-only formula is rewritten from the arm archive alone', () => {
   assert.equal(block(text).split('sha256 cellar:').length - 1, 1);
   assert.ok(block(text).includes('arm64_sonoma'));
   assert.ok(!text.includes('# linux-'));
+});
+
+test('the top-level formula has its mac-arm url at the top level and no on_ block', () => {
+  assert.match(TOP_LEVEL, /^ {2}url "[^"]*aarch64-apple-darwin\.tar\.gz"\n {2}sha256 "0{64}" # mac-arm$/m);
+  assert.match(TOP_LEVEL, /^ {2}depends_on :macos$/m);
+  assert.ok(!/on_(macos|linux|arm|intel)/.test(TOP_LEVEL));
+});
+
+test('a top-level formula bottles from the arm archive', () => {
+  const io = fakeIo({ 'Formula/tool.rb': TOP_LEVEL, ...archives('dist', ['aarch64-apple-darwin']) });
+  assert.equal(brew.pointAtArchives(ENV, io), '/t/local-formula.rb');
+  const local = io.store.get('/t/local-formula.rb');
+  assert.match(local, /^ {2}url "file:\/\/\/w\/dist\/tool-1\.2\.3-aarch64-apple-darwin\.tar\.gz"$/m);
+  assert.ok(local.includes(digest('archive aarch64-apple-darwin')));
+});
+
+test('a top-level formula is rewritten from the arm archive', () => {
+  const io = fakeIo({ 'Formula/tool.rb': TOP_LEVEL, ...archives('artifacts', ['aarch64-apple-darwin']),
+    'bottles/0.bottle.json': JSON.stringify(ARM),
+    'artifacts/tool-1.2.3.arm64_sonoma.bottle.tar.gz': 'bottle' });
+  const text = brew.rewriteFormula(ENV, io);
+  assert.match(text, /^ {2}version "1\.2\.3"$/m);
+  assert.ok(text.includes(`  sha256 "${digest('archive aarch64-apple-darwin')}" # mac-arm\n`));
+  assert.ok(block(text).includes('arm64_sonoma'));
+  assert.match(text, /^ {2}depends_on arch: :arm64$/m);
 });
 
 test('other archives beside an arm-only formula are ignored', () => {

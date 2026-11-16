@@ -105,12 +105,14 @@ def is_home(repo_root):
     return (pathlib.Path(repo_root) / "skills/repo-infra/assets/manifest.json").is_file()
 
 
-def missing_dependencies(pieces, states, called=None):
+def missing_dependencies(pieces, states, called=None, built=frozenset()):
     """[(dependency, user)] for each requirement no piece meets. Without
     `called` only the installed pieces use others and a remote alternative
     counts as met: apply passes nothing, so it never tries to install a remote
     piece. With the remote pieces the callers call (D-a), those use others
-    too, and a remote alternative is met only when it is called."""
+    too, and a remote alternative is met only when it is called. A user in
+    `built` waits for the project's own archive build (#150), which meets a
+    requirement of remote pieces only."""
     users = [name for name, state in sorted(states.items()) if state.state != "absent"]
     if called is not None:
         users = sorted(set(users) | set(called))
@@ -123,6 +125,8 @@ def missing_dependencies(pieces, states, called=None):
     found = {}
     for name in users:
         for alternatives in pieces[name].requires:
+            if name in built and all(pieces[dep].remote for dep in alternatives):
+                continue
             if not any(met(dep) for dep in alternatives):
                 found.setdefault(alternatives[0], name)
     return sorted(found.items())
@@ -219,10 +223,17 @@ def _calls(docs, pieces):
     `repository` builds another repository's code: repo-infra's
     gate-mtuspy.yml calls ri-ci-rust for mtuspy. `directory` is "." for the
     top level."""
+    for name, directory, _all_jobs, _job in _call_jobs(docs, pieces):
+        yield name, directory
+
+
+def _call_jobs(docs, pieces):
+    """_calls, with the jobs of the calling file and the calling job."""
     files = {pathlib.PurePosixPath(piece.target).name: name
              for name, piece in pieces.items() if piece.remote}
     for doc in docs.values():
-        for job in callers.jobs(doc).values():
+        all_jobs = callers.jobs(doc)
+        for job in all_jobs.values():
             target = callers.normal_uses(job.get("uses"))
             given = job.get("with") if isinstance(job.get("with"), dict) else {}
             # The parser returns YAML's null spellings as text; the piece reads
@@ -231,7 +242,7 @@ def _calls(docs, pieces):
             if directory in ("null", "Null", "NULL", "~"):
                 directory = "."
             if target in files and not given.get("repository"):
-                yield files[target], str(pathlib.PurePosixPath(directory))
+                yield files[target], str(pathlib.PurePosixPath(directory)), all_jobs, job
 
 
 def called_pieces(docs, pieces):
@@ -240,6 +251,41 @@ def called_pieces(docs, pieces):
     reads only the top level (D-a2): repo-infra's own `container` job builds
     tests/fixtures/container-make."""
     return {name for name, directory in _calls(docs, pieces) if directory == "."}
+
+
+# The artifacts a binaries piece uploads and the release pieces read.
+RELEASE_ASSET = "release-asset-"
+
+
+def built_by_project(repo_root, docs, pieces):
+    """The remote pieces whose every top-level call waits, through needs:, for
+    a job that calls a workflow of the project's own uploading release-asset-
+    artifacts (#150): lectover builds its archives in release-build-local.yml
+    and ri-release-homebrew reads only those artifacts. A piece's file called
+    through ./ is not the project's own."""
+    files = {pathlib.PurePosixPath(piece.target).name for piece in pieces.values()
+             if piece.remote}
+    folder = pathlib.Path(repo_root) / callers.WORKFLOWS
+
+    def builds(job):
+        local = callers.local_target(job.get("uses"))
+        if local is None or local in files or not (folder / local).is_file():
+            return False
+        return RELEASE_ASSET in (folder / local).read_text(errors="replace")
+
+    verdicts = {}
+    for name, directory, all_jobs, job in _call_jobs(docs, pieces):
+        if directory != ".":
+            continue
+        seen, todo = set(), list(callers.needs(job))
+        while todo:
+            other = todo.pop()
+            if other not in seen and other in all_jobs:
+                seen.add(other)
+                todo += callers.needs(all_jobs[other])
+        met = any(builds(all_jobs[other]) for other in seen)
+        verdicts[name] = verdicts.get(name, True) and met
+    return {name for name, met in verdicts.items() if met}
 
 
 def ecosystems_below(docs, pieces):
@@ -336,7 +382,7 @@ def rendered(pieces, docs, config=None):
             for name, piece in pieces.items()}
 
 
-def piece_items(repo_root, pieces, published, called=None):
+def piece_items(repo_root, pieces, published, called=None, built=frozenset()):
     states = {name: piece_state(repo_root, piece, published.get(name, {}))
               for name, piece in pieces.items() if not piece.remote}
     items = []
@@ -363,7 +409,7 @@ def piece_items(repo_root, pieces, published, called=None):
         else:
             items.append(Item("pieces", name, "edited", edited_detail(piece, state)))
     reported = {i.name for i in items if i.state == "missing"}
-    for dep, user in missing_dependencies(pieces, states, called):
+    for dep, user in missing_dependencies(pieces, states, called, built):
         if dep in reported:
             continue
         detail = f"{user} needs it"
@@ -786,7 +832,8 @@ def run(repo_root, facts, assets=ASSETS):
     called = called_pieces(docs, pieces)
     published = load_published(assets)
     home = is_home(repo_root)
-    return (piece_items(repo_root, pieces, published, called)
+    built = built_by_project(repo_root, docs, pieces)
+    return (piece_items(repo_root, pieces, published, called, built)
             + container_make_items(repo_root, pieces, published, called)
             + ([] if home else layout_items(repo_root, pieces))
             + core_call_items(docs, pieces)

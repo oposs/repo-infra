@@ -382,8 +382,13 @@ fails in `ri-release-homebrew`.
 The template carries all four platforms. A formula may leave out `on_intel` of
 `on_macos`, `on_linux`, or one of the two blocks inside `on_linux`, each with its
 url and sha256 line. An archive of a platform the formula leaves out must not be
-built, or the release fails. The `# mac-arm` marker stays. A platform left out
-has no formula, and `brew install` on it fails with Homebrew's own message.
+built, or the release fails. The `# mac-arm` marker stays.
+
+Homebrew loads the formula on every platform and needs a url on each. On a
+platform that sees no url line, every `brew` command that loads the formula
+fails with `formula requires at least a URL` (Homebrew 7.0.13 on Linux), and a
+`depends_on` line does not help. A formula for Apple Silicon alone takes the
+shape under "Formula for one platform".
 
 ```ruby
 # Homebrew formula for <bin>. This repository is its own tap.
@@ -432,3 +437,21 @@ class <Class> < Formula
   end
 end
 ```
+
+## Formula for one platform
+
+A formula for Apple Silicon alone writes the url and sha256 line of `# mac-arm`
+at the top level instead of in `on_macos`, and refuses the other platforms with
+`depends_on`. The lines replace the `on_macos` and `on_linux` blocks of the
+template:
+
+```ruby
+  url "https://github.com/<owner>/<repo>/releases/download/v#{version}/<bin>-#{version}-aarch64-apple-darwin.tar.gz"
+  sha256 "0000000000000000000000000000000000000000000000000000000000000000" # mac-arm
+
+  depends_on arch: :arm64
+  depends_on :macos
+```
+
+`brew install` on Linux then prints `This formula requires macOS.` The refusal
+on an Intel Mac is not tested.
