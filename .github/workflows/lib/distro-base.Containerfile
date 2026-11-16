@@ -5,7 +5,8 @@
 # repos: the repositories a project expects on its release. On AlmaLinux many
 # -devel packages live in CRB and many libraries in EPEL; a project that
 # builds on Fedora would otherwise miss them on AlmaLinux. Debian, Ubuntu,
-# Fedora and Alpine need nothing added.
+# Fedora and Alpine need nothing added. `crb` calls `dnf config-manager`, which
+# comes with dnf-plugins-core; the AlmaLinux images of 2026-11-16 dropped it.
 #
 # tools: the package of the dependency detector, distro-deps.sh.
 #
@@ -15,7 +16,7 @@ FROM ${IMAGE} AS repos
 RUN . /etc/os-release; \
     case " $ID $ID_LIKE " in \
       *" rhel "*) \
-        dnf install -y epel-release \
+        dnf install -y epel-release dnf-plugins-core \
         && crb enable \
         && dnf clean all ;; \
     esac
