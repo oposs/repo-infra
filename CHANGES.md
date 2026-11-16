@@ -16,6 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `check` no longer reports `ri-release-rust-binaries missing` with "ri-release-homebrew needs it" (or "ri-release-nfpm needs it") when the job that calls the piece waits, through `needs:`, for a workflow of the repository that uploads the `release-asset-<target>` archives itself, as lectover's `release-build-local.yml` does. (#150)
+- The formula section of project-shape.md said that `brew install` on a platform a formula leaves out fails with Homebrew's own message. Homebrew fails to load such a formula with `formula requires at least a URL`; the section now shows the shape for Apple Silicon alone, url and sha256 at the top level with `depends_on arch: :arm64` and `depends_on :macos`. (#150)
 
 ## 2.15.0 - 2026-11-14
 ### New

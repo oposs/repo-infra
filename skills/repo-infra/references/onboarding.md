@@ -252,7 +252,9 @@ shipped, not versioned, not replaced by `apply`. A caller calls them, and
 
 - `ci-local.yml`: the repository's own CI jobs, called from `ci.yml`.
 - `release-build-local.yml`: the repository's own release build, called from
-  `release-build.yml`.
+  `release-build.yml`. When it uploads `release-asset-<target>` archives and
+  the job calling `ri-release-homebrew` or `ri-release-nfpm` waits for it
+  through `needs:`, `check` counts it in place of a binaries piece.
 - `action-test.yml`: the test of a GitHub Action, which runs the action with
   `uses: ./` and real inputs, called from `ci.yml`.
 

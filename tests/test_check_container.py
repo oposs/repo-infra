@@ -58,7 +58,8 @@ def called(root):
 def rows(root):
     docs = check.callers.read_workflows(root)
     pieces = check.rendered(PIECES, docs)
-    items = check.piece_items(root, pieces, PUBLISHED, check.called_pieces(docs, pieces))
+    items = check.piece_items(root, pieces, PUBLISHED, check.called_pieces(docs, pieces),
+                              check.built_by_project(root, docs, pieces))
     return [(i.name, i.state, i.detail) for i in items]
 
 
@@ -133,6 +134,62 @@ def test_a_remote_alternative_is_met_only_when_called(tmp_path):
     root = repo(tmp_path / "b", "ri-release-nfpm", "ri-release-go-binaries",
                 pieces=["man", "man-lua"])
     assert missing(root) == []
+
+
+RELEASE_BUILD = """\
+on: workflow_call
+jobs:
+  archives:
+    uses: ./.github/workflows/release-build-local.yml
+  prepared:
+    needs: archives
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+  homebrew:
+    needs: NEEDS
+    uses: oposs/repo-infra/.github/workflows/ri-release-homebrew.yml@v2
+"""
+LOCAL_BUILD = """\
+on: workflow_call
+jobs:
+  archives:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-asset-${{ matrix.target }}
+"""
+
+
+def project_built(tmp_path, needs, local=LOCAL_BUILD):
+    root = tmp_path / "repo"
+    install(root, ".github/workflows/release-build.yml",
+            RELEASE_BUILD.replace("NEEDS", needs))
+    install(root, ".github/workflows/release-build-local.yml", local)
+    return root
+
+
+@pytest.mark.parametrize("needs", ["archives", "prepared", "[prepared]"],
+                         ids=["directly", "through-a-job", "as-a-list"])
+def test_a_project_build_the_caller_waits_for_meets_the_binaries_requirement(
+        tmp_path, needs):
+    """#150: lectover builds its archives in its own release-build-local.yml,
+    with the release-asset-<target> artifacts the homebrew piece reads."""
+    assert missing(project_built(tmp_path, needs)) == []
+
+
+def test_a_project_build_the_caller_does_not_wait_for_does_not_count(tmp_path):
+    root = project_built(tmp_path, "[]")
+    ((name, state, detail),) = missing(root)
+    assert (name, state) == ("ri-release-rust-binaries", "missing")
+    assert detail.startswith("ri-release-homebrew needs it; no caller job calls")
+
+
+def test_a_local_workflow_without_release_assets_does_not_count(tmp_path):
+    root = project_built(tmp_path, "archives",
+                         local=LOCAL_BUILD.replace("release-asset-", "docs-"))
+    assert [r[:2] for r in missing(root)] == [("ri-release-rust-binaries", "missing")]
 
 
 def test_missing_dependencies_without_called_keeps_remote_alternatives_met(tmp_path):
