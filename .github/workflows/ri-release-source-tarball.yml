@@ -74,7 +74,7 @@ jobs:
             exit 0
           fi
           echo "Preparing the tree: $prepare"
-          bash -e -c "$prepare"
+          bash -e -o pipefail -c "$prepare"
 
       - name: Build the distribution tarball
         run: make dist

@@ -155,7 +155,7 @@ jobs:
             exit 0
           fi
           echo "Preparing the tree: $prepare"
-          bash -e -c "$prepare"
+          bash -e -o pipefail -c "$prepare"
 
       - name: Build the man pages
         if: ${{ steps.detect.outputs.present == 'true' }}

@@ -70,7 +70,7 @@ jobs:
             exit 0
           fi
           echo "Preparing the tree: $prepare"
-          bash -e -c "$prepare"
+          bash -e -o pipefail -c "$prepare"
 
       # pandoc converts the manual; man-db and groff-base render the result,
       # which is the only way to find out whether roff can lay the page out.

@@ -146,9 +146,10 @@ the runner therefore runs one step, `Prepare the tree (D39)`, before its first
 
 - `prepare` in `.github/repo-infra.json` is one shell command, for example
   `"prepare": "cmake -B build"`. The step reads the key at the top of the
-  checkout and runs the command with `bash -e -c` in the directory the piece
-  runs `make` in: the top, or `directory` in `ri-ci-container` and
-  `ri-release-distro-packages`.
+  checkout and runs the command with `bash -e -o pipefail -c` in the directory
+  the piece runs `make` in: the top, or `directory` in `ri-ci-container` and
+  `ri-release-distro-packages`. A failure inside a pipe, such as
+  `cmake -B build | tee log`, fails the step.
 - The host toolchain is the fixed line of D16: autoconf, automake, gettext and
   podman. A project with `configure.ac` and its own `prepare` still gets it,
   so the command can call `./bootstrap`.

@@ -112,6 +112,14 @@ def test_a_failing_prepare_fails_the_step(tmp_path):
     assert not (done.root / "reached").exists()
 
 
+def test_a_failure_inside_a_pipe_fails_the_step(tmp_path):
+    # `cmake -B build | tee log` must not turn a failed preparation green.
+    done = run_prepare(tmp_path, prepare_step(MAN_PIECE),
+                       _config("false | cat\ntouch reached"))
+    assert done.returncode != 0
+    assert not (done.root / "reached").exists()
+
+
 def test_a_failing_bootstrap_fails_the_step(tmp_path):
     files = {**AUTOTOOLS, "bootstrap": "#!/bin/sh\nexit 3\n"}
     done = run_prepare(tmp_path, prepare_step(MAN_PIECE), files)
