@@ -50,8 +50,8 @@ def build_step():
 def test_nfpm_is_pinned_by_version_and_sha256():
     install = steps()["Install nfpm"]
     assert install["env"] == {
-        "NFPM_VERSION": "2.47.0",
-        "NFPM_SHA256": "0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783"}
+        "NFPM_VERSION": "2.49.0",
+        "NFPM_SHA256": "2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7"}
     assert "sha256sum -c -" in install["run"]
 
 
