@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- `ri-publish-gitea` stopped after 20 minutes, with the release still a draft, when Gitea needed minutes to sign each rpm, and a re-run of the job was just as slow because it sent every package Gitea already had again. The job now asks Gitea first and skips a package that is already stored, with a notice such as `already uploaded; name, version-release and architecture match`, uploads the .deb and .apk files before the rpms, and has 60 minutes. (#173)
 
 ## 2.16.1 - 2026-11-16
 ### Fixed

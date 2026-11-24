@@ -423,3 +423,39 @@ test('a 409 for an apk whose file name both architectures share accepts any matc
   assert.equal(v.ok, false);
   assert.match(v.message, /2 file\(s\) of this name, none of them this asset \(x86_64, v3\.24\)/);
 });
+
+
+// #173: a re-run sent every stored rpm again, and Gitea answered the 409 only
+// after it had taken the whole body (about 4 min per signed rpm). The files
+// listing is asked first; a file the 409 verdict would accept is not sent.
+test('a file the listing already holds, as the 409 verdict would accept it, is skipped', () => {
+  const pkg = rpm('tool-1.0.0~rc.1-1.x86_64.rpm');
+  const v = g.storedAlready(pkg, 'abc', [{ name: pkg.file, sha256: 'signed' }]);
+  assert.equal(v.ok, true);
+  assert.match(v.message, /already uploaded/);
+  const d = deb('tool', '1.4.0~trixie-1');
+  assert.equal(g.storedAlready(d, 'abc', [{ name: d.file, sha256: 'abc' }]).ok, true);
+});
+
+test('a file the listing does not hold, or no listing, is uploaded', () => {
+  const d = deb('tool', '1.4.0~trixie-1');
+  assert.equal(g.storedAlready(d, 'abc', []), null);
+  assert.equal(g.storedAlready(d, 'abc', [{ name: 'other.deb', sha256: 'abc' }]), null);
+  assert.equal(g.storedAlready(d, 'abc', null), null);
+  assert.equal(g.storedAlready(d, 'abc', { message: 'package does not exist' }), null);
+});
+
+test('a stored file the 409 verdict would refuse is still sent, so the 409 decides', () => {
+  // The other architecture of an apk shares the stored name; a different deb
+  // under the same version fails on its 409, not here.
+  const pkg = g.apkPackage(routed(APK_NAME), APK_NAME).pkg;
+  assert.equal(g.storedAlready(pkg, 'abc', [{ name: pkg.file, sha256: 'other-arch' }]), null);
+  const d = deb('tool', '1.4.0~trixie-1');
+  assert.equal(g.storedAlready(d, 'abc', [{ name: d.file, sha256: 'def' }]), null);
+});
+
+test('debs and apks go up before rpms, otherwise in release order', () => {
+  const e = (kind, n) => ({ pkg: { kind }, n });
+  const order = g.uploadOrder([e('rpm', 1), e('debian', 2), e('alpine', 3), e('rpm', 4), e('debian', 5)]);
+  assert.deepEqual(order.map((x) => x.n), [2, 5, 3, 1, 4]);
+});
