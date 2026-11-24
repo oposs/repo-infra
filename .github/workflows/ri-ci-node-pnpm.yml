@@ -3,7 +3,9 @@
 # Purpose: Install with pnpm, then check, test and build.
 # Choose: package.json and pnpm-lock.yaml, and no other lockfile, at the top or in
 #   one directory named by `directory`.
-# Supplies: The package.json scripts check, test and build.
+# Supplies: The package.json scripts check, test and build. The Node version
+#   comes from package.json (engines.node, volta.node or devEngines.runtime);
+#   without one the job takes the current LTS.
 # Call:
 #   node:
 #     uses: oposs/repo-infra/.github/workflows/ri-ci-node-pnpm.yml@v2
@@ -52,9 +54,36 @@ jobs:
       # package.json, and must run before setup-node so `cache: pnpm` finds it.
       - run: corepack enable
 
+      # The project names its Node version in package.json, and setup-node
+      # reads it there: volta.node, the node entry of devEngines.runtime,
+      # engines.node, volta.extends, in that order. Every project ran on a
+      # hard-coded Node 22 before, and one that wanted Node 26 could not say
+      # so. With none of these setup-node only warns and keeps the runner
+      # image's Node, which changes under the project, so the current LTS is
+      # asked for instead. setup-node reads the file from the repository root.
+      - name: Choose the Node version
+        id: node
+        env:
+          DIRECTORY: ${{ inputs.directory }}
+        run: |
+          found=$(jq -r '[.volta.node,
+              ([.devEngines.runtime // empty] | flatten[]
+                | select(type == "object" and ((.name // "") | ascii_downcase) == "node")
+                | .version),
+              .engines.node, .volta.extends]
+            | map(select(. != null and . != "")) | .[0] // empty' package.json)
+          if [ -n "$found" ]; then
+            echo "package.json names Node $found."
+            echo "file=$DIRECTORY/package.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "package.json names no Node version: the current LTS."
+            echo "version=lts/*" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: ${{ steps.node.outputs.version }}
+          node-version-file: ${{ steps.node.outputs.file }}
           cache: pnpm
           cache-dependency-path: ${{ inputs.directory }}/pnpm-lock.yaml
 

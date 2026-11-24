@@ -204,7 +204,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-ci-node-pnpm.yml@v2`.
 
 **Choose it when:** package.json and pnpm-lock.yaml, and no other lockfile, at the top or in one directory named by `directory`.
 
-**The repository supplies:** The package.json scripts check, test and build.
+**The repository supplies:** The package.json scripts check, test and build. The Node version comes from package.json (engines.node, volta.node or devEngines.runtime); without one the job takes the current LTS.
 
 | Input | Type | Required | Default | Description |
 |---|---|---|---|---|
