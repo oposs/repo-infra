@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+- `ri-ci-node-pnpm` runs the Node version that `package.json` names in `engines.node`, `volta.node` or `devEngines.runtime`, for example `"engines": {"node": ">=26"}` for Node 26. Before, every project ran on Node 22, whatever it asked for. A `package.json` that names no Node version gets the current LTS instead of Node 22.
 
 ### Changed
 
