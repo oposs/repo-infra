@@ -1,6 +1,6 @@
 [project]
 name = "repo-infra"
-version = "2.16.2"
+version = "2.17.0"
 description = "Bring a repository's release, protection, CI and documentation infrastructure up to the current standard."
 requires-python = ">=3.11"
 
