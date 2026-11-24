@@ -112,6 +112,24 @@ def test_every_job_has_a_timeout():
     assert isinstance(job()["timeout-minutes"], int)
 
 
+def test_the_timeout_leaves_room_for_slow_rpm_signing():
+    # #173: Gitea took up to 4.4 min per signed rpm; 20 min ran out after six.
+    assert job()["timeout-minutes"] >= 60
+
+
+def test_the_listing_is_asked_before_each_upload():
+    # #173: a file already stored is not sent again on a re-run.
+    s = script()
+    assert "gitea.storedAlready" in s
+    assert s.index("gitea.storedAlready") < s.index("method: 'PUT'")
+
+
+def test_debs_and_apks_go_up_before_rpms():
+    s = script()
+    assert "gitea.uploadOrder(packages)" in s
+    assert s.index("gitea.uploadOrder(packages)") < s.index("method: 'PUT'")
+
+
 def test_every_deb_is_placed_in_a_distribution_before_any_upload():
     # A .deb that no glob or several globs of debian.distributions match stops
     # the job before the first file goes up, not halfway through the release.

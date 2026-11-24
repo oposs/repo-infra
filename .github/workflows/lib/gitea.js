@@ -323,6 +323,30 @@ function conflictVerdict(pkg, assetSha256, files) {
   };
 }
 
+// #173: before a file goes up, the files listing is asked. A re-run sent
+// every stored file again, and Gitea answers the 409 only after it has taken
+// the whole body -- about 4 min for a signed rpm. A file the 409 verdict
+// would accept is skipped with that verdict. Anything else is sent, and its
+// 409, if any, decides: no listing (404 for a version Gitea lacks), no file
+// of this name, or a stored copy the verdict refuses, such as the other
+// architecture of an apk.
+function storedAlready(pkg, assetSha256, files) {
+  if (!Array.isArray(files) || !files.some((f) => f.name === pkg.file)) return null;
+  const verdict = conflictVerdict(pkg, assetSha256, files);
+  return verdict.ok ? verdict : null;
+}
+
+// Gitea signs each rpm on upload, which took up to 4.4 min a file on
+// 2026-11-24, against seconds for a .deb or .apk (#173). Debs and apks go
+// first, so a slow rpm cannot keep them out of their registries.
+const UPLOAD_RANK = { debian: 0, alpine: 1, rpm: 2 };
+function uploadOrder(entries) {
+  return entries
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => (UPLOAD_RANK[a.e.pkg.kind] - UPLOAD_RANK[b.e.pkg.kind]) || (a.i - b.i))
+    .map(({ e }) => e);
+}
+
 // fetch for one package file. A network error (fetch throws; Gitea gave no
 // HTTP answer) is retried once after waitMs: on 2026-11-02 a slow Gitea
 // dropped a .deb upload with "TypeError: fetch failed" and nothing else.
@@ -348,5 +372,5 @@ async function fetchRetry(fetchFn, url, init, file, { attempts = 2, waitMs = 100
 
 module.exports = {
   packageConfig, globMatches, debianDistribution, rpmGroup, debPackage, rpmPackage, apkPackage, isAlpineApk, uploadUrl, filesUrl, missingCredentials, conflictVerdict,
-  fetchRetry,
+  storedAlready, uploadOrder, fetchRetry,
 };

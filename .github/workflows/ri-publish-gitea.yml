@@ -59,7 +59,8 @@ jobs:
   publish-gitea-packages:
     name: Publish packages to Gitea
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Gitea signs each rpm on upload, up to ~5 min a file (#173).
+    timeout-minutes: 60
     # write, not read: a draft release and its assets are invisible to a token
     # that cannot push.
     permissions:
@@ -191,9 +192,29 @@ jobs:
             const authorization = `Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
             core.setSecret(authorization);
 
-            for (const { asset, pkg, local } of packages) {
+            // Debs and apks first: a slow rpm must not hold them back (#173).
+            for (const { asset, pkg, local } of gitea.uploadOrder(packages)) {
               const body = fs.readFileSync(local);
               const sha256 = crypto.createHash('sha256').update(body).digest('hex');
+
+              // A file Gitea already holds is not sent again: on a re-run
+              // Gitea answered each stored rpm's 409 only after the whole
+              // body, minutes per file (#173). No listing, or one without
+              // this file, means upload.
+              let before;
+              try {
+                before = await gitea.fetchRetry(fetch, gitea.filesUrl(cfg, pkg),
+                  { headers: { authorization } }, asset.name);
+              } catch (err) {
+                core.setFailed(err.message);
+                return;
+              }
+              const held = before.ok ? await before.json().catch(() => null) : null;
+              const stored = gitea.storedAlready(pkg, sha256, held);
+              if (stored) {
+                core.notice(stored.message);
+                continue;
+              }
 
               // fetchRetry retries a network error once and then throws,
               // naming the file; the catch turns that into the job's error.
