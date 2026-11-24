@@ -12,6 +12,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### New
+
+### Changed
+
+### Fixed
+
+## 2.16.1 - 2026-11-16
+### Fixed
+- `ri-release-distro-packages`: the AlmaLinux base stage installs `dnf-plugins-core` before `crb enable`. The `almalinux:9` and `almalinux:10` images of 2026-11-16 no longer ship it, and every AlmaLinux leg failed with "Please run: dnf install 'dnf-command(config-manager)'". The AlmaLinux install snippet in project-shape.md installs it too.
+
+## 2.16.0 - 2026-11-16
+### New
 - The `prepare` key in `.github/repo-infra.json` names a shell command, for example `"prepare": "cmake -B build"`, that every piece runs before its first `make` on the runner, in the directory it runs `make` in. It replaces `./bootstrap && ./configure` in a repository with `configure.ac`, and `check` reports a value that is not a non-empty command. These pieces now read `.github/repo-infra.json`, so a file that is not valid JSON, or a `prepare` that is not text, stops their job with a `jq` error such as `prepare must be a string`.
 
 ### Changed
