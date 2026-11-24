@@ -16,6 +16,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 ### Fixed
+- The release section that **Create release PR** writes into `CHANGES.md` had no blank line after the `## X.Y.Z - date` line and after each `### New`, `### Changed` or `### Fixed` heading, unlike the `[Unreleased]` section above it. The section now has these blank lines. (#163)
 
 ## 2.16.2 - 2026-11-24
 ### Fixed

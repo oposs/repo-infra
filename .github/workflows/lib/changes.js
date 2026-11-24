@@ -99,9 +99,12 @@ function roll(text, version, date) {
   }
 
   const skeleton = [UNRELEASED_HEADING, '', '### New', '', '### Changed', '', '### Fixed', ''];
-  const released = [`## ${version} - ${date}`];
+  // A blank line after each heading, as in the skeleton: subsections() trims
+  // each body, and the released section came out without them (#163,
+  // oposs/thinfloe#12).
+  const released = [`## ${version} - ${date}`, ''];
   for (const s of kept) {
-    released.push(s.heading, s.body, '');
+    released.push(s.heading, '', s.body, '');
   }
 
   return [
