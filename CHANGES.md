@@ -14,9 +14,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### New
 
 ### Changed
+
+### Fixed
+
+## 2.17.1 - 2026-11-25
+
+### Changed
+
 - `ri-release-nfpm` and `ri-release-distro-packages` build with nfpm 2.49.0 instead of 2.47.0. 2.48.0 replaced nfpm's rpm writer, and 2.49.0 fixes two security advisories (GHSA-cfgx-mprf-xh64, GHSA-839m-5qhj-w4rm).
 
 ### Fixed
+
 - Every Alpine package of `ri-release-distro-packages` with a `type: tree` entry in `nfpm.yaml` failed its install check with `v2 package format error` (`package file format error` on apk-tools 2), because nfpm 2.47.0 wrote the directory modes of a tree in a tar format apk refuses (goreleaser/nfpm#1112). nfpm 2.49.0 writes them correctly.
 
 ## 2.17.0 - 2026-11-24
