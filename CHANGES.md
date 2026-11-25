@@ -19,6 +19,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 - Every Alpine package of `ri-release-distro-packages` with a `type: tree` entry in `nfpm.yaml` failed its install check with `v2 package format error` (`package file format error` on apk-tools 2), because nfpm 2.47.0 wrote the directory modes of a tree in a tar format apk refuses (goreleaser/nfpm#1112). nfpm 2.49.0 writes them correctly.
 
+## 2.17.0 - 2026-11-24
+
+### New
+
+- `ri-ci-node-pnpm` runs the Node version that `package.json` names in `engines.node`, `volta.node` or `devEngines.runtime`, for example `"engines": {"node": ">=26"}` for Node 26. Before, every project ran on Node 22, whatever it asked for. A `package.json` that names no Node version gets the current LTS instead of Node 22.
+
+### Fixed
+
+- The release section that **Create release PR** writes into `CHANGES.md` had no blank line after the `## X.Y.Z - date` line and after each `### New`, `### Changed` or `### Fixed` heading, unlike the `[Unreleased]` section above it. The section now has these blank lines. (#163)
+
+## 2.16.2 - 2026-11-24
+### Fixed
+- `ri-publish-gitea` stopped after 20 minutes, with the release still a draft, when Gitea needed minutes to sign each rpm, and a re-run of the job was just as slow because it sent every package Gitea already had again. The job now asks Gitea first and skips a package that is already stored, with a notice such as `already uploaded; name, version-release and architecture match`, uploads the .deb and .apk files before the rpms, and has 60 minutes. (#173)
+
 ## 2.16.1 - 2026-11-16
 ### Fixed
 - `ri-release-distro-packages`: the AlmaLinux base stage installs `dnf-plugins-core` before `crb enable`. The `almalinux:9` and `almalinux:10` images of 2026-11-16 no longer ship it, and every AlmaLinux leg failed with "Please run: dnf install 'dnf-command(config-manager)'". The AlmaLinux install snippet in project-shape.md installs it too.

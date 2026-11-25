@@ -67,7 +67,7 @@ test('roll refuses to release an empty Unreleased section', () => {
 test('roll moves the content into a dated section', () => {
   const out = changes.roll(FILLED, '1.3.0', '2026-08-17');
   assert.match(out, /^## 1\.3\.0 - 2026-08-17$/m);
-  assert.match(out, /## 1\.3\.0 - 2026-08-17\n### New\n- a new thing/);
+  assert.match(out, /## 1\.3\.0 - 2026-08-17\n\n### New\n\n- a new thing/);
 });
 
 test('roll drops subsections that had no entries', () => {
@@ -121,9 +121,64 @@ test('roll merges subsections that share a heading, in order', () => {
   const released = out.split('## 1.3.0 - 2026-08-17')[1].split('## 1.2.3')[0];
   assert.equal(released.match(/### New/g).length, 1);
   assert.equal(released.match(/### Fixed/g).length, 1);
-  assert.match(released, /### New\n- newer feature\n- older feature\n/);
-  assert.match(released, /### Fixed\n- newer fix\n- older fix\n/);
+  assert.match(released, /### New\n\n- newer feature\n- older feature\n/);
+  assert.match(released, /### Fixed\n\n- newer fix\n- older fix\n/);
   assert.ok(released.indexOf('### New') < released.indexOf('### Fixed'));
+});
+
+test('roll writes the released section in the layout of the skeleton (#163)', () => {
+  // oposs/thinfloe#12 (v4.3.0): the rolled section lost the blank line after
+  // "## 4.3.0 - ..." and after each "### ...", while the skeleton above it and
+  // the sections below it had them.
+  const written = [
+    '## [Unreleased]',
+    '',
+    '### New',
+    '',
+    '- a new thing',
+    '',
+    '### Changed',
+    '',
+    '### Fixed',
+    '',
+    '- a fixed thing',
+    '- another fix',
+    '',
+    '## 1.2.3 - 2026-08-01',
+    '',
+    '### New',
+    '',
+    '- an older thing',
+    '',
+  ].join('\n');
+  const out = changes.roll(written, '1.3.0', '2026-08-17');
+  assert.equal(out, [
+    '## [Unreleased]',
+    '',
+    '### New',
+    '',
+    '### Changed',
+    '',
+    '### Fixed',
+    '',
+    '## 1.3.0 - 2026-08-17',
+    '',
+    '### New',
+    '',
+    '- a new thing',
+    '',
+    '### Fixed',
+    '',
+    '- a fixed thing',
+    '- another fix',
+    '',
+    '## 1.2.3 - 2026-08-01',
+    '',
+    '### New',
+    '',
+    '- an older thing',
+    '',
+  ].join('\n'));
 });
 
 test('rolling twice is possible: the result is still parseable', () => {
