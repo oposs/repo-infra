@@ -19,3 +19,9 @@ contents:
     dst: /usr/bin/hello
     file_info:
       mode: 0755
+  # A tree entry: nfpm 2.47.0 wrote its directory modes in a tar header
+  # apk-tools refuses, and every Alpine install failed with "v2 package
+  # format error" (goreleaser/nfpm#1112).
+  - src: ${STAGE}/usr/share/hello
+    dst: /usr/share/hello
+    type: tree

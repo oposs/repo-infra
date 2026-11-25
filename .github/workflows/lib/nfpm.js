@@ -83,8 +83,9 @@ function expand(template, values, config) {
   return template.replace(NAME, (_, name) => values[name]);
 }
 
-// nfpm 2.47.0 ignores SOURCE_DATE_EPOCH, so MTIME carries the same instant
-// for the config's mtime: field.
+// nfpm (2.47.0 to 2.49.0) keeps the time of each source file even with
+// SOURCE_DATE_EPOCH set, so MTIME carries the same instant for the config's
+// mtime: field.
 function rfc3339(epoch) {
   return new Date(Number(epoch) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }

@@ -16,5 +16,8 @@ check: hello
 install: hello
 	install -d $(DESTDIR)/usr/bin
 	install -m 0755 hello $(DESTDIR)/usr/bin/hello
+	install -d $(DESTDIR)/usr/share/hello/examples
+	printf 'hello\n' > $(DESTDIR)/usr/share/hello/greeting.txt
+	printf 'hello again\n' > $(DESTDIR)/usr/share/hello/examples/again.txt
 
 .PHONY: all check install
