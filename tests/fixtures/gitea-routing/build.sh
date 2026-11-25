@@ -1,6 +1,7 @@
 #!/bin/sh
-# Rebuilds the packages next to this file with nfpm 2.47.0 (the pin in
-# .github/workflows/ri-release-nfpm.yml). Usage: NFPM=/path/to/nfpm ./build.sh
+# Rebuilds the packages next to this file with nfpm (the pin in
+# .github/workflows/ri-release-nfpm.yml); the ones here were built with
+# nfpm 2.47.0. Usage: NFPM=/path/to/nfpm ./build.sh
 # Each package holds one tiny file; the version forms are the ones
 # ri-release-distro-packages sets (deb <v>~<codename>, rpm release 1.<dist>,
 # apk release 0 with the alpine<major.minor> part in the file name).

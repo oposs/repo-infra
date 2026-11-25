@@ -10,7 +10,8 @@ arch: "${ARCH}"
 platform: linux
 version: "${VERSION}"
 release: "1"
-# nfpm 2.47.0 ignores SOURCE_DATE_EPOCH, so the timestamp is set here.
+# nfpm (2.47.0 to 2.49.0) keeps the time of each source file even with
+# SOURCE_DATE_EPOCH set, so the timestamp is set here.
 mtime: "${MTIME}"
 section: net
 priority: optional
