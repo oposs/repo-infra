@@ -30,7 +30,11 @@ function noteDir(text) {
     const m = NOTE_RE.exec(line);
     if (!m) continue;
     const reason = refusedDir(m[1]);
-    if (reason) throw new Error(`Changelog fragments directory '${m[1]}' ${reason}`);
+    if (reason) {
+      // Marked so a caller can tell a refused note from a fault of its own.
+      throw Object.assign(new Error(`Changelog fragments directory '${m[1]}' ${reason}`),
+        { refusedNote: true });
+    }
     return m[1];
   }
   return null;
@@ -229,7 +233,11 @@ function fragmentVerdict({ dir, baseText, headText, files, fragmentTexts, untagg
   if (switching) return { ok: true, message: `CHANGES.md switches to fragments in ${dir}/.` };
   if (md.removed) return { ok: true, message: `${md.removed} is removed and its entries are back in fragments.` };
   if (touched === 0) return { ok: true, message: 'CHANGES.md: only released sections changed.' };
-  return { ok: true, message: `${touched} changelog ${touched === 1 ? 'fragment' : 'fragments'} under ${dir}/ follow the rules.` };
+  const one = touched === 1;
+  return {
+    ok: true,
+    message: `${touched} changelog ${one ? 'fragment' : 'fragments'} under ${dir}/ ${one ? 'follows' : 'follow'} the rules.`,
+  };
 }
 
 module.exports = {

@@ -112,20 +112,30 @@ jobs:
             // of the base branch: listFiles diffs against the merge base, and a
             // pull request opened before the switch keeps the rules it was
             // written against. The classic rules still compare with the tip.
-            const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
-              owner, repo, basehead: `${pr.base.ref}...${pr.head.sha}`,
-            });
-            const mergeBaseSha = compared.merge_base_commit.sha;
+            // Branches with no common history have no merge base, and the
+            // compare answers 404; the base tip then stands in for it.
+            let mergeBaseSha = null;
+            try {
+              const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
+                owner, repo, basehead: `${pr.base.ref}...${pr.head.sha}`,
+              });
+              mergeBaseSha = compared.merge_base_commit.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
             const baseText = await readOptional('CHANGES.md', pr.base.sha);
-            const mergeBaseText = await readOptional('CHANGES.md', mergeBaseSha);
+            const mergeBaseText = mergeBaseSha === null
+              ? baseText
+              : await readOptional('CHANGES.md', mergeBaseSha);
             const headText = await readOptional('CHANGES.md', pr.head.sha);
 
             // A refused note throws here; changelogVerdict reads it again and
-            // turns it into the failure message.
+            // turns it into the failure message. Any other error is a fault.
             const dirOf = (text) => {
               try {
                 return { dir: text === null ? null : fragments.noteDir(text) };
               } catch (error) {
+                if (!error.refusedNote) throw error;
                 return { refused: true };
               }
             };

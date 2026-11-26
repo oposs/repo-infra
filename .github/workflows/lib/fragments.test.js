@@ -106,3 +106,20 @@ test('fragmentProblem refuses an entry line without text', () => {
 test('countEntries counts top-level list items only', () => {
   assert.equal(fragments.countEntries(['### New', '', '- a', '  - nested', '  more', '- b', 'prose']), 2);
 });
+
+test('a refused note is marked as such', () => {
+  assert.throws(() => fragments.noteDir('# C\n\nChangelog fragments: `../x`\n'),
+    (e) => e.refusedNote === true);
+});
+
+test('the pass message agrees with the number of fragments', () => {
+  const run = (names) => fragments.fragmentVerdict({
+    dir: 'CHANGES.d', baseText: '# C\n', headText: '# C\n',
+    files: names.map((n) => ({ filename: `CHANGES.d/new/${n}`, status: 'added' })),
+    fragmentTexts: Object.fromEntries(names.map((n) => [`CHANGES.d/new/${n}`, '- x\n'])),
+    untaggedTop: null,
+  }).message;
+  assert.equal(run(['20261126-1200-ab12-a.md']), '1 changelog fragment under CHANGES.d/ follows the rules.');
+  assert.equal(run(['20261126-1200-ab12-a.md', '20261126-1200-ab12-b.md']),
+    '2 changelog fragments under CHANGES.d/ follow the rules.');
+});

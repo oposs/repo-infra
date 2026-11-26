@@ -28,10 +28,13 @@ def job():
 # the library from repo-infra's commit, which no consumer pull request changes.
 def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), current_labels=None,
          statuses=(), behind=0, head_changes=SAME, base_changes=SAME, merge_changes=None,
-         files=(), fragments=None, tags=(), tree=(), outputs=False):
+         files=(), fragments=None, tags=(), tree=(), truncated=False, compare_status=None,
+         outputs=False):
     """The failures of ri-changelog's step; with `outputs`, also what it set and
     the API calls it made. The merge base is 'm'; `fragments` maps a path to its
-    text at head, `tags` names the tags that exist, `tree` lists the paths at head."""
+    text at head, `tags` names the tags that exist, `tree` lists the paths at head
+    (`truncated` as the API flags a cut listing), and `compare_status` makes the
+    compare fail with that status."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -57,6 +60,8 @@ const statuses = %s;
 const files = %s;
 const tags = %s;
 const tree = %s;
+const truncated = %s;
+const compareStatus = %s;
 const failures = []; const outputs = {}; const calls = [];
 const notFound = () => { const e = new Error('Not Found'); e.status = 404; return e; };
 const github = {
@@ -87,11 +92,12 @@ const github = {
     getTree: async ({ tree_sha, recursive }) => {
       calls.push('getTree');
       if (tree_sha !== 'h' || !recursive) throw new Error(`tree ${tree_sha} ${recursive}`);
-      return { data: { tree: tree.map((path) => ({ path, type: 'blob' })), truncated: false } }; },
+      return { data: { tree: tree.map((path) => ({ path, type: 'blob' })), truncated } }; },
   }, repos: {
     listCommitStatusesForRef: 'statuses',
     compareCommitsWithBasehead: async ({ basehead }) => {
       calls.push('compare');
+      if (compareStatus !== null) { const e = new Error('compare'); e.status = compareStatus; throw e; }
       if (basehead !== 'main...h') throw new Error(`basehead ${basehead}`);
       return { data: { behind_by: %d, merge_base_commit: { sha: 'm' } } }; },
     getContent: async ({ path, ref }) => {
@@ -108,7 +114,8 @@ const context = { repo: { owner: 'o', repo: 'r' }, payload: { pull_request: %s }
 %s
 })().then(() => console.log(JSON.stringify({ failures, outputs, calls })));
 """ % (json.dumps(contents), json.dumps(current), json.dumps(list(statuses)),
-       json.dumps(list(files)), json.dumps(list(tags)), json.dumps(list(tree)), behind,
+       json.dumps(list(files)), json.dumps(list(tags)), json.dumps(list(tree)),
+       json.dumps(truncated), json.dumps(compare_status), behind,
        json.dumps(pr), script)
     path = tmp_path / "gate.js"
     path.write_text(harness, encoding="utf-8")
@@ -347,3 +354,23 @@ def test_a_refused_note_fails_without_an_error(tmp_path):
     head = FRAG.replace("`CHANGES.d`", "`../x`")
     out = fragment_gate(tmp_path, head_changes=head)
     assert len(out["failures"]) == 1 and "contains '..'" in out["failures"][0]
+
+
+def test_a_truncated_tree_fails_rather_than_undercounting(tmp_path):
+    out = fragment_gate(tmp_path, head_changes=MORE, tree=["README.md"], truncated=True)
+    assert out["failures"] == [
+        "The tree at head is too large to count the fragments left under CHANGES.d/; "
+        "the API truncated it."]
+
+
+def test_branches_without_common_history_fall_back_to_the_base_tip(tmp_path):
+    # The compare answers 404 when base and head share no commit.
+    assert gate(tmp_path, head_ref="fix/x", login="oetiker", head_changes=MORE,
+                compare_status=404) == []
+    failures = gate(tmp_path, head_ref="fix/x", login="oetiker", compare_status=404)
+    assert len(failures) == 1 and "adds nothing" in failures[0]
+
+
+def test_the_pass_message_of_one_fragment_is_singular(tmp_path):
+    out = fragment_gate(tmp_path, files=ADDED, fragments={FRAGMENT: "- x\n"})
+    assert out["outputs"]["message"] == "1 changelog fragment under CHANGES.d/ follows the rules."
