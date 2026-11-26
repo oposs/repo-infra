@@ -458,7 +458,7 @@ refused ("the switch to fragments is not finished").
   switch is judged by the classic rules for the same reason. The cases:
   - **Note at both:** the header and the list of `## ` headings must stay as
     they are; text inside a released section may change (a typo, a wrong issue
-    tag). Every added, changed or renamed file under `<dir>` must follow the
+    tag) but may not gain an entry, which the next release would leave out. Every added, changed or renamed file under `<dir>` must follow the
     rules above. The pull request needs one added, changed or renamed fragment,
     or a change to released text only.
   - **Deleting a fragment** fails, since another pull request added it. A
