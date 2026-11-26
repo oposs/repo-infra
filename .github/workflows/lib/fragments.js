@@ -173,13 +173,34 @@ function countEntries(lines) {
   return lines.filter((l) => l.startsWith('- ')).length;
 }
 
+// Entry count per '## ' heading of the lines below the header. A released
+// section that gained an entry at head is one whose entry will never reach a
+// release: git merges a line added under [Unreleased] into the section above it
+// without a conflict once main has rolled.
+function sectionCounts(rest) {
+  const counts = new Map();
+  let heading = null;
+  for (const l of rest) {
+    if (l.startsWith('## ')) {
+      heading = l;
+      counts.set(heading, counts.get(heading) ?? 0);
+    } else if (heading !== null && l.startsWith('- ')) counts.set(heading, counts.get(heading) + 1);
+  }
+  return counts;
+}
+
+function grownSections(baseRest, headRest) {
+  const before = sectionCounts(baseRest);
+  return [...sectionCounts(headRest)].filter(([h, n]) => n > (before.get(h) ?? 0)).map(([h]) => h);
+}
+
 const sameLines = (a, b) => a.length === b.length && a.every((l, i) => l === b[i]);
 
 // What CHANGES.md may do in a fragment-mode pull request: its header and its
 // '## ' headings stay, released text may be fixed. switching is set (with the
 // entry count of the old [Unreleased] block, which baseText no longer holds)
 // when the merge base had no note.
-function changesMdProblems(baseText, headText, untaggedTop, switching) {
+function changesMdProblems(baseText, headText, untaggedTop, switching, dir) {
   const base = (baseText ?? '').split(/\r?\n/);
   const head = (headText ?? '').split(/\r?\n/);
   const baseRest = base.slice(headerEnd(base));
@@ -200,7 +221,13 @@ function changesMdProblems(baseText, headText, untaggedTop, switching) {
   }
   const baseHeadings = baseRest.filter((l) => l.startsWith('## '));
   const headHeadings = headRest.filter((l) => l.startsWith('## '));
+  // Text of released entries may be fixed or removed; a new entry may not be
+  // added, since it would be left out of the next release.
+  const growth = () => grownSections(baseRest, headRest).map((h) => `This pull request adds an entry to the released section '${h}' `
+    + `of CHANGES.md, where the next release would leave it out. Move the entry into a file under ${dir}/new/, `
+    + `${dir}/changed/ or ${dir}/fixed/.`);
   if (sameLines(baseHeadings, headHeadings)) {
+    out.problems.push(...growth());
     out.releasedChanged = !sameLines(baseRest, headRest);
     return out;
   }
@@ -226,6 +253,7 @@ function changesMdProblems(baseText, headText, untaggedTop, switching) {
     const end = baseRest.findIndex((l, i) => i > start && l.startsWith('## '));
     out.required = countEntries(baseRest.slice(start + 1, end === -1 ? baseRest.length : end));
     out.removed = top;
+    out.problems.push(...growth());
     return out;
   }
   const added = headHeadings.filter((l) => !baseHeadings.includes(l));
@@ -241,7 +269,7 @@ function changesMdProblems(baseText, headText, untaggedTop, switching) {
 // way a fragment can leave the tree fails here, so no entry is lost before the
 // release pull request rolls it.
 function fragmentVerdict({ dir, baseText, headText, files, fragmentTexts, untaggedTop, switching = null }) {
-  const md = changesMdProblems(baseText, headText, untaggedTop, switching);
+  const md = changesMdProblems(baseText, headText, untaggedTop, switching, dir);
   const problems = [...md.problems];
   const lost = (path) => problems.push(`This pull request removes ${path}, which another pull request added. `
     + 'Restore it; the release pull request collects and deletes fragments.');

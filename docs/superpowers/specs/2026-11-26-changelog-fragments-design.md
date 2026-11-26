@@ -26,8 +26,9 @@ touches `CHANGES.md`. Two pull requests then never edit the same file.
 - With fragments active, a change to `CHANGES.md` outside a release pull
   request is an error, with one exception: a change inside an already
   released section (a typo, a wrong issue tag in `## 2.16.0`) is allowed.
-  The owner accepts that this lets someone add a line to the latest released
-  section.
+  A pull request may not add an entry to a released section: a pull request
+  opened before the switch can have its line placed there by a merge of `main`
+  without a conflict (seen on #180), and the entry would miss the next release.
 
 ## Goals
 
@@ -216,7 +217,9 @@ The mode comes from the note at head and at the merge base:
 - **Both with the note (fragment mode):**
   - The header must be identical at base and head, and the list of `## `
     heading lines must be identical too. Lines inside released sections may
-    change. A pull request that adds a section, or edits the note, fails.
+    change, but no released section may hold more entries (top-level `- `
+    lines) than at the merge base; the message names the section and points to
+    `<dir>/new/`, `changed/` and `fixed/`. A pull request that adds a section, or edits the note, fails.
   - Exception: the pull request may remove the topmost released section when
     its version has no `v<version>` tag (the abandon route above). The gate
     reads the tags for this one case only. It must then add at least as many

@@ -341,6 +341,43 @@ test('changelogVerdict', async (t) => {
     assert.equal(v.ok, true, v.message);
   });
 
+  await t.test('an entry added to the newest released section fails naming the heading', () => {
+    const head = MB.replace('- fix two\n', '- fix two\n- landed here by a merge\n');
+    const v = verdict({ headText: head, files: [added(FRAG)], fragmentTexts: { [FRAG]: '- x\n' } });
+    assert.equal(v.ok, false);
+    assert.ok(v.message.includes('## 1.3.0 - 2026-09-01'), v.message);
+    assert.match(v.message, /CHANGES\.d\/new\/, CHANGES\.d\/changed\/ or CHANGES\.d\/fixed\//);
+  });
+
+  await t.test('an entry added to an older released section fails', () => {
+    const head = MB.replace('- older\n', '- older\n- landed here too\n');
+    const v = verdict({ headText: head });
+    assert.equal(v.ok, false);
+    assert.ok(v.message.includes('## 1.2.3 - 2026-08-01'), v.message);
+  });
+
+  await t.test('a typo fix in a released entry still passes', () => {
+    const v = verdict({ headText: MB.replace('- fix one', '- fix on') });
+    assert.equal(v.ok, true, v.message);
+  });
+
+  await t.test('a removed entry in a released section passes', () => {
+    const v = verdict({ headText: MB.replace('- fix one\n', '') });
+    assert.equal(v.ok, true, v.message);
+  });
+
+  await t.test('a continuation line added to a released entry passes', () => {
+    const v = verdict({ headText: MB.replace('- fix one\n', '- fix one\n  and more words\n') });
+    assert.equal(v.ok, true, v.message);
+  });
+
+  await t.test('moving an entry between released sections fails on the section that grew', () => {
+    const head = MB.replace('- fix one\n', '').replace('- older\n', '- older\n- fix one\n');
+    const v = verdict({ headText: head });
+    assert.equal(v.ok, false);
+    assert.ok(v.message.includes('## 1.2.3 - 2026-08-01'), v.message);
+  });
+
   await t.test('a deleted fragment fails', () => {
     const v = verdict({
       files: [{ filename: FRAG, status: 'removed' }, added(FRAG_B)],
