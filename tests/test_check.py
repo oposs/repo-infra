@@ -386,6 +386,18 @@ def test_a_release_file_that_reopens_the_channel_is_refused(entry):
     assert [path for path, _ in refused] == [entry]
 
 
+@pytest.mark.parametrize("entry", ["CHANGES.d/new/x.md", "./CHANGES.d/fixed/y.md", "CHANGES.d"])
+def test_in_fragment_mode_a_release_file_under_the_fragment_directory_is_refused(entry):
+    assert check.refused_release_files([entry], [{"path": "Cargo.toml"}], "CHANGES.d") == [
+        (entry, "is under CHANGES.d/, which the release pull request rolls")]
+
+
+def test_outside_fragment_mode_the_fragment_directory_is_an_ordinary_path():
+    assert check.refused_release_files(["CHANGES.d/new/x.md"], [{"path": "Cargo.toml"}]) == []
+    assert check.refused_release_files(["CHANGES.dx/a.md"], [{"path": "Cargo.toml"}],
+                                       "CHANGES.d") == []
+
+
 def test_the_formula_is_an_acceptable_release_file():
     assert check.refused_release_files(["Formula/mdmost.rb"], [{"path": "Cargo.toml"}]) == []
 

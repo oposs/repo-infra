@@ -529,13 +529,16 @@ def container_make_items(repo_root, pieces, published, called):
 
 
 # The JS `refusedReleaseFiles` in workflows/lib/release.js enforces the same rule; change both.
-def refused_release_files(entries, version_files):
+def refused_release_files(entries, version_files, fragment_dir=None):
     """release_files entries that would reopen the channel D26 closes.
 
     The read-only build writes the repository only through the files `finish`
     commits. A path that is, after normalising, CHANGES.md, a version file or
     anything under .github/ would let it rewrite the changelog, a version or a
-    workflow. `finish` checks the same rule at run time (release.js).
+    workflow. In fragment mode (D40) the same holds for the fragment directory
+    the note in CHANGES.md names: the release pull request rolls and deletes the
+    fragments, so one written by the build would land unreleased. `finish`
+    checks the same rule at run time (release.js).
     """
     versions = {posixpath.normpath(f["path"]) for f in version_files or []
                 if isinstance(f, dict) and isinstance(f.get("path"), str)}
@@ -554,6 +557,10 @@ def refused_release_files(entries, version_files):
             refused.append((entry, "is CHANGES.md, which the release pull request rolls"))
         elif path in versions:
             refused.append((entry, "is a version file, which the release pull request bumps"))
+        elif fragment_dir is not None and (path == fragment_dir
+                                           or path.startswith(f"{fragment_dir}/")):
+            refused.append(
+                (entry, f"is under {fragment_dir}/, which the release pull request rolls"))
         elif path == ".github" or path.startswith(".github/"):
             refused.append((entry, "is under .github/"))
     return refused

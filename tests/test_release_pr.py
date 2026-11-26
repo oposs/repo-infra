@@ -1,8 +1,14 @@
 """release-pr (D28, D33): prepare and finish are pieces; the caller wires the
 repository's own build and CI between them."""
 
+import json
+import os
 import pathlib
+import re
+import shutil
+import subprocess
 
+import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -183,3 +189,231 @@ def test_no_other_job_of_the_release_flow_may_write_actions():
     assert all(job["permissions"].get("actions") != "write"
                for job_id, job in own_jobs.items()
                if job_id not in ("prepare", "gate", "finish"))
+
+
+
+# --- D40: the release pull request in fragment mode -------------------------
+
+COMMIT = "Commit the release branch"
+COMPUTE = "Compute the version and rewrite the files"
+VERSION_FILE = {"path": "VERSION", "pattern": "^version = .*$",
+                "replacement": "version = $VERSION", "verify": "^version = $VERSION"}
+NOTE_HEADER = "# Changes\n\nChangelog fragments: `CHANGES.d/`\n\n"
+RELEASED = "## 1.1.0 - 2026-01-01\n\n### Fixed\n\n- old\n"
+ALPHA = "CHANGES.d/new/20261120-1000-abcd-alpha.md"
+BETA = "CHANGES.d/fixed/20261121-0900-beef-beta.md"
+FRAGMENTS = {ALPHA: "- alpha\n", BETA: "- beta one\n  continued\n\n- beta two\n",
+             "CHANGES.d/README.md": "How to write a fragment.\n"}
+FINISH_ENV = {"VERSION": "1.2.0", "DATE": "2026-11-26", "HEAD": "h", "BASE": "b"}
+
+
+def step_env(path, job, step_name):
+    """The step's env that reads prepare's step outputs, as variable -> output name."""
+    steps = load(path)["jobs"][job]["steps"]
+    env = next(s for s in steps if s.get("name") == step_name).get("env", {})
+    return {k: re.fullmatch(r"\$\{\{ steps\.prepare\.outputs\.(\w+) \}\}", v).group(1)
+            for k, v in env.items() if v.startswith("${{ steps.")}
+
+
+def workspace(tmp_path, files):
+    ws = tmp_path / "ws"
+    shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib")
+    for rel, text in files.items():
+        (ws / rel).parent.mkdir(parents=True, exist_ok=True)
+        (ws / rel).write_text(text, encoding="utf-8")
+    return ws
+
+
+def run_node(tmp_path, ws, harness, env):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    path = tmp_path / "harness.js"
+    path.write_text(harness, encoding="utf-8")
+    runner = tmp_path / "runner"
+    runner.mkdir(exist_ok=True)
+    proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ws,
+                          env={"GITHUB_WORKSPACE": str(ws), "RUNNER_TEMP": str(runner),
+                               "PATH": os.environ["PATH"], **env})
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def prepare(tmp_path, files):
+    """Runs prepare's compute and commit steps on a workspace; returns the
+    failures, the step outputs and the trees and blobs the commit wrote."""
+    ws = workspace(tmp_path, {
+        ".github/repo-infra.json": json.dumps({"version_files": [VERSION_FILE]}),
+        "VERSION": "version = 1.1.0\n", **files})
+    harness = """
+const commitEnv = %s;
+const failures = []; const outputs = {}; const trees = []; const blobs = {};
+const github = {
+  paginate: async (fn, params) => (await fn(params)).data,
+  rest: { git: {
+    listMatchingRefs: async () => ({ data: [{ ref: 'refs/tags/v1.1.0' }] }),
+    getCommit: async () => ({ data: { tree: { sha: 'base-tree' } } }),
+    getTree: async () => ({ data: { tree: [] } }),
+    createBlob: async ({ content }) => {
+      const sha = `blob${Object.keys(blobs).length}`;
+      blobs[sha] = content;
+      return { data: { sha } }; },
+    createTree: async ({ tree }) => { trees.push(tree); return { data: { sha: 'new-tree' } }; },
+    createCommit: async () => ({ data: { sha: 'new-commit' } }),
+    createRef: async () => ({}),
+  } },
+};
+const core = { setFailed: (m) => failures.push(m), notice: () => {}, warning: () => {},
+  setOutput: (k, v) => { outputs[k] = v; } };
+const context = { repo: { owner: 'o', repo: 'r' }, sha: 'dispatched' };
+(async () => {
+  await (async () => {
+%s
+  })();
+  if (failures.length > 0) return;
+  for (const [name, output] of Object.entries(commitEnv)) process.env[name] = outputs[output];
+  await (async () => {
+%s
+  })();
+})().then(() => console.log(JSON.stringify({ failures, outputs, trees, blobs })));
+""" % (json.dumps(step_env(PREPARE, "prepare", COMMIT)),
+       script(PREPARE, "prepare", COMPUTE), script(PREPARE, "prepare", COMMIT))
+    return run_node(tmp_path, ws, harness, {"RELEASE_TYPE": "feature"})
+
+
+def written(out, path):
+    entry = next(e for e in out["trees"][0] if e["path"] == path)
+    return out["blobs"][entry["sha"]]
+
+
+def test_prepare_rolls_the_fragments_and_deletes_them_in_the_release_commit(tmp_path):
+    out = prepare(tmp_path, {"CHANGES.md": NOTE_HEADER + RELEASED, **FRAGMENTS})
+    assert out["failures"] == []
+    date = out["outputs"]["date"]
+    assert written(out, "CHANGES.md") == NOTE_HEADER + (
+        f"## 1.2.0 - {date}\n\n### New\n\n- alpha\n\n"
+        "### Fixed\n\n- beta one\n  continued\n- beta two\n\n") + RELEASED
+    assert written(out, "VERSION") == "version = 1.2.0\n"
+    assert json.loads(out["outputs"]["deletions"]) == [ALPHA, BETA]
+    # README.md at the top of the directory stays.
+    deleted = [e for e in out["trees"][0] if e["sha"] is None]
+    assert deleted == [{"path": p, "mode": "100644", "type": "blob", "sha": None}
+                       for p in (ALPHA, BETA)]
+
+
+def test_prepare_refuses_a_file_under_a_section_directory_that_is_no_fragment(tmp_path):
+    out = prepare(tmp_path, {"CHANGES.md": NOTE_HEADER + RELEASED, **FRAGMENTS,
+                             "CHANGES.d/new/notes.md": "- stray\n",
+                             "CHANGES.d/fixed/sub/20261121-0900-beef-x.md": "- deep\n"})
+    assert len(out["failures"]) == 1 and out["trees"] == []
+    failure = out["failures"][0]
+    assert failure.startswith("The release cannot roll these files under CHANGES.d/: ")
+    assert "CHANGES.d/new/notes.md: 'notes.md' does not match" in failure
+    assert "CHANGES.d/fixed/sub/20261121-0900-beef-x.md: " in failure
+
+
+def test_prepare_in_classic_mode_deletes_nothing(tmp_path):
+    out = prepare(tmp_path, {"CHANGES.md": "# Changes\n\n## [Unreleased]\n\n### New\n\n- x\n\n"
+                             + RELEASED})
+    assert out["failures"] == []
+    assert out["outputs"]["deletions"] == "[]"
+    assert sorted(e["path"] for e in out["trees"][0]) == ["CHANGES.md", "VERSION"]
+    assert all(e["sha"] is not None for e in out["trees"][0])
+
+
+def finish(tmp_path, changes, rolled):
+    """Runs finish up to the pull request, which the fake API refuses as the
+    Actions setting does, so the run ends there; returns the failures, the
+    checks written and the body of the pull request."""
+    ws = workspace(tmp_path, {
+        ".github/repo-infra.json": json.dumps({"version_files": [VERSION_FILE]}),
+        "CHANGES.md": changes})
+    harness = """
+const rolled = %s;
+const failures = []; const checks = []; const bodies = [];
+const github = {
+  paginate: async (fn, params) => (await fn(params)).data,
+  rest: { repos: {
+    listReleases: async () => ({ data: [] }),
+    getContent: async ({ path, ref }) => {
+      if (path !== 'CHANGES.md' || ref !== 'h') throw new Error(`${path}@${ref}`);
+      return { data: { content: Buffer.from(rolled).toString('base64') } }; },
+    createRelease: async () => ({ data: { id: 7 } }),
+    uploadReleaseAsset: async () => ({}),
+    createCommitStatus: async () => ({}),
+  }, checks: {
+    create: async (params) => { checks.push(params); return {}; },
+  }, pulls: {
+    create: async ({ body }) => {
+      bodies.push(body);
+      const e = new Error('GitHub Actions is not permitted to create or approve pull requests.');
+      e.status = 403;
+      throw e; },
+  } },
+};
+const core = { setFailed: (m) => failures.push(m), notice: () => {}, warning: () => {} };
+const context = { repo: { owner: 'o', repo: 'r' },
+  payload: { repository: { default_branch: 'main' } } };
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ failures, checks, bodies })));
+""" % (json.dumps(rolled), script(FINISH_PIECE, "finish", FINISH))
+    return run_node(tmp_path, ws, harness, FINISH_ENV)
+
+
+def test_finish_says_how_many_entries_it_collected_from_the_fragments(tmp_path):
+    section = ("## 1.2.0 - 2026-11-26\n\n### New\n\n- alpha\n  - nested, part of alpha\n\n"
+               "### Fixed\n\n- beta one\n  continued\n- beta two\n\n")
+    out = finish(tmp_path, NOTE_HEADER + RELEASED, NOTE_HEADER + section + RELEASED)
+    # The refused pull request ends the run there.
+    assert len(out["failures"]) == 1 and "may not open pull requests" in out["failures"][0]
+    lines = out["bodies"][0].split("\n")
+    assert ("- collects 3 entries from `CHANGES.d/` into "
+            "`## 1.2.0 - 2026-11-26`") in lines
+    assert not any("[Unreleased]" in line for line in lines)
+    check = next(c for c in out["checks"] if c["name"] == "changelog-updated")
+    assert check["output"] == {
+        "title": "v1.2.0 collects 3 entries from CHANGES.d/",
+        "summary": "Create release PR collected 3 entries from CHANGES.d/ into this version."}
+
+
+def test_finish_in_classic_mode_still_says_it_rolled_unreleased(tmp_path):
+    classic = "# Changes\n\n## [Unreleased]\n\n### New\n\n- x\n\n" + RELEASED
+    rolled = ("# Changes\n\n## [Unreleased]\n\n### New\n\n### Changed\n\n### Fixed\n\n"
+              "## 1.2.0 - 2026-11-26\n\n### New\n\n- x\n\n" + RELEASED)
+    out = finish(tmp_path, classic, rolled)
+    lines = out["bodies"][0].split("\n")
+    assert ("- rolls `CHANGES.md` `[Unreleased]` into "
+            "`## 1.2.0 - 2026-11-26`") in lines
+    check = next(c for c in out["checks"] if c["name"] == "changelog-updated")
+    assert check["output"] == {
+        "title": "v1.2.0 rolls CHANGES.md",
+        "summary": "Create release PR rolled [Unreleased] into this version."}
+
+
+def test_finish_refuses_a_release_file_under_the_fragment_directory(tmp_path):
+    ws = workspace(tmp_path, {
+        ".github/repo-infra.json": json.dumps({"version_files": [VERSION_FILE],
+                                               "release_files": [ALPHA]}),
+        "CHANGES.md": NOTE_HEADER + RELEASED})
+    harness = """
+const failures = [];
+const core = { setFailed: (m) => failures.push(m) };
+const context = { repo: { owner: 'o', repo: 'r' } };
+const github = null;
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ failures })));
+""" % script(FINISH_PIECE, "finish", FINISH)
+    out = run_node(tmp_path, ws, harness, FINISH_ENV)
+    assert out["failures"] == [f"release_files in .github/repo-infra.json: {ALPHA} is under "
+                               "CHANGES.d/, which the release pull request rolls"]
+
+
+def test_publish_words_its_abandon_hints_from_the_fragment_note():
+    steps = load(ROOT / ".github/workflows/ri-publish-tag.yml")["jobs"]["publish"]["steps"]
+    s = next(st["with"]["script"] for st in steps
+             if "publishLib.publishDecision" in st.get("with", {}).get("script", ""))
+    assert "fragmentDir = fragmentsLib.noteDir(changes);" in s
+    assert "tag, tagCommit, releases, dir: fragmentDir," in s
+    assert "dir: fragmentDir," in s.split("releaseLib.treeVerdict({", 1)[1]

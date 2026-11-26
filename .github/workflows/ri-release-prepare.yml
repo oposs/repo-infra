@@ -2,7 +2,7 @@
 #
 # Purpose: Prepare the release branch: guard, refusals, stale drafts and parked runs, roll CHANGES.md, set the version files (D28, D33).
 # Choose: Always; release-pr.yml calls it.
-# Supplies: version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section.
+# Supplies: version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section, or with the Changelog fragments note and its fragments (D40).
 # Produces: The outputs version, date, head (the release branch head) and base (the dispatched main commit).
 # Call:
 #   prepare:
@@ -129,6 +129,7 @@ jobs:
             const lib = `${ws}/.repo-infra/.github/workflows/lib`;
             const releaseLib = require(`${lib}/release.js`);
             const changesLib = require(`${lib}/changes.js`);
+            const fragmentsLib = require(`${lib}/fragments.js`);
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
@@ -152,12 +153,12 @@ jobs:
               owner, repo, ref: 'tags/v', per_page: 100,
             });
             const tags = refs.map((r) => r.ref.replace('refs/tags/', ''));
-            const latest = changesLib.latestRelease(
-              fs.readFileSync(`${ws}/CHANGES.md`, 'utf8'),
-            );
+            const changes = fs.readFileSync(`${ws}/CHANGES.md`, 'utf8');
+            const latest = changesLib.latestRelease(changes);
             const untagged = releaseLib.untaggedRelease(latest, tags);
             if (untagged) {
-              core.setFailed(releaseLib.untaggedMessage(untagged));
+              // A refused note throws here; this release could not roll anyway.
+              core.setFailed(releaseLib.untaggedMessage(untagged, fragmentsLib.noteDir(changes)));
               return;
             }
 
@@ -205,6 +206,7 @@ jobs:
             const lib = `${ws}/.repo-infra/.github/workflows/lib`;
             const versionLib = require(`${lib}/version.js`);
             const changesLib = require(`${lib}/changes.js`);
+            const fragmentsLib = require(`${lib}/fragments.js`);
             const bumpLib = require(`${lib}/bump.js`);
 
             const config = JSON.parse(
@@ -235,17 +237,48 @@ jobs:
               write: (p, c) => fs.writeFileSync(path.join(ws, p), c, 'utf8'),
             };
 
+            // D40: in fragment mode the entries are files under the section
+            // directories. A file there that the gate would refuse fails the
+            // release rather than being dropped from it or deleted unrolled.
+            const changes = fileIO.read('CHANGES.md');
+            const changelogMode = changesLib.mode(changes);
+            const list = [];
+            if (changelogMode.kind === 'fragments') {
+              const refused = [];
+              const walk = (rel) => fs.readdirSync(path.join(ws, rel), { withFileTypes: true })
+                .flatMap((e) => (e.isDirectory() ? walk(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
+              for (const [section] of fragmentsLib.SECTIONS) {
+                const rel = `${changelogMode.dir}/${section}`;
+                if (!fs.existsSync(path.join(ws, rel))) continue;
+                for (const p of walk(rel).sort()) {
+                  const found = fragmentsLib.classifyPath(changelogMode.dir, p);
+                  if (found.kind !== 'fragment') {
+                    refused.push(`${p}: ${found.reason}`);
+                    continue;
+                  }
+                  list.push({ section, name: path.posix.basename(p), path: p, text: fileIO.read(p) });
+                }
+              }
+              if (refused.length > 0) {
+                core.setFailed(`The release cannot roll these files under ${changelogMode.dir}/: ${refused.join('; ')}`);
+                return;
+              }
+            }
+
             const date = new Date().toISOString().slice(0, 10);
-            // roll throws when [Unreleased] is empty, which is the hard backstop
+            // roll throws when [Unreleased] is empty, or in fragment mode when
+            // there is no fragment or one breaks the rules: the hard backstop
             // behind the required changelog gate.
-            fileIO.write('CHANGES.md', changesLib.roll(fileIO.read('CHANGES.md'), version, date));
+            fileIO.write('CHANGES.md', changesLib.roll(changes, version, date, list));
             bumpLib.bumpAll(config.version_files, version, fileIO);
 
             core.setOutput('version', version);
+            core.setOutput('deletions', JSON.stringify(list.map((f) => f.path)));
             core.setOutput('date', date);
             core.notice(`Preparing ${latest} -> v${version} (${date}).`);
 
-      # The commit below takes exactly CHANGES.md and the version_files paths.
+      # The commit below takes exactly CHANGES.md and the version_files paths,
+      # and deletes the fragments the roll collected (D40).
       # A lockfile that only its own tool can rewrite is rewritten by the
       # repository's release-build.yml on the release branch and returned in
       # the release-files artifact; list it in release_files and finish commits
@@ -257,6 +290,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           VERSION: ${{ steps.prepare.outputs.version }}
+          DELETIONS: ${{ steps.prepare.outputs.deletions }}
         with:
           script: |
             const fs = require('fs');
@@ -277,6 +311,7 @@ jobs:
               files: paths.map((p) => ({
                 path: p, content: fs.readFileSync(path.join(ws, p), 'utf8'),
               })),
+              deletions: JSON.parse(process.env.DELETIONS),
             });
             core.setOutput('head', head);
             core.setOutput('base', context.sha);

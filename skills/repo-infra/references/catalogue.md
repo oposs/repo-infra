@@ -862,7 +862,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-prepare.yml@v2`.
 
 **Choose it when:** Always; release-pr.yml calls it.
 
-**The repository supplies:** version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section.
+**The repository supplies:** version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section, or with the Changelog fragments note and its fragments (D40).
 
 **Produces:** The outputs version, date, head (the release branch head) and base (the dispatched main commit).
 
