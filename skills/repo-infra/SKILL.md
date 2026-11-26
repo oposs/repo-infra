@@ -54,8 +54,8 @@ Each line points at its file. `docs/superpowers/specs/` has the full text.
   per repository. `references/release-flow.md`
 - D2: the ruleset requires exactly `ci-passed` and `changelog-updated`.
   `references/onboarding.md`
-- D5, D6: `CHANGES.md` is the version source; the first section is `### New`.
-  `references/conventions.md`
+- D5, D6, D40: `CHANGES.md` is the version source; the first section is `### New`;
+  a note there switches to changelog fragments. `references/conventions.md`
 - D7, D8, D9: logic in github-script from `lib/*.js`, git through the Git Data
   API. `references/conventions.md`
 - D10, D12, D14, D19: skills carry decisions, the tool never guesses, names answer the

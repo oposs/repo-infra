@@ -2,7 +2,7 @@
 #
 # Purpose: Judge a pull request's CHANGES.md for the inline changelog-updated job (D2, D6, D33).
 # Choose: Always; changelog.yml calls it and changelog-updated reads its result.
-# Supplies: CHANGES.md with an Unreleased section; the no-changelog label.
+# Supplies: CHANGES.md with an Unreleased section, or with the 'Changelog fragments' note and fragment files under its directory; the no-changelog label.
 # Produces: The output message; the job fails when the changelog is refused.
 # Call:
 #   changelog:
@@ -62,6 +62,7 @@ jobs:
           script: |
             const lib = `${process.env.GITHUB_WORKSPACE}/.repo-infra/.github/workflows/lib`;
             const changes = require(`${lib}/changes.js`);
+            const fragments = require(`${lib}/fragments.js`);
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
 
@@ -107,10 +108,83 @@ jobs:
               }
             };
 
-            const verdict = changes.gateVerdict(
-              await readOptional('CHANGES.md', pr.base.sha),
-              await readOptional('CHANGES.md', pr.head.sha),
-            );
+            // The mode comes from the merge base and the head, not from the tip
+            // of the base branch: listFiles diffs against the merge base, and a
+            // pull request opened before the switch keeps the rules it was
+            // written against. The classic rules still compare with the tip.
+            // Branches with no common history have no merge base, and the
+            // compare answers 404; the base tip then stands in for it.
+            let mergeBaseSha = null;
+            try {
+              const { data: compared } = await github.rest.repos.compareCommitsWithBasehead({
+                owner, repo, basehead: `${pr.base.ref}...${pr.head.sha}`,
+              });
+              mergeBaseSha = compared.merge_base_commit.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const baseText = await readOptional('CHANGES.md', pr.base.sha);
+            const mergeBaseText = mergeBaseSha === null
+              ? baseText
+              : await readOptional('CHANGES.md', mergeBaseSha);
+            const headText = await readOptional('CHANGES.md', pr.head.sha);
+
+            // A refused note throws here; changelogVerdict reads it again and
+            // turns it into the failure message. Any other error is a fault.
+            const dirOf = (text) => {
+              try {
+                return { dir: text === null ? null : fragments.noteDir(text) };
+              } catch (error) {
+                if (!error.refusedNote) throw error;
+                return { refused: true };
+              }
+            };
+            const mergeBaseNote = dirOf(mergeBaseText);
+            const headNote = dirOf(headText);
+            const judged = { baseText, mergeBaseText, headText };
+            if (!mergeBaseNote.refused && !headNote.refused) {
+              if (headNote.dir) {
+                judged.files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner, repo, pull_number: pr.number, per_page: 100,
+                });
+                judged.fragmentTexts = {};
+                for (const f of judged.files) {
+                  if (f.status === 'removed') continue;
+                  if (fragments.classifyPath(headNote.dir, f.filename).kind !== 'fragment') continue;
+                  judged.fragmentTexts[f.filename] = await readOptional(f.filename, pr.head.sha);
+                }
+              }
+              // Only removing the topmost released section depends on its tag
+              // (the abandon route), so the tag is read only when head lacks it.
+              const top = mergeBaseNote.dir && headNote.dir && changes.latestRelease(mergeBaseText);
+              const headTop = top && changes.latestRelease(headText);
+              if (top && (!headTop || headTop.version !== top.version)) {
+                try {
+                  await github.rest.git.getRef({ owner, repo, ref: `tags/v${top.version}` });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  judged.untaggedTop = top.version;
+                }
+              }
+              if (mergeBaseNote.dir && !headNote.dir) {
+                const { data: listing } = await github.rest.git.getTree({
+                  owner, repo, tree_sha: pr.head.sha, recursive: 'true',
+                });
+                // A truncated listing would undercount and let the fragments
+                // left behind drop out of the next release.
+                if (listing.truncated) {
+                  const message = 'The tree at head is too large to count the fragments left under '
+                    + `${mergeBaseNote.dir}/; the API truncated it.`;
+                  core.setOutput('message', message);
+                  core.setFailed(message);
+                  return;
+                }
+                judged.remainingFragments = listing.tree.filter((entry) => entry.type === 'blob'
+                  && fragments.classifyPath(mergeBaseNote.dir, entry.path).kind === 'fragment').length;
+              }
+            }
+
+            const verdict = changes.changelogVerdict(judged);
             if (!verdict.ok) {
               core.setOutput('message', verdict.message);
               core.setFailed(verdict.message);

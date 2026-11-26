@@ -95,6 +95,17 @@ for (const [entry, why] of [
   });
 }
 
+test('in fragment mode a release file under the fragment directory is refused', () => {
+  for (const entry of ['CHANGES.d/new/x.md', './CHANGES.d/fixed/y.md', 'CHANGES.d']) {
+    assert.deepEqual(r.refusedReleaseFiles([entry], VERSION_FILES, 'CHANGES.d'), [{
+      path: entry, reason: 'is under CHANGES.d/, which the release pull request rolls',
+    }]);
+  }
+  // A name that only starts like the directory, and any path in classic mode.
+  assert.deepEqual(r.refusedReleaseFiles(['CHANGES.dx/a.md'], VERSION_FILES, 'CHANGES.d'), []);
+  assert.deepEqual(r.refusedReleaseFiles(['CHANGES.d/new/x.md'], VERSION_FILES), []);
+});
+
 test('undeclared build output is named after normalising both sides', () => {
   assert.deepEqual(
     r.undeclaredReleaseFiles(['Formula/mdmost.rb', 'CHANGES.md'], ['./Formula/mdmost.rb']),
@@ -213,6 +224,16 @@ test('the untagged refusal no longer starts with re-run and names the tree compa
   assert.doesNotMatch(m, /^v1\.2\.0[^.]*\. Re-run/);
 });
 
+test('in fragment mode the untagged refusal restores the fragments', () => {
+  const m = r.untaggedMessage('1.2.0', 'CHANGES.d');
+  assert.ok(m.startsWith('v1.2.0 is in CHANGES.md on main but has no tag. '));
+  assert.match(m, /push v1\.2\.0 by hand/);
+  assert.ok(m.endsWith('to abandon it, merge a pull request that removes the `## 1.2.0` '
+    + 'section from CHANGES.md and restores its fragments under `CHANGES.d/`.'), m);
+  assert.doesNotMatch(m, /Unreleased/);
+  assert.equal(r.untaggedMessage('1.2.0', null), r.untaggedMessage('1.2.0'));
+});
+
 const merged = (ref, sha, opts = {}) => ({ ...pr(ref, opts), merged_at: opts.mergedAt
   === undefined ? '2026-10-01T10:00:00Z' : opts.mergedAt, merge_commit_sha: sha });
 
@@ -247,6 +268,13 @@ test('treeVerdict names main, the head and the way out when the trees differ', (
     headTree: 't2' }), 'main at m does not match the release built from h; merge a pull '
     + 'request that moves the v1.2.0 entries in CHANGES.md back under [Unreleased], then '
     + 'dispatch Create release PR again');
+});
+
+test('treeVerdict in fragment mode names the section and its fragments', () => {
+  assert.equal(r.treeVerdict({ tag: 'v1.2.0', head: 'h', mergeSha: 'm', mergeTree: 't1',
+    headTree: 't2', dir: 'CHANGES.d' }), 'main at m does not match the release built from h; '
+    + 'merge a pull request that removes the `## 1.2.0` section from CHANGES.md and restores '
+    + 'its fragments under `CHANGES.d/`, then dispatch Create release PR again');
 });
 
 test('treeVerdict refuses when no release branch pull request was merged', () => {

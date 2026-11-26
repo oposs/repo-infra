@@ -65,7 +65,9 @@ function normalise(entry) {
 // channel into a way to rewrite the changelog, a version or a workflow.
 // `repo_infra.check.refused_release_files` (used by `check`) enforces the same
 // rule; both must change together.
-function refusedReleaseFiles(entries, versionFiles) {
+// In fragment mode (dir set) the fragments are changelog too: the release
+// pull request rolls and deletes them, so a written one would land unreleased.
+function refusedReleaseFiles(entries, versionFiles, dir = null) {
   const versions = new Set((versionFiles || []).map((f) => normalise(f.path)));
   const refused = [];
   for (const entry of entries) {
@@ -76,6 +78,9 @@ function refusedReleaseFiles(entries, versionFiles) {
       if (p === '..' || p.startsWith('../')) return 'points outside the repository';
       if (p === 'CHANGES.md') return 'is CHANGES.md, which the release pull request rolls';
       if (versions.has(p)) return 'is a version file, which the release pull request bumps';
+      if (dir !== null && (p === dir || p.startsWith(`${dir}/`))) {
+        return `is under ${dir}/, which the release pull request rolls`;
+      }
       if (p === '.github' || p.startsWith('.github/')) return 'is under .github/';
       return null;
     })();
@@ -114,6 +119,8 @@ const CHANGED_AFTER_BUILD = 'the release branch changed after it was built (the 
 function releaseTag(ref) {
   return ref.replace(/^release\//, '');
 }
+
+const releaseVersion = (tag) => tag.replace(/^v/, '');
 
 function staleMessage(tag) {
   return `main moved after ${tag} was built; close this pull request and dispatch `
@@ -188,13 +195,24 @@ function staleReleasePr(pr, behindBy) {
     title: `main moved after ${tag} was built`, summary: staleMessage(tag) };
 }
 
+// How an untagged release is abandoned in fragment mode (dir, from the note).
+// CHANGES.md has no [Unreleased] to move the entries back under, so the
+// section goes and its fragments come back; the gate accepts that pull request
+// only for a version without a tag.
+function restoreFragments(version, dir) {
+  return `merge a pull request that removes the \`## ${version}\` section from CHANGES.md `
+    + `and restores its fragments under \`${dir}/\``;
+}
+
 // A re-run helps only when publish failed for a reason other than the tree
 // comparison; after that one, abandoning is the way out.
-function untaggedMessage(version) {
+function untaggedMessage(version, dir = null) {
+  const abandon = dir === null
+    ? 'merge a pull request that moves its entries back under [Unreleased].'
+    : `${restoreFragments(version, dir)}.`;
   return `v${version} is in CHANGES.md on main but has no tag. If its Publish release run `
     + 'failed for another reason than the tree comparison, re-run its failed jobs; if it '
-    + `is already out under another tag, push v${version} by hand; to abandon it, merge a `
-    + 'pull request that moves its entries back under [Unreleased].';
+    + `is already out under another tag, push v${version} by hand; to abandon it, ${abandon}`;
 }
 
 // pulls.create refuses with 403 "GitHub Actions is not permitted to create or
@@ -232,15 +250,19 @@ function releasePrMergeCommit(prs, { fullName, tag }) {
 
 // With the up-to-date rule on, the merge commit's tree is the built head's
 // tree (also after a squash or rebase). A mismatch means the rule was off.
-function treeVerdict({ tag, head, mergeSha, mergeTree, headTree }) {
+function treeVerdict({
+  tag, head, mergeSha, mergeTree, headTree, dir = null,
+}) {
   if (!mergeSha) {
     return `${tag}: no merged release pull request from release/${tag}, so publish cannot `
       + 'compare main with the release that was built. Nothing was tagged.';
   }
   if (mergeTree === headTree) return null;
-  return `main at ${mergeSha} does not match the release built from ${head}; merge a pull `
-    + `request that moves the ${tag} entries in CHANGES.md back under [Unreleased], then `
-    + 'dispatch Create release PR again';
+  const abandon = dir === null
+    ? `merge a pull request that moves the ${tag} entries in CHANGES.md back under [Unreleased]`
+    : restoreFragments(releaseVersion(tag), dir);
+  return `main at ${mergeSha} does not match the release built from ${head}; ${abandon}, `
+    + 'then dispatch Create release PR again';
 }
 
 // The pull_request runs of a release branch park for an approval nobody needs
@@ -308,6 +330,6 @@ module.exports = {
   staleDrafts, ownDrafts, refusedReleaseFiles, undeclaredReleaseFiles,
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
-  staleReleasePr, untaggedMessage, releasePrMergeCommit, treeVerdict, parkedRuns,
+  staleReleasePr, untaggedMessage, restoreFragments, releaseVersion, releasePrMergeCommit, treeVerdict, parkedRuns,
   fetchParkedRuns, verdictOutputs, releaseTitle, pullRequestRefusal,
 };

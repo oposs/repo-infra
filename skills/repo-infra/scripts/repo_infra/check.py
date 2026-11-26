@@ -16,7 +16,7 @@ import re
 import tomllib
 from collections import namedtuple
 
-from . import callers
+from . import callers, fragments
 from .markers import parse_markers
 from .pieces import (
     ASSETS,
@@ -526,13 +526,16 @@ def container_make_items(repo_root, pieces, published, called):
 
 
 # The JS `refusedReleaseFiles` in workflows/lib/release.js enforces the same rule; change both.
-def refused_release_files(entries, version_files):
+def refused_release_files(entries, version_files, fragment_dir=None):
     """release_files entries that would reopen the channel D26 closes.
 
     The read-only build writes the repository only through the files `finish`
     commits. A path that is, after normalising, CHANGES.md, a version file or
     anything under .github/ would let it rewrite the changelog, a version or a
-    workflow. `finish` checks the same rule at run time (release.js).
+    workflow. In fragment mode (D40) the same holds for the fragment directory
+    the note in CHANGES.md names: the release pull request rolls and deletes the
+    fragments, so one written by the build would land unreleased. `finish`
+    checks the same rule at run time (release.js).
     """
     versions = {posixpath.normpath(f["path"]) for f in version_files or []
                 if isinstance(f, dict) and isinstance(f.get("path"), str)}
@@ -551,9 +554,74 @@ def refused_release_files(entries, version_files):
             refused.append((entry, "is CHANGES.md, which the release pull request rolls"))
         elif path in versions:
             refused.append((entry, "is a version file, which the release pull request bumps"))
+        elif fragment_dir is not None and (path == fragment_dir
+                                           or path.startswith(f"{fragment_dir}/")):
+            refused.append(
+                (entry, f"is under {fragment_dir}/, which the release pull request rolls"))
         elif path == ".github" or path.startswith(".github/"):
             refused.append((entry, "is under .github/"))
     return refused
+
+
+def _changes_text(repo_root):
+    path = pathlib.Path(repo_root) / "CHANGES.md"
+    return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
+def changes_note(repo_root):
+    """(text, directory, error) of CHANGES.md: the fragment directory its note
+    names, or the refusal of the note. Read once per run and handed to
+    changelog_items and config_items, which would otherwise each parse it."""
+    text = _changes_text(repo_root)
+    if text is None:
+        return (None, None, None)
+    try:
+        return (text, fragments.note_dir(text), None)
+    except ValueError as error:
+        return (text, None, error)
+
+
+def changelog_items(repo_root, note=None):
+    """The changelog mode (D40) and, in fragment mode, what breaks its rules."""
+    text, directory, error = note or changes_note(repo_root)
+    if text is None:
+        return []
+    if error is not None:
+        return [Item("changelog", "changelog-mode", "problem", str(error))]
+    if directory is None:
+        return [Item("changelog", "changelog-mode", "ok", "classic")]
+    items = [Item("changelog", "changelog-mode", "ok", f"fragments in {directory}/")]
+    root = pathlib.Path(repo_root)
+    base = root / directory
+    if not base.is_dir():
+        items.append(Item("changelog", "fragment-directory", "problem",
+                          f"{directory}/ does not exist; CHANGES.md names it as the "
+                          "place for changelog fragments"))
+    # The heading the roll recognises: '## [Unreleased]' alone on its line.
+    if any(line.strip() == "## [Unreleased]" for line in fragments.lines_of(text)):
+        items.append(Item("changelog", "unreleased-section", "problem",
+                          "CHANGES.md has an [Unreleased] section; in fragment mode "
+                          f"its entries belong in files under {directory}/"))
+    for file in sorted(p for p in base.rglob("*") if p.is_file() or p.is_symlink()):
+        rel = file.relative_to(root).as_posix()
+        kind, detail = fragments.classify_path(directory, rel)
+        # The release roll refuses a link in a section directory: a link to a
+        # file would roll text from outside it, a link to a directory crashed.
+        if file.is_symlink():
+            if kind in ("fragment", "refused") or (
+                    kind == "root" and file.name in fragments.SECTIONS):
+                items.append(Item("changelog", rel, "problem", "is a symbolic link"))
+            continue
+        if kind == "refused":
+            items.append(Item("changelog", rel, "problem", detail))
+        elif kind == "fragment":
+            try:
+                problem = fragments.fragment_problem(file.read_text(encoding="utf-8"))
+            except UnicodeDecodeError:
+                problem = "is not valid UTF-8"
+            if problem:
+                items.append(Item("changelog", rel, "problem", problem))
+    return items
 
 
 def _reasons(value):
@@ -562,7 +630,7 @@ def _reasons(value):
         isinstance(reason, str) and reason.strip() for reason in value.values())
 
 
-def config_items(repo_root, docs, called=None):
+def config_items(repo_root, docs, called=None, note=None):
     path = pathlib.Path(repo_root) / CONFIG
     if not path.is_file():
         return [Item("config", "repo-infra.json", "missing",
@@ -613,7 +681,8 @@ def config_items(repo_root, docs, called=None):
         items.append(Item("config", "release_files", "problem",
                           "release_files must be a list of paths"))
         release_files = []
-    refused = refused_release_files(release_files, version_files)
+    refused = refused_release_files(release_files, version_files,
+                                    (note or changes_note(repo_root))[1])
     if refused:
         items.append(Item("config", "release_files", "problem",
                           "; ".join(f"{entry} {reason}" for entry, reason in refused)))
@@ -829,13 +898,15 @@ def run(repo_root, facts, assets=ASSETS):
     called = called_pieces(docs, pieces)
     published = load_published(assets)
     home = is_home(repo_root)
+    note = changes_note(repo_root)
     built = built_by_project(repo_root, docs, pieces)
     return (piece_items(repo_root, pieces, published, called, built)
             + container_make_items(repo_root, pieces, published, called)
             + ([] if home else layout_items(repo_root, pieces))
             + core_call_items(docs, pieces)
             + callers.validate(docs, pieces, assets, home=home)
-            + config_items(repo_root, docs, called)
+            + config_items(repo_root, docs, called, note)
+            + changelog_items(repo_root, note)
             + path_filter_items(docs)
             + action_pin_items(repo_root, pieces)
             + classify_remote(facts))

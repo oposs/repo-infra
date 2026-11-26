@@ -23,9 +23,10 @@ reason to edit the repository around it. It is a gap in the standard, and
 
 `apply` writes two different ways, and they need different handling:
 
-- **Files** (every row of the `pieces` section of `check`) are written to the
-  working tree of the local `repo-infra/apply` branch: the migration as one
-  commit, every build file as one commit. A workflow piece is called, never
+- **Files** (every row of the `pieces` section of `check`, and the switch to
+  changelog fragments) are written to the working tree of the local
+  `repo-infra/apply` branch: the migration as one commit, every build file as
+  one commit. A workflow piece is called, never
   written. Nothing leaves the machine until you push. `apply` checks out that
   branch in the current worktree and runs only from the default branch or
   from `repo-infra/apply` itself; switch to the default branch first.
@@ -125,6 +126,39 @@ yet. A piece it needs that is not there is installed with it: `apply --item man`
 also installs `man-lua`. It installs build files only: a workflow piece is called from a caller, and
 `apply --item ri-ci-python` refuses with "is called, not installed". It does not
 migrate. The release check of step 1 applies to it as well.
+
+## Changelog fragments
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/repo-infra/scripts/repo_infra" apply --item changelog-fragments
+```
+
+Run it only when the user names it: whether pull requests write their
+changelog entries into `CHANGES.md` or into fragment files is the repository's
+choice, and a bare `apply` never makes it. On the `repo-infra/apply` branch it
+writes the `Changelog fragments:` note into the header of `CHANGES.md`, removes
+the `[Unreleased]` section, moves the entries of each of `### New`,
+`### Changed` and `### Fixed` into one file under `CHANGES.d/new/`,
+`CHANGES.d/changed/` or `CHANGES.d/fixed/`, and writes `CHANGES.d/README.md`
+with the naming rule. It commits all of it as
+`Switch the changelog to fragments (D40)`. The release check of step 1 applies.
+
+It refuses, and writes nothing, when there is no `CHANGES.md` or no
+`## [Unreleased]` heading, when `CHANGES.d/` already exists without the note,
+when a release pull request is open or the newest release in `CHANGES.md` has no
+tag, and when `--from` is given. It also refuses when `[Unreleased]` holds an
+entry a fragment cannot hold: text before the first subsection, an entry under a
+subsection other than New, Changed or Fixed (such as `### Removed`), an empty
+`-` item, a line starting with `#`, or text outside a `- ` list item. The
+refusal names each one. Rewrite those entries in `CHANGES.md` as `- `
+entries under New, Changed or Fixed, show the rewrite to the user, and run the
+item again. A repository that already has the note is refused with "already
+uses fragments in `CHANGES.d/`".
+
+After the switch, read the repository's `CLAUDE.md`, `AGENTS.md` and
+`CONTRIBUTING.md` and rewrite every line that tells a contributor to update
+`CHANGES.md`: the entry now goes into a new file under `CHANGES.d/<section>/`,
+named as `CHANGES.d/README.md` says. Commit that change on the same branch.
 
 ## Administration items, push, merge
 

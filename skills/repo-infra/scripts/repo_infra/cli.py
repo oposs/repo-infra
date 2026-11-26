@@ -1,10 +1,12 @@
 """Command line entry point: `python3 -m repo_infra check|apply`."""
 
 import argparse
+import datetime
 import pathlib
+import secrets
 import sys
 
-from . import callers, migrate, report
+from . import callers, fragments, migrate, report
 from . import check as checking
 from .apply import (
     MIGRATE_BODY,
@@ -30,6 +32,11 @@ from .remote import Facts, Gh, GhError
 ADMIN = {"default-branch", "branch-protection", "required-checks",
          "no-changelog-label", "actions-open-pr", "delete-merged-branches",
          "classic-protection"}
+
+# Switches CHANGES.md to fragments (D40) on apply's branch. A repository
+# chooses how it collects entries, so a bare apply never runs it.
+FRAGMENTS = "changelog-fragments"
+FRAGMENTS_SUBJECT = "Switch the changelog to fragments (D40)"
 
 # apply's exit status when it stops for a hand merge. A refusal (ApplyError)
 # exits 1; argparse exits 2 on a usage error.
@@ -115,7 +122,24 @@ def _v1_layout(args):
             and bool(checking.layout_items(args.root, load_pieces(ASSETS))))
 
 
+def switch_changelog(args):
+    if args.from_file:
+        raise ApplyError(f"--from takes the merged file of a piece, not of {FRAGMENTS}")
+    facts = read_facts(args.repo or Gh().current_repo())
+    blocker = release_in_progress(args.root, facts)
+    if blocker:
+        raise ApplyError(f"release-in-progress: {blocker}")
+    ensure_branch(args.root, facts.default_branch)
+    written = fragments.switch_to_fragments(args.root, datetime.datetime.now(datetime.UTC),
+                                            lambda: secrets.token_hex(2))
+    commit_paths(args.root, changed(args.root, written), FRAGMENTS_SUBJECT)
+    print(f"switched the changelog to fragments: {', '.join(written)}")
+    return 0
+
+
 def apply_command(args):
+    if args.item == FRAGMENTS:
+        return switch_changelog(args)
     # The arguments are refused before GitHub is asked anything: a typo
     # should not wait for, or fail on, the network.
     if args.item in ADMIN and args.from_file:

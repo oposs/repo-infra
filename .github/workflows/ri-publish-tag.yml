@@ -79,6 +79,7 @@ jobs:
             const ws = process.env.GITHUB_WORKSPACE;
             const lib = `${ws}/.repo-infra/.github/workflows/lib`;
             const changesLib = require(`${lib}/changes.js`);
+            const fragmentsLib = require(`${lib}/fragments.js`);
             const bumpLib = require(`${lib}/bump.js`);
 
             const owner = context.repo.owner;
@@ -93,7 +94,8 @@ jobs:
 
             // CHANGES.md is the source of truth. It is the only file every
             // repository has, and it changes on exactly one occasion.
-            const release = changesLib.latestRelease(fileIO.read('CHANGES.md'));
+            const changes = fileIO.read('CHANGES.md');
+            const release = changesLib.latestRelease(changes);
             if (!release) {
               core.notice('CHANGES.md has no released version yet - nothing to do.');
               return;
@@ -148,7 +150,19 @@ jobs:
               owner, repo, per_page: 100,
             })).filter((r) => r.tag_name === tag);
 
-            const decision = publishLib.publishDecision({ tag, tagCommit, releases });
+            // The fragment directory (D40) only words the way to abandon a
+            // release. A refused note fails the gate and the next release
+            // pull request, so here it falls back to the classic wording
+            // rather than stop a release that was built.
+            let fragmentDir = null;
+            try {
+              fragmentDir = fragmentsLib.noteDir(changes);
+            } catch (error) {
+              if (!error.refusedNote) throw error;
+            }
+            const decision = publishLib.publishDecision({
+              tag, tagCommit, releases, dir: fragmentDir,
+            });
             if (decision.action === 'done') {
               core.notice(`${tag} is released - nothing to do.`);
               return;
@@ -226,6 +240,7 @@ jobs:
               })).data.tree.sha;
               const treeProblem = releaseLib.treeVerdict({
                 tag,
+                dir: fragmentDir,
                 head: record.head,
                 mergeSha,
                 mergeTree: mergeSha ? await treeOf(mergeSha) : null,
