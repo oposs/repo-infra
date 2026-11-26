@@ -3,6 +3,7 @@ fragment files, on fixture repositories."""
 
 import datetime
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -45,6 +46,10 @@ def node_roll(tmp_path, before, after, fragment_list):
     `before` and the fragment roll of `after` write them."""
     node = shutil.which("node")
     if node is None:
+        # The roll-equality check is the point of this test; on CI a missing
+        # node must fail it, not skip it.
+        if os.environ.get("CI"):
+            pytest.fail("node is not installed (CI is set, so this test must run, not skip)")
         pytest.skip("node is not installed")
     script = tmp_path / "roll.js"
     script.write_text(

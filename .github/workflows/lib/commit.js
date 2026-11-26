@@ -32,8 +32,11 @@ async function modeFinder(github, owner, repo, rootTree) {
 }
 
 async function commitFiles(github, {
-  owner, repo, branch, baseSha, message, files = [], deletions = [],
+  owner, repo, branch, baseSha, message, files, deletions,
 }) {
+  // A default parameter covers undefined only; null reached files.length.
+  files = files ?? [];
+  deletions = deletions ?? [];
   if (files.length === 0 && deletions.length === 0) {
     throw new Error('nothing to commit - the file list is empty');
   }

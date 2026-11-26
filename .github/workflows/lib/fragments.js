@@ -9,7 +9,8 @@ const { posix } = require('node:path');
 
 const SECTIONS = [['new', '### New'], ['changed', '### Changed'], ['fixed', '### Fixed']];
 const NOTE_RE = /^Changelog fragments: `([^`]+?)\/?`/;
-const RELEASE_RE = /^## (\d+\.\d+\.\d+) - \d{4}-\d{2}-\d{2}\s*$/;
+// Shared with changes.js: one definition of what a release heading is.
+const RELEASE_RE = /^## (\d+\.\d+\.\d+) - (\d{4}-\d{2}-\d{2})\s*$/;
 const NAME_RE = /^[0-9]{8}-[0-9]{4}-[0-9a-f]{4}-[a-z0-9]+(-[a-z0-9]+)*\.md$/;
 
 // The header is the part above the first '## ' line; a note below it belongs
@@ -46,6 +47,44 @@ function noteDir(text) {
     return dir;
   }
   return null;
+}
+
+// The files under the section directories of dir, found with lstat semantics:
+// a symbolic link or any other non-regular entry is refused, because a link to
+// a file would roll text from outside the section and a link to a directory
+// crashed the roll with EISDIR. fs and root are arguments so a test needs no
+// workspace of its own beyond a scratch directory.
+function listFragmentFiles(fs, root, dir) {
+  const files = [];
+  const refused = [];
+  const walk = (rel) => {
+    for (const e of fs.readdirSync(posix.join(root, rel), { withFileTypes: true })) {
+      const p = `${rel}/${e.name}`;
+      if (e.isSymbolicLink()) refused.push(`${p}: is a symbolic link`);
+      else if (e.isDirectory()) walk(p);
+      else if (e.isFile()) files.push(p);
+      else refused.push(`${p}: is not a regular file`);
+    }
+  };
+  for (const [section] of SECTIONS) {
+    const rel = `${dir}/${section}`;
+    let stat;
+    try {
+      stat = fs.lstatSync(posix.join(root, rel));
+    } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) refused.push(`${rel}: is a symbolic link`);
+    else if (stat.isDirectory()) {
+      const before = files.length;
+      walk(rel);
+      // Sorted within a section; the sections keep the order of SECTIONS.
+      files.push(...files.splice(before).sort());
+    }
+    else refused.push(`${rel}: is not a directory`);
+  }
+  return { files, refused: refused.sort() };
 }
 
 function classifyPath(dir, path) {
@@ -89,6 +128,13 @@ function fragmentProblem(text) {
   return parse(text).problem || null;
 }
 
+// What a caller that needs both the problem and the entries uses, so the text
+// is read once.
+const parseFragment = (text) => {
+  const { problem = null, entries: list = [] } = parse(text);
+  return { problem, entries: list };
+};
+
 function entries(text) {
   return parse(text).entries || [];
 }
@@ -110,9 +156,9 @@ function renderSection(version, date, fragments) {
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const all = [];
     for (const f of mine) {
-      const problem = fragmentProblem(f.text);
-      if (problem) throw new Error(`${section}/${f.name}: ${problem}`);
-      all.push(...entries(f.text));
+      const parsed = parseFragment(f.text);
+      if (parsed.problem) throw new Error(`${section}/${f.name}: ${parsed.problem}`);
+      all.push(...parsed.entries);
     }
     if (all.length === 0) continue;
     lines.push(heading, '', ...all.flatMap((e) => e.split('\n')), '');
@@ -221,9 +267,9 @@ function fragmentVerdict({ dir, baseText, headText, files, fragmentTexts, untagg
       problems.push(`${f.filename}: its text at the head of the pull request could not be read`);
       continue;
     }
-    const problem = fragmentProblem(text);
-    if (problem) {
-      problems.push(`${f.filename}: ${problem}`);
+    const parsed = parseFragment(text);
+    if (parsed.problem) {
+      problems.push(`${f.filename}: ${parsed.problem}`);
       continue;
     }
     touched += 1;
@@ -231,7 +277,7 @@ function fragmentVerdict({ dir, baseText, headText, files, fragmentTexts, untagg
     // counted; only a new file brings entries back.
     const brings = f.status === 'added' || f.status === 'copied'
       || (f.status === 'renamed' && before.kind !== 'fragment');
-    if (brings) addedEntries += entries(text).length;
+    if (brings) addedEntries += parsed.entries.length;
   }
   if (addedEntries < md.required) {
     const what = md.removed ? `'${md.removed}'` : "'## [Unreleased]' at the merge base";
@@ -257,6 +303,6 @@ function fragmentVerdict({ dir, baseText, headText, files, fragmentTexts, untagg
 }
 
 module.exports = {
-  SECTIONS, noteDir, classifyPath, fragmentProblem, entries, renderSection, headerEnd,
+  SECTIONS, RELEASE_RE, noteDir, classifyPath, listFragmentFiles, fragmentProblem, entries, renderSection, headerEnd,
   countEntries, fragmentVerdict,
 };

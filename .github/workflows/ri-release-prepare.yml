@@ -244,20 +244,19 @@ jobs:
             const changelogMode = changesLib.mode(changes);
             const list = [];
             if (changelogMode.kind === 'fragments') {
-              const refused = [];
-              const walk = (rel) => fs.readdirSync(path.join(ws, rel), { withFileTypes: true })
-                .flatMap((e) => (e.isDirectory() ? walk(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
-              for (const [section] of fragmentsLib.SECTIONS) {
-                const rel = `${changelogMode.dir}/${section}`;
-                if (!fs.existsSync(path.join(ws, rel))) continue;
-                for (const p of walk(rel).sort()) {
-                  const found = fragmentsLib.classifyPath(changelogMode.dir, p);
-                  if (found.kind !== 'fragment') {
-                    refused.push(`${p}: ${found.reason}`);
-                    continue;
-                  }
-                  list.push({ section, name: path.posix.basename(p), path: p, text: fileIO.read(p) });
+              // A symbolic link is refused here: it would roll text from
+              // outside the directory, or crash on a link to a directory.
+              const found = fragmentsLib.listFragmentFiles(fs, ws, changelogMode.dir);
+              const refused = [...found.refused];
+              for (const p of found.files) {
+                const kind = fragmentsLib.classifyPath(changelogMode.dir, p);
+                if (kind.kind !== 'fragment') {
+                  refused.push(`${p}: ${kind.reason}`);
+                  continue;
                 }
+                list.push({
+                  section: kind.section, name: path.posix.basename(p), path: p, text: fileIO.read(p),
+                });
               }
               if (refused.length > 0) {
                 core.setFailed(`The release cannot roll these files under ${changelogMode.dir}/: ${refused.join('; ')}`);

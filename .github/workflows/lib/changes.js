@@ -6,7 +6,7 @@ const fragments = require('./fragments.js');
 // supporting both would make this a guessing machine, so the odd one out is
 // migrated instead.
 const UNRELEASED_HEADING = '## [Unreleased]';
-const RELEASE_RE = /^## (\d+\.\d+\.\d+) - (\d{4}-\d{2}-\d{2})\s*$/;
+const { RELEASE_RE } = fragments;
 
 // Where a '## ' block ends: at the next '## ', or at the end of the file.
 function blockEnd(lines, start) {

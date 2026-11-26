@@ -2,6 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const fragments = require('./fragments.js');
 const cases = require('../../../tests/fixtures/changelog-fragments/cases.json');
 
@@ -122,4 +125,53 @@ test('the pass message agrees with the number of fragments', () => {
   assert.equal(run(['20261126-1200-ab12-a.md']), '1 changelog fragment under CHANGES.d/ follows the rules.');
   assert.equal(run(['20261126-1200-ab12-a.md', '20261126-1200-ab12-b.md']),
     '2 changelog fragments under CHANGES.d/ follow the rules.');
+});
+
+function scratch() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fragments-'));
+  const put = (rel, text = '- x\n') => {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), text);
+  };
+  return { root, put };
+}
+
+test('listFragmentFiles lists regular files in the section directories, sorted', () => {
+  const { root, put } = scratch();
+  put('CHANGES.d/new/b.md');
+  put('CHANGES.d/new/a.md');
+  put('CHANGES.d/fixed/c.md');
+  put('CHANGES.d/README.md');
+  assert.deepEqual(fragments.listFragmentFiles(fs, root, 'CHANGES.d'), {
+    files: ['CHANGES.d/new/a.md', 'CHANGES.d/new/b.md', 'CHANGES.d/fixed/c.md'],
+    refused: [],
+  });
+});
+
+test('listFragmentFiles refuses a symbolic link to a file, to a directory and to a section', () => {
+  const { root, put } = scratch();
+  put('CHANGES.d/new/real.md');
+  put('elsewhere/secret.md');
+  fs.symlinkSync(path.join(root, 'elsewhere/secret.md'), path.join(root, 'CHANGES.d/new/link.md'));
+  fs.symlinkSync(path.join(root, 'elsewhere'), path.join(root, 'CHANGES.d/new/dirlink'));
+  fs.symlinkSync(path.join(root, 'elsewhere'), path.join(root, 'CHANGES.d/fixed'));
+  assert.deepEqual(fragments.listFragmentFiles(fs, root, 'CHANGES.d'), {
+    files: ['CHANGES.d/new/real.md'],
+    refused: [
+      'CHANGES.d/fixed: is a symbolic link',
+      'CHANGES.d/new/dirlink: is a symbolic link',
+      'CHANGES.d/new/link.md: is a symbolic link',
+    ],
+  });
+});
+
+test('listFragmentFiles skips a section directory that does not exist', () => {
+  const { root } = scratch();
+  assert.deepEqual(fragments.listFragmentFiles(fs, root, 'CHANGES.d'), { files: [], refused: [] });
+});
+
+test('the release heading is one definition for fragments.js and changes.js', () => {
+  const m = fragments.RELEASE_RE.exec('## 1.2.3 - 2026-11-26');
+  assert.deepEqual([m[1], m[2]], ['1.2.3', '2026-11-26']);
+  assert.equal(require('./changes.js').latestRelease('## 1.2.3 - 2026-11-26\n').version, '1.2.3');
 });

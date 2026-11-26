@@ -330,6 +330,6 @@ module.exports = {
   staleDrafts, ownDrafts, refusedReleaseFiles, undeclaredReleaseFiles,
   decodeText, releaseBuilt,
   CHANGED_AFTER_BUILD, releaseTag, staleMessage, releaseModeVerdict, finishVerdict,
-  staleReleasePr, untaggedMessage, restoreFragments, releasePrMergeCommit, treeVerdict, parkedRuns,
+  staleReleasePr, untaggedMessage, restoreFragments, releaseVersion, releasePrMergeCommit, treeVerdict, parkedRuns,
   fetchParkedRuns, verdictOutputs, releaseTitle, pullRequestRefusal,
 };

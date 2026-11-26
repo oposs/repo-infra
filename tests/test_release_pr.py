@@ -191,7 +191,6 @@ def test_no_other_job_of_the_release_flow_may_write_actions():
                if job_id not in ("prepare", "gate", "finish"))
 
 
-
 # --- D40: the release pull request in fragment mode -------------------------
 
 COMMIT = "Commit the release branch"
@@ -227,6 +226,9 @@ def workspace(tmp_path, files):
 def run_node(tmp_path, ws, harness, env):
     node = shutil.which("node")
     if node is None:
+        # A CI job exists to run these; skipping there would hide the check.
+        if os.environ.get("CI"):
+            pytest.fail("node is not installed (CI is set, so this test must run, not skip)")
         pytest.skip("node is not installed")
     path = tmp_path / "harness.js"
     path.write_text(harness, encoding="utf-8")
@@ -410,10 +412,107 @@ const github = null;
                                "CHANGES.d/, which the release pull request rolls"]
 
 
-def test_publish_words_its_abandon_hints_from_the_fragment_note():
-    steps = load(ROOT / ".github/workflows/ri-publish-tag.yml")["jobs"]["publish"]["steps"]
-    s = next(st["with"]["script"] for st in steps
-             if "publishLib.publishDecision" in st.get("with", {}).get("script", ""))
-    assert "fragmentDir = fragmentsLib.noteDir(changes);" in s
-    assert "tag, tagCommit, releases, dir: fragmentDir," in s
-    assert "dir: fragmentDir," in s.split("releaseLib.treeVerdict({", 1)[1]
+def test_prepare_refuses_a_symbolic_link_in_a_section_directory(tmp_path):
+    ws = workspace(tmp_path, {
+        ".github/repo-infra.json": json.dumps({"version_files": [VERSION_FILE]}),
+        "VERSION": "version = 1.1.0\n", "CHANGES.md": NOTE_HEADER + RELEASED, **FRAGMENTS,
+        "elsewhere/secret.md": "- not a fragment\n"})
+    (ws / "CHANGES.d/new/20261122-1000-cafe-link.md").symlink_to(ws / "elsewhere/secret.md")
+    (ws / "CHANGES.d/changed").symlink_to(ws / "elsewhere")
+    harness = """
+const failures = []; const outputs = {};
+const core = { setFailed: (m) => failures.push(m), notice: () => {}, warning: () => {},
+  setOutput: (k, v) => { outputs[k] = v; } };
+const context = { repo: { owner: 'o', repo: 'r' }, sha: 'dispatched' };
+const github = {
+  paginate: async (fn, params) => (await fn(params)).data,
+  rest: { git: { listMatchingRefs: async () => ({ data: [{ ref: 'refs/tags/v1.1.0' }] }) } },
+};
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ failures, outputs })));
+""" % script(PREPARE, "prepare", COMPUTE)
+    out = run_node(tmp_path, ws, harness, {"RELEASE_TYPE": "feature"})
+    assert out["outputs"] == {}
+    assert len(out["failures"]) == 1
+    assert ("CHANGES.d/changed: is a symbolic link; "
+            "CHANGES.d/new/20261122-1000-cafe-link.md: is a symbolic link") in out["failures"][0]
+
+
+def test_finish_runs_on_after_the_pull_request_is_opened(tmp_path):
+    """The steps after pulls.create: the staleness check, the parked runs, the summary."""
+    section = "## 1.2.0 - 2026-11-26\n\n### New\n\n- alpha\n\n"
+    ws = workspace(tmp_path, {
+        ".github/repo-infra.json": json.dumps({"version_files": [VERSION_FILE]}),
+        "CHANGES.md": NOTE_HEADER + RELEASED})
+    harness = """
+const rolled = %s;
+const failures = []; const checks = []; const calls = []; const summary = [];
+const github = {
+  paginate: async (fn, params) => (await fn(params)).data,
+  rest: { repos: {
+    listReleases: async () => ({ data: [] }),
+    getContent: async () => ({ data: { content: Buffer.from(rolled).toString('base64') } }),
+    createRelease: async () => ({ data: { id: 7 } }),
+    uploadReleaseAsset: async () => ({}),
+    createCommitStatus: async () => ({}),
+    compareCommitsWithBasehead: async ({ basehead }) => {
+      calls.push(['compare', basehead]); return { data: { behind_by: 0 } }; },
+  }, checks: {
+    create: async (params) => { checks.push(params.name + ':' + params.conclusion); return {}; },
+  }, pulls: {
+    create: async () => { calls.push(['pulls.create']); return { data: { html_url: 'https://pr' } }; },
+  }, actions: {
+    listWorkflowRunsForRepo: async () => { calls.push(['list-parked']); return { data: [] }; },
+  } },
+};
+// The parked-run poll waits up to a minute; run it on a clock that jumps.
+let clock = 0;
+Date.now = () => clock;
+setTimeout = (fn, ms) => { clock += ms; fn(); };
+const core = { setFailed: (m) => failures.push(m), notice: () => {}, warning: () => {},
+  summary: { addHeading(h) { summary.push(h); return this; },
+    addLink(text, url) { summary.push(url); return this; }, write: async () => {} } };
+const context = { repo: { owner: 'o', repo: 'r' },
+  payload: { repository: { default_branch: 'main' } } };
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ failures, checks, calls, summary })));
+""" % (json.dumps(NOTE_HEADER + section + RELEASED), script(FINISH_PIECE, "finish", FINISH))
+    out = run_node(tmp_path, ws, harness, FINISH_ENV)
+    assert out["failures"] == []
+    assert out["checks"] == ["changelog-updated:success", "ci-passed:success"]
+    names = [c[0] for c in out["calls"]]
+    assert names[:2] == ["pulls.create", "compare"]
+    assert "list-parked" in names
+    assert out["summary"] == ["Release v1.2.0 built and tested", "https://pr"]
+
+
+def test_publish_words_its_abandon_hint_from_the_fragment_note(tmp_path):
+    """A draft with no build record and no tag: the failure says how to abandon."""
+    ws = workspace(tmp_path, {
+        ".github/repo-infra.json": json.dumps({"version_files": [VERSION_FILE]}),
+        "VERSION": "version = 1.2.0\n",
+        "CHANGES.md": NOTE_HEADER + "## 1.2.0 - 2026-11-26\n\n### New\n\n- alpha\n"})
+    harness = """
+const failures = [];
+const github = {
+  paginate: async (fn, params) => (await fn(params)).data,
+  rest: { git: { getRef: async () => { const e = new Error('none'); e.status = 404; throw e; } },
+    repos: { listReleases: async () => ({ data: [
+      { id: 1, draft: true, tag_name: 'v1.2.0', assets: [] }] }) } },
+};
+const core = { setFailed: (m) => failures.push(m), notice: () => {}, warning: () => {},
+  setOutput: () => {} };
+const context = { repo: { owner: 'o', repo: 'r' } };
+(async () => {
+%s
+})().then(() => console.log(JSON.stringify({ failures })));
+""" % script(ROOT / ".github/workflows/ri-publish-tag.yml", "publish",
+             "Tag and create the draft release")
+    out = run_node(tmp_path, ws, harness, {})
+    assert len(out["failures"]) == 1
+    assert ("or abandon the release: merge a pull request that removes the `## 1.2.0` "
+            "section from CHANGES.md and restores its fragments under `CHANGES.d/`."
+            ) in out["failures"][0]
+    assert "[Unreleased]" not in out["failures"][0]

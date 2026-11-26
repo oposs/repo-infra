@@ -469,6 +469,36 @@ def test_a_fragment_that_is_not_utf8_is_a_problem_naming_the_file(tmp_path):
     assert found[-1] == (FRAGMENT, "problem", "is not valid UTF-8")
 
 
+def test_fragment_mode_reports_a_symbolic_link_in_a_section_directory(tmp_path):
+    changelog(tmp_path, NOTE, {FRAGMENT: "- ok\n", "elsewhere/x.md": "- a\n"})
+    other = "CHANGES.d/new/20261126-0922-a3f9-link.md"
+    (tmp_path / other).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / other).symlink_to(tmp_path / "elsewhere/x.md")
+    (tmp_path / "CHANGES.d/changed").symlink_to(tmp_path / "elsewhere")
+    found = [(i.name, i.state, i.detail) for i in check.changelog_items(tmp_path)]
+    assert found[1:] == [("CHANGES.d/changed", "problem", "is a symbolic link"),
+                         (other, "problem", "is a symbolic link")]
+
+
+def test_fragment_mode_only_takes_the_exact_unreleased_heading(tmp_path):
+    # The roll matches '## [Unreleased]' alone on a line, trimmed; a bare or
+    # lower-case heading is no [Unreleased] section to it.
+    for heading in ("## Unreleased", "## [unreleased]", "## [Unreleased] later"):
+        found = changelog(tmp_path, NOTE.replace("## 1.0.0 - 2026-01-01", heading),
+                          {"CHANGES.d/.gitkeep": ""})
+        assert [n for n, _, _ in found] == ["changelog-mode"], heading
+
+
+def test_fragment_mode_reads_a_changes_md_with_crlf_line_ends(tmp_path):
+    crlf = NOTE.replace("\n", "\r\n")
+    assert changelog(tmp_path, crlf, {"CHANGES.d/.gitkeep": ""}) == [
+        ("changelog-mode", "ok", "fragments in CHANGES.d/")]
+    found = changelog(tmp_path, crlf.replace("## 1.0.0 - 2026-01-01",
+                                             "## [Unreleased]\r\n\r\n- a"),
+                      {"CHANGES.d/.gitkeep": ""})
+    assert [n for n, _, _ in found] == ["changelog-mode", "unreleased-section"]
+
+
 def test_a_refused_note_is_a_problem(tmp_path):
     found = changelog(tmp_path, "Changelog fragments: `../x/`.\n")
     assert found == [("changelog-mode", "problem",

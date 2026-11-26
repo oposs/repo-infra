@@ -424,14 +424,14 @@ own token.
 ## Changelog fragments (D40)
 
 A repository opts in with a note at the top of `CHANGES.md`, in the header above
-the first `## ` heading. A header line matching ``^Changelog fragments: `([^`]+?)/?` ``
-names the fragment directory. The note is the whole switch: there is no key in
-`.github/repo-infra.json` and no input on a piece. A repository without the note
-works as before. `apply --item changelog-fragments` writes the note, which is
-never part of a bare `apply`, since how a repository collects entries is its own
-choice. The directory is a relative path inside the repository; the tools
-refuse an absolute one, one with `..`, `.github` or a path under it, and
-`CHANGES.md`.
+the first `## ` heading. A header line matching
+``^Changelog fragments: `([^`]+?)/?` `` names the fragment directory. The note
+is the whole switch: there is no key in `.github/repo-infra.json` and no input
+on a piece. A repository without the note works as before.
+`apply --item changelog-fragments` writes the note, which is never part of a
+bare `apply`, since how a repository collects entries is its own choice. The
+directory is a relative path inside the repository; the tools refuse an absolute
+one, one with `..`, `.github` or a path under it, and `CHANGES.md`.
 
 With the note, `CHANGES.md` has no `## [Unreleased]` heading. A file with both is
 refused ("the switch to fragments is not finished").
@@ -451,49 +451,53 @@ refused ("the switch to fragments is not finished").
   continuation lines indented by two spaces. Blank lines between entries are
   allowed and dropped. Refused: no entry, a line starting with `#`, any other
   text.
-- **Gate:** `ri-changelog` reads `CHANGES.md` at the head and at the merge base
-  of the pull request, not at the tip of `main`. Against the tip, every open
-  fragment pull request would fail after each release, because `main` then has a
-  `## X.Y.Z` heading the branch lacks. A pull request opened before the switch is
-  judged by the classic rules for the same reason.
-  - With the note at both, the header and the list of `## ` headings must stay
-    as they are; text inside a released section may change (a typo, a wrong
-    issue tag). Every added, changed or renamed file under `<dir>` must follow
-    the rules above. Deleting a fragment fails, since another pull request added
-    it; a rename inside the section directories is allowed. If a pull request edits a fragment that a release has deleted in the
-    meantime, the rebase stops on a modify/delete conflict. Drop the file with
-    `git rm`, since keeping it releases the entry twice. The pull request
-    needs one added, changed or renamed fragment, or a change to released text
-    only.
-  - A pull request that removes the topmost `## X.Y.Z` section of a version
-    without a `vX.Y.Z` tag is the way to abandon that release. It must restore at
+- **Gate:** `ri-changelog` reads `CHANGES.md` at the head and at the merge
+  base of the pull request, not at the tip of `main`. Against the tip, every
+  open fragment pull request would fail after each release, because `main` then
+  has a `## X.Y.Z` heading the branch lacks. A pull request opened before the
+  switch is judged by the classic rules for the same reason. The cases:
+  - **Note at both:** the header and the list of `## ` headings must stay as
+    they are; text inside a released section may change (a typo, a wrong issue
+    tag). Every added, changed or renamed file under `<dir>` must follow the
+    rules above. The pull request needs one added, changed or renamed fragment,
+    or a change to released text only.
+  - **Deleting a fragment** fails, since another pull request added it. A
+    rename inside the section directories is allowed.
+  - **A fragment that a release deleted in the meantime:** if the pull request
+    edits it, the rebase stops on a modify/delete conflict. Drop the file with
+    `git rm`, since keeping it releases the entry twice.
+  - **Abandoning a release:** a pull request that removes the topmost
+    `## X.Y.Z` section of a version without a `vX.Y.Z` tag. It must restore at
     least as many entries in fragments as the section held.
-  - A pull request that adds the note passes when it removes `[Unreleased]`,
-    leaves the released sections alone, and adds at least as many entries in
-    fragments as `[Unreleased]` held at the merge base. Removing the note fails
-    while fragment files remain; once none remain, the head is judged by the classic
-    rules and needs a non-empty `[Unreleased]`.
-  - Any other edit to `CHANGES.md` outside a released section is refused. The
-    label `no-changelog` still skips the whole gate, since the caller skips the
-    job.
+  - **Adding the note:** the pull request passes when it removes
+    `[Unreleased]`, leaves the released sections alone, and adds at least as
+    many entries in fragments as `[Unreleased]` held at the merge base.
+  - **Removing the note** fails while fragment files remain. Once none remain,
+    the head is judged by the classic rules and needs a non-empty
+    `[Unreleased]`.
+  - **Any other edit** to `CHANGES.md` outside a released section is refused.
+    The label `no-changelog` still skips the whole gate, since the caller skips
+    the job.
 - **Roll:** `ri-release-prepare` collects the fragments into `## X.Y.Z - date`
-  with `### New`, `### Changed` and `### Fixed`, each only when it has entries, and
-  the release commit deletes exactly the fragments it rolled. The section looks
-  like one rolled from `[Unreleased]`, so the release notes do too. With no
-  fragment, prepare stops with "no changelog fragments in <dir> - nothing to
-  release". A path under the fragment directory is refused as a release file.
+  with `### New`, `### Changed` and `### Fixed`, each only when it has entries,
+  and the release commit deletes exactly the fragments it rolled. The section
+  looks like one rolled from `[Unreleased]`, so the release notes do too. With
+  no fragment, prepare stops with "no changelog fragments in <dir> - nothing to
+  release". A path under the fragment directory is refused as a release file, and so is a
+  symbolic link in a section directory.
 - **`check` and `apply`:** `check` reports the mode, and in fragment mode a
   missing directory, a remaining `[Unreleased]` and a file that breaks the
   rules. `apply --item changelog-fragments` moves each non-empty subsection of
-  `[Unreleased]` into one fragment, in the old order. It refuses, and writes nothing, when there is no `CHANGES.md` or no
-  `## [Unreleased]` heading, when the note is already there or names a refused
-  directory, when `CHANGES.d/` already exists, when a release pull request is open
-  or the newest release in `CHANGES.md` has no tag, and when `--from` is given.
-  It also refuses an entry the rules cannot hold and names it: text before the
-  first subsection, an entry under a subsection other than New, Changed or Fixed
-  (such as `### Removed`), an empty `-` item, a line starting with `#`, and text
-  outside a `- ` item. The agent rewrites such entries in `CHANGES.md`, the owner
-  looks at the rewrite, and the item runs again.
+  `[Unreleased]` into one fragment, in the old order. It refuses, and writes
+  nothing, when there is no `CHANGES.md` or no `## [Unreleased]` heading, when
+  the note is already there or names a refused directory, when `CHANGES.d/`
+  already exists, when a release pull request is open or the newest release in
+  `CHANGES.md` has no tag, and when `--from` is given. It also refuses an entry
+  the rules cannot hold and names it: text before the first subsection, an entry
+  under a subsection other than New, Changed or Fixed (such as `### Removed`),
+  an empty `-` item, a line starting with `#`, and text outside a `- ` item. The
+  agent rewrites such entries in `CHANGES.md`, the owner looks at the rewrite,
+  and the item runs again.
 
 The rules are implemented twice: `.github/workflows/lib/fragments.js` for the
 gate and the release, `repo_infra/fragments.py` for `check` and `apply`. A shared
