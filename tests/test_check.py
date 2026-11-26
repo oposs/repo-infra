@@ -402,6 +402,89 @@ def test_the_formula_is_an_acceptable_release_file():
     assert check.refused_release_files(["Formula/mdmost.rb"], [{"path": "Cargo.toml"}]) == []
 
 
+def changelog(tmp_path, changes, files=None):
+    (tmp_path / "CHANGES.md").write_text(changes, encoding="utf-8")
+    for rel, text in (files or {}).items():
+        install(tmp_path, rel, text)
+    return [(i.name, i.state, i.detail) for i in check.changelog_items(tmp_path)]
+
+
+FRAGMENT = "CHANGES.d/fixed/20261126-0921-a3f9-x.md"
+NOTE = "# Changelog\n\nChangelog fragments: `CHANGES.d/`.\n\n## 1.0.0 - 2026-01-01\n"
+
+
+def test_a_repository_without_changes_md_has_no_changelog_items(tmp_path):
+    assert check.changelog_items(tmp_path) == []
+
+
+def test_a_changes_md_without_a_note_is_classic(tmp_path):
+    found = changelog(tmp_path, "# Changelog\n\n## [Unreleased]\n\n- a\n")
+    assert found == [("changelog-mode", "ok", "classic")]
+
+
+def test_fragment_mode_with_a_good_fragment_is_ok(tmp_path):
+    found = changelog(tmp_path, NOTE, {FRAGMENT: "- fixed it\n",
+                                       "CHANGES.d/README.md": "about\n"})
+    assert found == [("changelog-mode", "ok", "fragments in CHANGES.d/")]
+
+
+def test_fragment_mode_reads_a_dot_slash_note(tmp_path):
+    found = changelog(tmp_path, NOTE.replace("`CHANGES.d/`", "`./CHANGES.d/`"),
+                      {FRAGMENT: "text\n"})
+    assert found == [
+        ("changelog-mode", "ok", "fragments in CHANGES.d/"),
+        (FRAGMENT, "problem", "text outside an entry: text")]
+
+
+def test_fragment_mode_reports_a_missing_directory(tmp_path):
+    found = changelog(tmp_path, NOTE)
+    assert [(n, s) for n, s, _ in found] == [("changelog-mode", "ok"),
+                                             ("fragment-directory", "problem")]
+
+
+def test_fragment_mode_reports_an_unreleased_section(tmp_path):
+    found = changelog(tmp_path, NOTE.replace("## 1.0.0 - 2026-01-01",
+                                             "## [Unreleased]\n\n- a\n"),
+                      {"CHANGES.d/.gitkeep": ""})
+    assert [(n, s) for n, s, _ in found] == [("changelog-mode", "ok"),
+                                             ("unreleased-section", "problem")]
+
+
+def test_fragment_mode_reports_each_refused_path_and_invalid_fragment(tmp_path):
+    found = changelog(tmp_path, NOTE, {
+        FRAGMENT: "- ok\n",
+        "CHANGES.d/fixed/notes.md": "- a\n",
+        "CHANGES.d/other/20261126-0921-a3f9-x.md": "- a\n",
+        "CHANGES.d/new/20261126-0921-a3f9-y.md": "# heading\n"})
+    assert [(n, s) for n, s, _ in found[1:]] == [
+        ("CHANGES.d/fixed/notes.md", "problem"),
+        ("CHANGES.d/new/20261126-0921-a3f9-y.md", "problem"),
+        ("CHANGES.d/other/20261126-0921-a3f9-x.md", "problem")]
+
+
+def test_a_refused_note_is_a_problem(tmp_path):
+    found = changelog(tmp_path, "Changelog fragments: `../x/`.\n")
+    assert found == [("changelog-mode", "problem",
+                      "Changelog fragments directory '../x' contains '..'")]
+
+
+def test_a_dot_slash_note_still_refuses_release_files_under_the_directory(tmp_path):
+    install(tmp_path / "repo", "CHANGES.md",
+            NOTE.replace("`CHANGES.d/`", "`./CHANGES.d`"))
+    found = config(tmp_path, {"version_files": VERSIONS,
+                              "release_files": ["CHANGES.d/new/x.md"]})
+    assert ("release_files", "problem",
+            "CHANGES.d/new/x.md is under CHANGES.d/, which the release pull request "
+            "rolls") in found
+
+
+def test_check_run_reports_the_changelog_section(tmp_path):
+    (tmp_path / "CHANGES.md").write_text(NOTE, encoding="utf-8")
+    items = check.run(tmp_path, CONFORMING)
+    assert ("changelog", "changelog-mode", "ok") in {
+        (i.section, i.name, i.state) for i in items}
+
+
 GITEA_DOCS = {"release-publish.yml": {"jobs": {"gitea": {
     "uses": "./.github/workflows/ri-publish-gitea.yml"}}}}
 

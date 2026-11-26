@@ -16,7 +16,7 @@ import re
 import tomllib
 from collections import namedtuple
 
-from . import callers
+from . import callers, fragments
 from .markers import parse_markers
 from .pieces import (
     ASSETS,
@@ -566,6 +566,60 @@ def refused_release_files(entries, version_files, fragment_dir=None):
     return refused
 
 
+def _changes_text(repo_root):
+    path = pathlib.Path(repo_root) / "CHANGES.md"
+    return path.read_text(encoding="utf-8") if path.is_file() else None
+
+
+def _fragment_dir(repo_root):
+    """The fragment directory CHANGES.md names, or None; a refused note names none.
+
+    changelog_items reports the refused note, so config_items only needs to
+    stay quiet about it.
+    """
+    text = _changes_text(repo_root)
+    if text is None:
+        return None
+    try:
+        return fragments.note_dir(text)
+    except ValueError:
+        return None
+
+
+def changelog_items(repo_root):
+    """The changelog mode (D40) and, in fragment mode, what breaks its rules."""
+    text = _changes_text(repo_root)
+    if text is None:
+        return []
+    try:
+        directory = fragments.note_dir(text)
+    except ValueError as error:
+        return [Item("changelog", "changelog-mode", "problem", str(error))]
+    if directory is None:
+        return [Item("changelog", "changelog-mode", "ok", "classic")]
+    items = [Item("changelog", "changelog-mode", "ok", f"fragments in {directory}/")]
+    root = pathlib.Path(repo_root)
+    base = root / directory
+    if not base.is_dir():
+        items.append(Item("changelog", "fragment-directory", "problem",
+                          f"{directory}/ does not exist; CHANGES.md names it as the "
+                          "place for changelog fragments"))
+    if re.search(r"^## \[?unreleased\]?", text, re.IGNORECASE | re.MULTILINE):
+        items.append(Item("changelog", "unreleased-section", "problem",
+                          "CHANGES.md has an [Unreleased] section; in fragment mode "
+                          f"its entries belong in files under {directory}/"))
+    for file in sorted(p for p in base.rglob("*") if p.is_file()):
+        rel = file.relative_to(root).as_posix()
+        kind, detail = fragments.classify_path(directory, rel)
+        if kind == "refused":
+            items.append(Item("changelog", rel, "problem", detail))
+        elif kind == "fragment":
+            problem = fragments.fragment_problem(file.read_text(encoding="utf-8"))
+            if problem:
+                items.append(Item("changelog", rel, "problem", problem))
+    return items
+
+
 def _reasons(value):
     """True for an object whose every value is a non-empty reason (D32)."""
     return isinstance(value, dict) and all(
@@ -623,7 +677,8 @@ def config_items(repo_root, docs, called=None):
         items.append(Item("config", "release_files", "problem",
                           "release_files must be a list of paths"))
         release_files = []
-    refused = refused_release_files(release_files, version_files)
+    refused = refused_release_files(release_files, version_files,
+                                    _fragment_dir(repo_root))
     if refused:
         items.append(Item("config", "release_files", "problem",
                           "; ".join(f"{entry} {reason}" for entry, reason in refused)))
@@ -846,6 +901,7 @@ def run(repo_root, facts, assets=ASSETS):
             + core_call_items(docs, pieces)
             + callers.validate(docs, pieces, assets, home=home)
             + config_items(repo_root, docs, called)
+            + changelog_items(repo_root)
             + path_filter_items(docs)
             + action_pin_items(repo_root, pieces)
             + classify_remote(facts))

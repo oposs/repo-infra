@@ -5,6 +5,8 @@
 // note names instead of editing CHANGES.md, so two pull requests never conflict
 // on the same lines.
 
+const { posix } = require('node:path');
+
 const SECTIONS = [['new', '### New'], ['changed', '### Changed'], ['fixed', '### Fixed']];
 const NOTE_RE = /^Changelog fragments: `([^`]+?)\/?`/;
 const NAME_RE = /^[0-9]{8}-[0-9]{4}-[0-9a-f]{4}-[a-z0-9]+(-[a-z0-9]+)*\.md$/;
@@ -16,9 +18,13 @@ function headerEnd(lines) {
   return i === -1 ? lines.length : i;
 }
 
-function refusedDir(dir) {
-  if (dir.startsWith('/')) return 'is absolute';
-  if (dir.split('/').includes('..')) return "contains '..'";
+// dir is the normalised directory: './CHANGES.d/' and 'CHANGES.d//' read as
+// 'CHANGES.d', as GitHub names the files. Without that, './CHANGES.d' matched no
+// path, so classifyPath saw every fragment as outside it.
+function refusedDir(raw, dir) {
+  if (raw.startsWith('/')) return 'is absolute';
+  if (raw.split('/').includes('..')) return "contains '..'";
+  if (dir === '.') return 'is the repository root';
   if (dir === '.github' || dir.startsWith('.github/')) return "is or lies under '.github'";
   if (dir === 'CHANGES.md') return "is 'CHANGES.md'";
   return null;
@@ -29,13 +35,14 @@ function noteDir(text) {
   for (const line of lines.slice(0, headerEnd(lines))) {
     const m = NOTE_RE.exec(line);
     if (!m) continue;
-    const reason = refusedDir(m[1]);
+    const dir = posix.normalize(m[1]).replace(/\/$/, '');
+    const reason = refusedDir(m[1], dir);
     if (reason) {
       // Marked so a caller can tell a refused note from a fault of its own.
       throw Object.assign(new Error(`Changelog fragments directory '${m[1]}' ${reason}`),
         { refusedNote: true });
     }
-    return m[1];
+    return dir;
   }
   return null;
 }
