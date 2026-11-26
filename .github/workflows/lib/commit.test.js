@@ -152,6 +152,22 @@ test('a branch left over from an earlier run is moved, not fatal', async () => {
   assert.equal(github.seen.updates[0].force, true);
 });
 
+test('deletions become tree entries with sha null', async () => {
+  // A deleted path has no blob. Git reads a null sha in a tree entry as
+  // "remove this path from the base tree".
+  const github = fakeGithub();
+  await commit.commitFiles(github, {
+    ...ARGS,
+    files: [{ path: 'CHANGES.md', content: '# Changelog\n' }],
+    deletions: ['agents/module.py'],
+  });
+  assert.deepEqual(
+    github.seen.trees[0].tree.find((e) => e.path === 'agents/module.py'),
+    { path: 'agents/module.py', mode: '100644', type: 'blob', sha: null },
+  );
+  assert.equal(github.seen.blobs.length, 1);
+});
+
 test('an error that is not "ref exists" still fails the run', async () => {
   const github = fakeGithub();
   github.rest.git.createRef = async () => {

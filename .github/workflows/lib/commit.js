@@ -32,9 +32,9 @@ async function modeFinder(github, owner, repo, rootTree) {
 }
 
 async function commitFiles(github, {
-  owner, repo, branch, baseSha, message, files,
+  owner, repo, branch, baseSha, message, files = [], deletions = [],
 }) {
-  if (!files || files.length === 0) {
+  if (files.length === 0 && deletions.length === 0) {
     throw new Error('nothing to commit - the file list is empty');
   }
 
@@ -52,6 +52,14 @@ async function commitFiles(github, {
     });
     tree.push({
       path: file.path, mode: await modeOf(file.path), type: 'blob', sha: blob.sha,
+    });
+  }
+  // A null sha in a tree entry removes that path from the base tree. No blob
+  // is created for it, and a deletion has no mode to keep, so it is written
+  // as a plain file entry.
+  for (const path of deletions) {
+    tree.push({
+      path, mode: '100644', type: 'blob', sha: null,
     });
   }
 
