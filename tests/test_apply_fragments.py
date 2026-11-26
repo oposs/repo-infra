@@ -121,6 +121,25 @@ def test_entries_the_fragment_rules_cannot_hold_are_refused_and_each_is_named(tm
     assert not (tmp_path / "CHANGES.d").exists()
 
 
+@pytest.mark.parametrize("entry", [
+    "- A feature.\n  ### Details\n",
+    "- A feature.\n  ### Details\n  more about it.\n",
+])
+def test_an_indented_subsection_heading_inside_an_entry_is_refused(tmp_path, entry):
+    before = HEADER + "## [Unreleased]\n\n### New\n\n" + entry + "\n" + RELEASED
+    write_changes(tmp_path, before)
+    with pytest.raises(ApplyError,
+                       match=r"### New entry '- A feature\.' holds a heading:   ### Details"):
+        fragments.switch_to_fragments(tmp_path, NOW, rands("a3f9"))
+    assert read(tmp_path, "CHANGES.md") == before
+
+
+def test_an_empty_list_item_is_refused(tmp_path):
+    write_changes(tmp_path, HEADER + "## [Unreleased]\n\n### Fixed\n\n- \n\n" + RELEASED)
+    with pytest.raises(ApplyError, match="### Fixed has an empty list item"):
+        fragments.switch_to_fragments(tmp_path, NOW, rands("a3f9"))
+
+
 def test_a_second_run_is_refused(tmp_path):
     write_changes(tmp_path, HEADER + FILLED + RELEASED)
     fragments.switch_to_fragments(tmp_path, NOW, rands("a3f9", "0b1c"))

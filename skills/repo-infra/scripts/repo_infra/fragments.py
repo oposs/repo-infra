@@ -151,7 +151,9 @@ def _unreleased_problems(block):
     problems, found = [], {}
     heading, entry = None, None
     for line in block:
-        if line.strip().startswith("### "):
+        # Only an unindented '### ' opens a subsection; an indented one is a
+        # heading inside an entry and is refused below, never dropped.
+        if line.startswith("### "):
             heading, entry = line.strip(), None
             continue
         if line.strip() == "":
@@ -159,7 +161,11 @@ def _unreleased_problems(block):
         if heading is None:
             problems.append(f"text before the first subsection: {line}")
         elif heading not in HEADINGS:
+            # Reached only for a non-blank line, so an empty unknown subsection
+            # (a skeleton's '### Removed') is dropped: it holds no entry.
             problems.append(f"{heading} is not New, Changed or Fixed: {line}")
+        elif line.rstrip() == "-":
+            problems.append(f"{heading} has an empty list item: {line}")
         elif line.startswith("- ") and line[2:].strip():
             entry = [line]
             found.setdefault(HEADINGS[heading], []).append(entry)
