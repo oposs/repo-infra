@@ -798,7 +798,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-changelog.yml@v2`.
 
 **Choose it when:** Always; changelog.yml calls it and changelog-updated reads its result.
 
-**The repository supplies:** CHANGES.md with an Unreleased section; the no-changelog label.
+**The repository supplies:** CHANGES.md with an Unreleased section, or with the 'Changelog fragments' note and fragment files under its directory; the no-changelog label.
 
 **Produces:** The output message; the job fails when the changelog is refused.
 
