@@ -1,1 +1,0 @@
-- A pull request whose entry landed in an already released section of CHANGES.md after updating from main passed the Changelog check, and the entry would have been left out of the next release. The check now fails and names the section; move the entry into a file under CHANGES.d/new, changed or fixed. Fixing or removing text in released sections stays allowed.
