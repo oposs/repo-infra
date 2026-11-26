@@ -416,6 +416,14 @@ test('changelogVerdict', async (t) => {
     assert.match(v.message, /v1\.3\.0 is tagged/);
   });
 
+  await t.test('abandon: a top heading that is no release is not called tagged', () => {
+    const odd = NOTE_HEAD + '## Notes\n\n- text\n\n' + REL_1;
+    const v = verdict({ mergeBaseText: odd, baseText: odd, headText: NOTE_HEAD + REL_1, untaggedTop: '1.2.3', ...restore('- text\n') });
+    assert.equal(v.ok, false);
+    assert.match(v.message, /'## Notes' from CHANGES\.md, which is not a release section/);
+    assert.doesNotMatch(v.message, /is tagged/);
+  });
+
   await t.test('abandon: one entry is counted in the singular', () => {
     const one = NOTE_HEAD + '## 1.3.0 - 2026-09-01\n\n### Fixed\n\n- fix one\n\n' + REL_1;
     const v = verdict({ mergeBaseText: one, headText: abandoned, untaggedTop: '1.3.0' });

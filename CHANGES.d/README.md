@@ -19,3 +19,7 @@ openssl rand -hex 2
 
 Within a section, the entries are released in the order of the file names,
 so the oldest file comes first.
+
+If a pull request edits a fragment that a release has deleted in the meantime,
+the rebase stops on a modify/delete conflict. Drop the file with `git rm`, since
+keeping it releases the entry twice.

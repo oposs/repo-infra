@@ -462,6 +462,13 @@ def test_fragment_mode_reports_each_refused_path_and_invalid_fragment(tmp_path):
         ("CHANGES.d/other/20261126-0921-a3f9-x.md", "problem")]
 
 
+def test_a_fragment_that_is_not_utf8_is_a_problem_naming_the_file(tmp_path):
+    changelog(tmp_path, NOTE, {FRAGMENT: "- ok\n"})
+    (tmp_path / FRAGMENT).write_bytes(b"- caf\xe9\n")
+    found = [(i.name, i.state, i.detail) for i in check.changelog_items(tmp_path)]
+    assert found[-1] == (FRAGMENT, "problem", "is not valid UTF-8")
+
+
 def test_a_refused_note_is_a_problem(tmp_path):
     found = changelog(tmp_path, "Changelog fragments: `../x/`.\n")
     assert found == [("changelog-mode", "problem",

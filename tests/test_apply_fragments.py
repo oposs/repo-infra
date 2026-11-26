@@ -129,7 +129,7 @@ def test_an_indented_subsection_heading_inside_an_entry_is_refused(tmp_path, ent
     before = HEADER + "## [Unreleased]\n\n### New\n\n" + entry + "\n" + RELEASED
     write_changes(tmp_path, before)
     with pytest.raises(ApplyError,
-                       match=r"### New entry '- A feature\.' holds a heading:   ### Details"):
+                       match=r"### New entry '- A feature\.' has a line starting with '#':   ### Details"):
         fragments.switch_to_fragments(tmp_path, NOW, rands("a3f9"))
     assert read(tmp_path, "CHANGES.md") == before
 

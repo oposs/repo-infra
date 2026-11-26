@@ -143,10 +143,14 @@ the `[Unreleased]` section, moves the entries of each of `### New`,
 with the naming rule. It commits all of it as
 `Switch the changelog to fragments (D40)`. The release check of step 1 applies.
 
-It refuses, and writes nothing, when `[Unreleased]` holds an entry a fragment
-cannot hold: a subsection other than New, Changed or Fixed (such as
-`### Removed`), a heading inside an entry, or text outside a `- ` list item.
-The refusal names each one. Rewrite those entries in `CHANGES.md` as `- `
+It refuses, and writes nothing, when there is no `CHANGES.md` or no
+`## [Unreleased]` heading, when `CHANGES.d/` already exists without the note,
+when a release pull request is open or the newest release in `CHANGES.md` has no
+tag, and when `--from` is given. It also refuses when `[Unreleased]` holds an
+entry a fragment cannot hold: text before the first subsection, an entry under a
+subsection other than New, Changed or Fixed (such as `### Removed`), an empty
+`-` item, a line starting with `#`, or text outside a `- ` list item. The
+refusal names each one. Rewrite those entries in `CHANGES.md` as `- `
 entries under New, Changed or Fixed, show the rewrite to the user, and run the
 item again. A repository that already has the note is refused with "already
 uses fragments in `CHANGES.d/`".

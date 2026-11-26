@@ -124,8 +124,7 @@ implementation language, and implementation detail is lost on them.
 - The most important entry comes first.
 - No release headers; the release workflow writes them.
 
-In a repository whose `CHANGES.md` starts with the note `Changelog fragments:
-\`CHANGES.d/\``, the entry is not written into `CHANGES.md`. It goes into a
+In a repository whose `CHANGES.md` starts with the note ``Changelog fragments: `CHANGES.d/` ``, the entry is not written into `CHANGES.md`. It goes into a
 fragment file `<dir>/<section>/<name>.md`, where `<section>` is `new`,
 `changed` or `fixed` and `<name>` is the UTC time to the minute, 4 random hex
 characters and a topic: `CHANGES.d/new/20261126-0921-a3f9-time-band.md`

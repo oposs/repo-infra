@@ -614,7 +614,10 @@ def changelog_items(repo_root):
         if kind == "refused":
             items.append(Item("changelog", rel, "problem", detail))
         elif kind == "fragment":
-            problem = fragments.fragment_problem(file.read_text(encoding="utf-8"))
+            try:
+                problem = fragments.fragment_problem(file.read_text(encoding="utf-8"))
+            except UnicodeDecodeError:
+                problem = "is not valid UTF-8"
             if problem:
                 items.append(Item("changelog", rel, "problem", problem))
     return items

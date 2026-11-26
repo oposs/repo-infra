@@ -9,6 +9,7 @@ const { posix } = require('node:path');
 
 const SECTIONS = [['new', '### New'], ['changed', '### Changed'], ['fixed', '### Fixed']];
 const NOTE_RE = /^Changelog fragments: `([^`]+?)\/?`/;
+const RELEASE_RE = /^## (\d+\.\d+\.\d+) - \d{4}-\d{2}-\d{2}\s*$/;
 const NAME_RE = /^[0-9]{8}-[0-9]{4}-[0-9a-f]{4}-[a-z0-9]+(-[a-z0-9]+)*\.md$/;
 
 // The header is the part above the first '## ' line; a note below it belongs
@@ -161,7 +162,15 @@ function changesMdProblems(baseText, headText, untaggedTop, switching) {
   // never got its tag, and this pull request takes it back out.
   if (baseHeadings.length > 0 && sameLines(baseHeadings.slice(1), headHeadings)) {
     const top = baseHeadings[0];
-    const version = top.slice(3).split(' ')[0];
+    // The workflow derives untaggedTop from the first '## X.Y.Z - date' line, so
+    // a top heading of any other shape is no release and has no tag to check.
+    const release = RELEASE_RE.exec(top);
+    const version = release ? release[1] : null;
+    if (!release) {
+      out.problems.push(`This pull request removes '${top}' from CHANGES.md, which is not a release section. `
+        + 'Only the section of a release that has no tag may be removed.');
+      return out;
+    }
     if (version !== untaggedTop) {
       out.problems.push(`This pull request removes '${top}' from CHANGES.md, but v${version} is tagged. `
         + 'Only the section of a release that has no tag may be removed.');
