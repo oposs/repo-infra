@@ -14,6 +14,14 @@ pull request adds its entry as a file in `CHANGES.d/new/`,
 `CHANGES.d/changed/` or `CHANGES.d/fixed/`. The release pull request moves
 the entries into this file.
 
+## 2.18.0 - 2026-11-26
+
+### New
+
+- A repository can keep its changelog entries as files in `CHANGES.d/` instead of under `## [Unreleased]` in `CHANGES.md`, so two pull requests no longer conflict on the same lines. A ``Changelog fragments: `CHANGES.d/` `` line in the header of `CHANGES.md` switches the repository over; without it, nothing changes. (#172)
+- With that line, **Changelog** passes a pull request that adds a file under `CHANGES.d/new/`, `CHANGES.d/changed/` or `CHANGES.d/fixed/`, and fails one that edits the header or adds a section of `CHANGES.md`. The `no-changelog` label still skips the check, and **Create release PR** rolls the files into `CHANGES.md` and deletes them. (#172)
+- `apply --item changelog-fragments` makes the switch on a branch: it writes the line, creates `CHANGES.d/README.md` and moves the entries under `## [Unreleased]` into fragments. `check` reports which mode a repository uses. (#172)
+
 ## 2.17.1 - 2026-11-25
 
 ### Changed
