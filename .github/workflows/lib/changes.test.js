@@ -227,3 +227,45 @@ test('gateVerdict', async (t) => {
     });
   }
 });
+
+const FRAG_HEAD = [
+  '# Changelog',
+  '',
+  'Changelog fragments: `CHANGES.d`',
+  '',
+].join('\n');
+const FRAG_REST = ['## 1.2.3 - 2026-08-01', '', '### New', '', '- older', ''].join('\n');
+const FRAG_FILE = FRAG_HEAD + FRAG_REST;
+
+test('roll in fragment mode inserts the section after the header and keeps it byte for byte', () => {
+  const list = [
+    { section: 'fixed', name: '20261126-1200-abcd-b.md', text: '- fixed it\n' },
+    { section: 'new', name: '20261126-1200-abcd-a.md', text: '- added it\n' },
+  ];
+  const out = changes.roll(FRAG_FILE, '1.3.0', '2026-11-26', list);
+  assert.equal(out, FRAG_HEAD
+    + '## 1.3.0 - 2026-11-26\n\n### New\n\n- added it\n\n### Fixed\n\n- fixed it\n\n'
+    + FRAG_REST);
+});
+
+test('roll in fragment mode throws "no changelog fragments in CHANGES.d - nothing to release" for an empty list', () => {
+  assert.throws(
+    () => changes.roll(FRAG_FILE, '1.3.0', '2026-11-26', []),
+    /no changelog fragments in CHANGES\.d - nothing to release/,
+  );
+});
+
+test('roll refuses a file with both the note and [Unreleased]', () => {
+  assert.throws(
+    () => changes.roll(FRAG_HEAD + EMPTY, '1.3.0', '2026-11-26', []),
+    /the switch to fragments is not finished/,
+  );
+});
+
+test('roll in classic mode ignores the fragments argument', () => {
+  const list = [{ section: 'new', name: '20261126-1200-abcd-a.md', text: '- ignored\n' }];
+  assert.equal(
+    changes.roll(FILLED, '1.3.0', '2026-08-17', list),
+    changes.roll(FILLED, '1.3.0', '2026-08-17'),
+  );
+});

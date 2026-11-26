@@ -1,5 +1,7 @@
 'use strict';
 
+const fragments = require('./fragments.js');
+
 // The bracketed form, per Keep a Changelog. mdmost used a bare '## Unreleased';
 // supporting both would make this a guessing machine, so the odd one out is
 // migrated instead.
@@ -75,7 +77,37 @@ function subsections(block) {
   return out.map((s) => ({ heading: s.heading, body: s.body.join('\n').trim() }));
 }
 
-function roll(text, version, date) {
+// A note in the header switches a repository to fragments (D40). Keeping
+// '## [Unreleased]' as well would leave two places for entries, and an entry
+// in the wrong one would be dropped from the release.
+function mode(text) {
+  const dir = fragments.noteDir(text);
+  if (dir === null) return { kind: 'classic' };
+  if (findUnreleased(text.split('\n'))) {
+    throw new Error(
+      `CHANGES.md has the 'Changelog fragments' note and '${UNRELEASED_HEADING}': `
+      + 'the switch to fragments is not finished; remove the heading.',
+    );
+  }
+  return { kind: 'fragments', dir };
+}
+
+// The section goes between the header and the newest release; everything else
+// stays as it is, because the fragments, not CHANGES.md, carry the new entries.
+function rollFragments(text, version, date, list) {
+  if (list.length === 0) {
+    throw new Error(`no changelog fragments in ${mode(text).dir} - nothing to release`);
+  }
+  const lines = text.split('\n');
+  const eol = text.includes('\r\n') ? '\r' : '';
+  const at = fragments.headerEnd(lines);
+  const section = fragments.renderSection(version, date, list).map((l) => l + eol);
+  return [...lines.slice(0, at), ...section, ...lines.slice(at)].join('\n');
+}
+
+function roll(text, version, date, list = []) {
+  const m = mode(text);
+  if (m.kind === 'fragments') return rollFragments(text, version, date, list);
   const lines = text.split('\n');
   const range = findUnreleased(lines);
   if (!range) {
@@ -135,4 +167,4 @@ function notesFor(text, version) {
   return lines.slice(start + 1, blockEnd(lines, start)).join('\n').trim();
 }
 
-module.exports = { unreleasedBlock, gateVerdict, isEmpty, roll, latestRelease, notesFor };
+module.exports = { unreleasedBlock, gateVerdict, isEmpty, mode, roll, latestRelease, notesFor };
