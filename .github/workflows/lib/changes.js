@@ -69,16 +69,26 @@ function changelogVerdict({
   let headDir;
   try {
     baseDir = mergeBaseText == null ? null : fragments.noteDir(mergeBaseText);
+  } catch (e) {
+    // Every pull request is judged against this note, so only one that skips
+    // the gate can repair it.
+    return {
+      ok: false,
+      message: `CHANGES.md at the merge base: ${e.message}. A pull request labelled `
+        + "'no-changelog' can repair the note.",
+    };
+  }
+  try {
     headDir = headText == null ? null : fragments.noteDir(headText);
   } catch (e) {
-    return { ok: false, message: `CHANGES.md: ${e.message}.` };
+    return { ok: false, message: `CHANGES.md at head: ${e.message}.` };
   }
   if (headDir === null) {
     if (baseDir !== null && remainingFragments > 0) {
       return {
         ok: false,
         message: `CHANGES.md no longer has the 'Changelog fragments' note, but ${remainingFragments} `
-          + `fragment files remain under ${baseDir}/. Move their entries under '${UNRELEASED_HEADING}' `
+          + `fragment ${remainingFragments === 1 ? 'file remains' : 'files remain'} under ${baseDir}/. Move their entries under '${UNRELEASED_HEADING}' `
           + 'and delete the files in this pull request.',
       };
     }

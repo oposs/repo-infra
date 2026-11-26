@@ -379,7 +379,21 @@ test('changelogVerdict', async (t) => {
   await t.test('a refused directory at head fails without throwing', () => {
     const v = verdict({ headText: MB.replace('`CHANGES.d/`', '`../x/`') });
     assert.equal(v.ok, false);
-    assert.match(v.message, /Changelog fragments directory '\.\.\/x' contains '\.\.'/);
+    assert.match(v.message, /^CHANGES\.md at head: Changelog fragments directory '\.\.\/x' contains '\.\.'/);
+  });
+
+  await t.test('a refused directory at the merge base names the no-changelog repair', () => {
+    const broken = MB.replace('`CHANGES.d/`', '`../x/`');
+    const v = verdict({ mergeBaseText: broken });
+    assert.equal(v.ok, false);
+    assert.match(v.message, /^CHANGES\.md at the merge base: Changelog fragments directory '\.\.\/x'/);
+    assert.match(v.message, /labelled 'no-changelog' can repair the note/);
+  });
+
+  await t.test('modifying an existing fragment passes', () => {
+    const v = verdict({ files: [{ filename: FRAG, status: 'modified' }], fragmentTexts: { [FRAG]: '- reworded\n' } });
+    assert.equal(v.ok, true, v.message);
+    assert.match(v.message, /^1 changelog fragment under CHANGES\.d\//);
   });
 
   const abandoned = NOTE_HEAD + REL_1;
@@ -394,6 +408,19 @@ test('changelogVerdict', async (t) => {
     const v = verdict({ headText: abandoned, untaggedTop: null, ...restore('- fix one\n- fix two\n') });
     assert.equal(v.ok, false);
     assert.match(v.message, /## 1\.3\.0 - 2026-09-01/);
+  });
+
+  await t.test('abandon: untaggedTop naming another version fails as tagged', () => {
+    const v = verdict({ headText: abandoned, untaggedTop: '1.2.3', ...restore('- fix one\n- fix two\n') });
+    assert.equal(v.ok, false);
+    assert.match(v.message, /v1\.3\.0 is tagged/);
+  });
+
+  await t.test('abandon: one entry is counted in the singular', () => {
+    const one = NOTE_HEAD + '## 1.3.0 - 2026-09-01\n\n### Fixed\n\n- fix one\n\n' + REL_1;
+    const v = verdict({ mergeBaseText: one, headText: abandoned, untaggedTop: '1.3.0' });
+    assert.equal(v.ok, false);
+    assert.match(v.message, /held 1 entry, but this pull request restores 0/);
   });
 
   await t.test('abandon: too few restored entries fail', () => {
@@ -437,6 +464,8 @@ test('changelogVerdict', async (t) => {
     const v = verdict({ baseText: MB, headText: CLASSIC_BASE, remainingFragments: 2 });
     assert.equal(v.ok, false);
     assert.match(v.message, /2 fragment files remain under CHANGES\.d\//);
+    const one = verdict({ baseText: MB, headText: CLASSIC_BASE, remainingFragments: 1 });
+    assert.match(one.message, /1 fragment file remains under CHANGES\.d\//);
   });
 
   await t.test('switch back: classic rules once no fragment remains', () => {

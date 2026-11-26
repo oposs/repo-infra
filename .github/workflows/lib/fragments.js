@@ -215,7 +215,7 @@ function fragmentVerdict({ dir, baseText, headText, files, fragmentTexts, untagg
   }
   if (addedEntries < md.required) {
     const what = md.removed ? `'${md.removed}'` : "'## [Unreleased]' at the merge base";
-    problems.push(`${what} held ${md.required} entries, but this pull request restores ${addedEntries} `
+    problems.push(`${what} held ${md.required} ${md.required === 1 ? 'entry' : 'entries'}, but this pull request restores ${addedEntries} `
       + `in fragments under ${dir}/. Add the missing entries as fragments.`);
   }
   if (problems.length > 0) return { ok: false, message: problems.join('\n') };
@@ -229,7 +229,7 @@ function fragmentVerdict({ dir, baseText, headText, files, fragmentTexts, untagg
   if (switching) return { ok: true, message: `CHANGES.md switches to fragments in ${dir}/.` };
   if (md.removed) return { ok: true, message: `${md.removed} is removed and its entries are back in fragments.` };
   if (touched === 0) return { ok: true, message: 'CHANGES.md: only released sections changed.' };
-  return { ok: true, message: `${touched} changelog fragment(s) under ${dir}/ follow the rules.` };
+  return { ok: true, message: `${touched} changelog ${touched === 1 ? 'fragment' : 'fragments'} under ${dir}/ follow the rules.` };
 }
 
 module.exports = {
