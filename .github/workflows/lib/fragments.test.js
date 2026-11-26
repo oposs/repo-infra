@@ -88,3 +88,21 @@ test('renderSection throws naming the path of an invalid fragment', () => {
     /new\/20261126-0921-a3f9-x\.md/,
   );
 });
+
+test('renderSection throws on a fragment whose section is not new, changed or fixed', () => {
+  assert.throws(
+    () => fragments.renderSection('1.3.0', '2026-08-17', [
+      { section: 'removed', name: '20261126-0921-a3f9-x.md', text: '- gone\n' },
+    ]),
+    /removed\/20261126-0921-a3f9-x\.md.*not one of new, changed, fixed/,
+  );
+});
+
+test('fragmentProblem refuses an entry line without text', () => {
+  assert.match(fragments.fragmentProblem('- \n'), /entry without text/);
+  assert.match(fragments.fragmentProblem('- one\n-   \n'), /entry without text/);
+});
+
+test('countEntries counts top-level list items only', () => {
+  assert.equal(fragments.countEntries(['### New', '', '- a', '  - nested', '  more', '- b', 'prose']), 2);
+});

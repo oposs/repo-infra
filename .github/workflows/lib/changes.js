@@ -55,6 +55,49 @@ function gateVerdict(baseText, headText) {
   return { ok: true, message: 'CHANGES.md [Unreleased] was updated.' };
 }
 
+// The gate's decision for both modes. The mode comes from the merge base and
+// the head, not from the tip of the base branch: a pull request opened before
+// a switch is judged by the rules it was written against, and after a release
+// the tip has a '## ' heading the branch lacks. A text is null when the file
+// does not exist at that commit. Never throws: a refused note is a failed
+// check with a message, not a crashed job.
+function changelogVerdict({
+  baseText, mergeBaseText, headText, files = [], fragmentTexts = {}, untaggedTop = null,
+  remainingFragments = 0,
+}) {
+  let baseDir;
+  let headDir;
+  try {
+    baseDir = mergeBaseText == null ? null : fragments.noteDir(mergeBaseText);
+    headDir = headText == null ? null : fragments.noteDir(headText);
+  } catch (e) {
+    return { ok: false, message: `CHANGES.md: ${e.message}.` };
+  }
+  if (headDir === null) {
+    if (baseDir !== null && remainingFragments > 0) {
+      return {
+        ok: false,
+        message: `CHANGES.md no longer has the 'Changelog fragments' note, but ${remainingFragments} `
+          + `fragment files remain under ${baseDir}/. Move their entries under '${UNRELEASED_HEADING}' `
+          + 'and delete the files in this pull request.',
+      };
+    }
+    return gateVerdict(baseText, headText);
+  }
+  if (findUnreleased(headText.split('\n'))) return { ok: false, message: NOT_FINISHED };
+  let rulesBase = mergeBaseText;
+  let switching = null;
+  if (baseDir === null) {
+    const lines = (mergeBaseText ?? '').split('\n');
+    const range = findUnreleased(lines);
+    switching = { entries: range ? fragments.countEntries(lines.slice(range.start + 1, range.end)) : 0 };
+    if (range) rulesBase = [...lines.slice(0, range.start), ...lines.slice(range.end)].join('\n');
+  }
+  return fragments.fragmentVerdict({
+    dir: headDir, baseText: rulesBase, headText, files, fragmentTexts, untaggedTop, switching,
+  });
+}
+
 function isEmpty(block) {
   return block
     .split('\n')
@@ -80,23 +123,21 @@ function subsections(block) {
 // A note in the header switches a repository to fragments (D40). Keeping
 // '## [Unreleased]' as well would leave two places for entries, and an entry
 // in the wrong one would be dropped from the release.
+const NOT_FINISHED = `CHANGES.md has the 'Changelog fragments' note and '${UNRELEASED_HEADING}': `
+  + 'the switch to fragments is not finished; remove the heading.';
+
 function mode(text) {
   const dir = fragments.noteDir(text);
   if (dir === null) return { kind: 'classic' };
-  if (findUnreleased(text.split('\n'))) {
-    throw new Error(
-      `CHANGES.md has the 'Changelog fragments' note and '${UNRELEASED_HEADING}': `
-      + 'the switch to fragments is not finished; remove the heading.',
-    );
-  }
+  if (findUnreleased(text.split('\n'))) throw new Error(NOT_FINISHED);
   return { kind: 'fragments', dir };
 }
 
 // The section goes between the header and the newest release; everything else
 // stays as it is, because the fragments, not CHANGES.md, carry the new entries.
-function rollFragments(text, version, date, list) {
+function rollFragments(text, dir, version, date, list) {
   if (list.length === 0) {
-    throw new Error(`no changelog fragments in ${mode(text).dir} - nothing to release`);
+    throw new Error(`no changelog fragments in ${dir} - nothing to release`);
   }
   const lines = text.split('\n');
   const eol = text.includes('\r\n') ? '\r' : '';
@@ -107,7 +148,7 @@ function rollFragments(text, version, date, list) {
 
 function roll(text, version, date, list = []) {
   const m = mode(text);
-  if (m.kind === 'fragments') return rollFragments(text, version, date, list);
+  if (m.kind === 'fragments') return rollFragments(text, m.dir, version, date, list);
   const lines = text.split('\n');
   const range = findUnreleased(lines);
   if (!range) {
@@ -167,4 +208,6 @@ function notesFor(text, version) {
   return lines.slice(start + 1, blockEnd(lines, start)).join('\n').trim();
 }
 
-module.exports = { unreleasedBlock, gateVerdict, isEmpty, mode, roll, latestRelease, notesFor };
+module.exports = {
+  unreleasedBlock, gateVerdict, changelogVerdict, isEmpty, mode, roll, latestRelease, notesFor,
+};
