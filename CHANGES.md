@@ -17,7 +17,6 @@ the entries into this file.
 ## 2.18.0 - 2026-11-26
 
 ### New
-- A repository that builds an npm, Cargo, bun, pip or Go project in its own workflow can get Dependabot updates for it: list the directories under the `dependabot` key of `.github/repo-infra.json`, for example `"dependabot": {"npm": ["/modern"]}`. `apply` writes an entry for those directories into `.github/dependabot.yml`; `/` may be one of them when no CI piece builds the ecosystem at the top. `check` no longer reports such an ecosystem as one no CI piece builds.
 
 - A repository can keep its changelog entries as files in `CHANGES.d/` instead of under `## [Unreleased]` in `CHANGES.md`, so two pull requests no longer conflict on the same lines. A ``Changelog fragments: `CHANGES.d/` `` line in the header of `CHANGES.md` switches the repository over; without it, nothing changes. (#172)
 - With that line, **Changelog** passes a pull request that adds a file under `CHANGES.d/new/`, `CHANGES.d/changed/` or `CHANGES.d/fixed/`, and fails one that edits the header or adds a section of `CHANGES.md`. The `no-changelog` label still skips the check, and **Create release PR** rolls the files into `CHANGES.md` and deletes them. (#172)
