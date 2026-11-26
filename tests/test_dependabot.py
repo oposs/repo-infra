@@ -317,20 +317,52 @@ WHERE = '"dependabot.cargo" in .github/repo-infra.json'
     ({"maven": ["/a"]},
      '"dependabot.maven" in .github/repo-infra.json: maven is no ecosystem the pieces '
      "write an entry for; the keys are bun, cargo, gomod, npm, pip"),
-    ({"npm": ["/web"]},
-     '"dependabot.npm" in .github/repo-infra.json: no caller calls ri-ci-node-pnpm, so '
-     "there is no npm entry to add directories to"),
 ])
 def test_a_wrong_key_is_a_problem(tmp_path, value, problem):
     root = repo(tmp_path, "ri-ci-rust", config={"dependabot": value})
     assert dependabot_config(root) == [problem]
 
 
-def test_an_ecosystem_names_every_piece_that_builds_it(tmp_path):
-    root = repo(tmp_path, "ri-ci-python", config={"dependabot": {"cargo": ["/a"]}})
+# An ecosystem no CI piece of the callers builds, such as an npm project the
+# repository builds in its own workflow, gets an entry for the listed
+# directories alone; "/" is allowed there, because no piece puts it in.
+def test_the_key_alone_gives_an_ecosystem_its_entry(tmp_path):
+    root = repo(tmp_path, "ri-ci-python", config={"dependabot": {"npm": ["/modern"]}})
+    assert dependabot_config(root) == []
+    assert rendered(root) == BASE + single("npm", "/modern") + entry("pip")
+
+
+def test_the_key_alone_may_name_the_top(tmp_path):
+    root = repo(tmp_path, config={"dependabot": {"npm": ["/", "/web"]}})
+    assert dependabot_config(root) == []
+    assert rendered(root) == BASE + pieces.dependabot_entry("npm", ["/", "/web"])
+
+
+def test_the_top_listed_twice_is_a_problem(tmp_path):
+    root = repo(tmp_path, config={"dependabot": {"npm": ["/", "/"]}})
     assert dependabot_config(root) == [
-        f"{WHERE}: no caller calls ri-ci-rust or ri-ci-rust-musl, so "
-        "there is no cargo entry to add directories to"]
+        '"dependabot.npm" in .github/repo-infra.json: "/" is listed twice']
+
+
+def test_an_entry_from_the_key_alone_reads_current(tmp_path):
+    config = {"dependabot": {"npm": ["/modern"]}}
+    root = repo(tmp_path, config=config, dependabot=BASE + single("npm", "/modern"))
+    assert state(root) == ("current", "v4")
+
+
+def test_an_entry_from_the_key_alone_is_installed(tmp_path):
+    root = repo(tmp_path, dependabot=BASE, config={"dependabot": {"npm": ["/modern"]}})
+    piece = pieces_of(root)["dependabot"]
+    history = load_published()["dependabot"]
+    apply.install_piece(root, piece, check.piece_state(root, piece, history), history)
+    assert (root / TARGET).read_text(encoding="utf-8") == BASE + single("npm", "/modern")
+
+
+def test_the_top_stays_refused_where_a_piece_builds_it(tmp_path):
+    root = repo(tmp_path, "ri-ci-python", config={"dependabot": {"pip": ["/"]}})
+    assert dependabot_config(root) == [
+        '"dependabot.pip" in .github/repo-infra.json: "/" is in the entry when a caller '
+        "builds pip at the top; list only the other directories"]
 
 
 @pytest.mark.parametrize("directory", [

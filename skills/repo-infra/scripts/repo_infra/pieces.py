@@ -275,7 +275,7 @@ def render(piece, called, directories=None, below=None):
     directories, below = directories or {}, below or {}
     top = {ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS}
     text = piece.files[piece.target]
-    for ecosystem in sorted(top | set(below)):
+    for ecosystem in sorted(top | set(below) | set(directories)):
         where = (["/"] if ecosystem in top else []) + list(below.get(ecosystem, ()))
         where += [d for d in directories.get(ecosystem, ()) if d not in where]
         text += dependabot_entry(ecosystem, where)

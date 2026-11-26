@@ -101,9 +101,12 @@ as rule ids.
   for a Cargo, npm, bun, pip or Go project that is not part of the one at the
   top, for example `{"cargo": ["/tools/gen"]}` (#117). The ecosystem's entry
   then reads `directories:`, with `/` first when a caller builds the ecosystem
-  at the top. `check` refuses a path that does not
-  start with `/`, ends in `/`, holds `.` or `..`, or is listed twice, and an
-  ecosystem no caller's CI piece builds.
+  at the top. An ecosystem no caller's CI piece builds, such as an npm project
+  the repository builds in its own workflow, gets an entry for the listed
+  directories alone, and `/` may be one of them: `{"npm": ["/modern"]}`.
+  `check` refuses a path that does not start with `/`, ends in `/`, holds `.`
+  or `..`, or is listed twice, and `/` for an ecosystem a caller builds at the
+  top.
 - `exceptions`: one reason per rule id of `references/project-shape.md`, for a
   rule that does not apply to this repository (D32). `check` reports a value
   that is not an object of non-empty strings; only the shape review reads the
@@ -467,7 +470,9 @@ v4 on, an entry reads `directories:` instead of `directory: /` when the
 ecosystem (#117). A call that passes a `directory` below the top, such as
 `ri-ci-node-pnpm` with `directory: player`, puts that directory in its
 ecosystem's entry, and `/` stays out of the entry unless another call builds
-the ecosystem at the top (#151).
+the ecosystem at the top (#151). An ecosystem that only the `dependabot` key
+names gets an entry for the directories listed there; the repository builds it
+in a workflow of its own, which no piece describes.
 `generations.json` records the asset, which is the file for a repository that
 calls none of them; `check` strips the appended entries before it looks for the
 version, and the bytes are current only when they equal the file rendered for

@@ -318,13 +318,14 @@ def read_config(repo_root):
 def dependabot_problems(value, called, below=None):
     """What is wrong with the "dependabot" key of repo-infra.json (#117): an
     object of Dependabot ecosystems, each with the directories besides / its
-    entry covers. An ecosystem needs an entry to add them to, so one of the
-    callers' CI pieces must build it."""
+    entry covers. An ecosystem no CI piece of the callers builds, such as an
+    npm project a repository builds in its own workflow, gets an entry for
+    the listed directories alone, and "/" may be one of them."""
     where = f'"dependabot" in {CONFIG}'
     if not isinstance(value, dict):
         return [f"{where} must be an object that maps an ecosystem to a list of "
                 "directories"]
-    built = {ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS} | set(below or {})
+    top = {ECOSYSTEMS[name] for name in called if name in ECOSYSTEMS}
     problems = []
     for ecosystem, directories in value.items():
         key = f'"dependabot.{ecosystem}" in {CONFIG}'
@@ -337,10 +338,6 @@ def dependabot_problems(value, called, below=None):
             problems.append(f"{key}: {ecosystem} is no ecosystem the pieces write an entry "
                             f"for; the keys are {', '.join(sorted(set(ECOSYSTEMS.values())))}")
             continue
-        if ecosystem not in built:
-            problems.append(f"{key}: no caller calls {' or '.join(builders)}, so "
-                            f"there is no {ecosystem} entry to add directories to")
-            continue
         if not isinstance(directories, list) or not all(
                 isinstance(d, str) for d in directories):
             problems.append(f"{key} must be a list of directories")
@@ -349,10 +346,10 @@ def dependabot_problems(value, called, below=None):
             problems.append(f"{key} is empty; list a directory or remove the key")
         seen = set()
         for directory in directories:
-            if directory == "/":
+            if directory == "/" and ecosystem in top:
                 problems.append(f'{key}: "/" is in the entry when a caller builds '
                                 f"{ecosystem} at the top; list only the other directories")
-            elif not DIRECTORY.fullmatch(directory) or {".", ".."} & set(
+            elif directory != "/" and not DIRECTORY.fullmatch(directory) or {".", ".."} & set(
                     directory.split("/")):
                 problems.append(f'{key}: "{directory}" must start with /, end without /, '
                                 "hold no . or .. and use only letters, digits and . _ - *")
