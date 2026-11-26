@@ -1,10 +1,12 @@
 'use strict';
 
+const fragments = require('./fragments.js');
+
 // The bracketed form, per Keep a Changelog. mdmost used a bare '## Unreleased';
 // supporting both would make this a guessing machine, so the odd one out is
 // migrated instead.
 const UNRELEASED_HEADING = '## [Unreleased]';
-const RELEASE_RE = /^## (\d+\.\d+\.\d+) - (\d{4}-\d{2}-\d{2})\s*$/;
+const { RELEASE_RE } = fragments;
 
 // Where a '## ' block ends: at the next '## ', or at the end of the file.
 function blockEnd(lines, start) {
@@ -53,6 +55,59 @@ function gateVerdict(baseText, headText) {
   return { ok: true, message: 'CHANGES.md [Unreleased] was updated.' };
 }
 
+// The gate's decision for both modes. The mode comes from the merge base and
+// the head, not from the tip of the base branch: a pull request opened before
+// a switch is judged by the rules it was written against, and after a release
+// the tip has a '## ' heading the branch lacks. A text is null when the file
+// does not exist at that commit. Never throws: a refused note is a failed
+// check with a message, not a crashed job.
+function changelogVerdict({
+  baseText, mergeBaseText, headText, files = [], fragmentTexts = {}, untaggedTop = null,
+  remainingFragments = 0,
+}) {
+  let baseDir;
+  let headDir;
+  try {
+    baseDir = mergeBaseText == null ? null : fragments.noteDir(mergeBaseText);
+  } catch (e) {
+    // Every pull request is judged against this note, so only one that skips
+    // the gate can repair it.
+    return {
+      ok: false,
+      message: `CHANGES.md at the merge base: ${e.message}. A pull request labelled `
+        + "'no-changelog' can repair the note.",
+    };
+  }
+  try {
+    headDir = headText == null ? null : fragments.noteDir(headText);
+  } catch (e) {
+    return { ok: false, message: `CHANGES.md at head: ${e.message}.` };
+  }
+  if (headDir === null) {
+    if (baseDir !== null && remainingFragments > 0) {
+      return {
+        ok: false,
+        message: `CHANGES.md no longer has the 'Changelog fragments' note, but ${remainingFragments} `
+          + `fragment ${remainingFragments === 1 ? 'file remains' : 'files remain'} under ${baseDir}/. Move their entries under '${UNRELEASED_HEADING}' `
+          + 'and delete the files in this pull request.',
+      };
+    }
+    return gateVerdict(baseText, headText);
+  }
+  if (findUnreleased(headText.split('\n'))) return { ok: false, message: NOT_FINISHED };
+  let rulesBase = mergeBaseText;
+  let switching = null;
+  if (baseDir === null) {
+    const lines = (mergeBaseText ?? '').split('\n');
+    const range = findUnreleased(lines);
+    switching = { entries: range ? fragments.countEntries(lines.slice(range.start + 1, range.end)) : 0 };
+    if (range) rulesBase = [...lines.slice(0, range.start), ...lines.slice(range.end)].join('\n');
+  }
+  return fragments.fragmentVerdict({
+    dir: headDir, baseText: rulesBase, headText, files, fragmentTexts, untaggedTop, switching,
+  });
+}
+
 function isEmpty(block) {
   return block
     .split('\n')
@@ -75,7 +130,35 @@ function subsections(block) {
   return out.map((s) => ({ heading: s.heading, body: s.body.join('\n').trim() }));
 }
 
-function roll(text, version, date) {
+// A note in the header switches a repository to fragments (D40). Keeping
+// '## [Unreleased]' as well would leave two places for entries, and an entry
+// in the wrong one would be dropped from the release.
+const NOT_FINISHED = `CHANGES.md has the 'Changelog fragments' note and '${UNRELEASED_HEADING}': `
+  + 'the switch to fragments is not finished; remove the heading.';
+
+function mode(text) {
+  const dir = fragments.noteDir(text);
+  if (dir === null) return { kind: 'classic' };
+  if (findUnreleased(text.split('\n'))) throw new Error(NOT_FINISHED);
+  return { kind: 'fragments', dir };
+}
+
+// The section goes between the header and the newest release; everything else
+// stays as it is, because the fragments, not CHANGES.md, carry the new entries.
+function rollFragments(text, dir, version, date, list) {
+  if (list.length === 0) {
+    throw new Error(`no changelog fragments in ${dir} - nothing to release`);
+  }
+  const lines = text.split('\n');
+  const eol = text.includes('\r\n') ? '\r' : '';
+  const at = fragments.headerEnd(lines);
+  const section = fragments.renderSection(version, date, list).map((l) => l + eol);
+  return [...lines.slice(0, at), ...section, ...lines.slice(at)].join('\n');
+}
+
+function roll(text, version, date, list = []) {
+  const m = mode(text);
+  if (m.kind === 'fragments') return rollFragments(text, m.dir, version, date, list);
   const lines = text.split('\n');
   const range = findUnreleased(lines);
   if (!range) {
@@ -135,4 +218,6 @@ function notesFor(text, version) {
   return lines.slice(start + 1, blockEnd(lines, start)).join('\n').trim();
 }
 
-module.exports = { unreleasedBlock, gateVerdict, isEmpty, roll, latestRelease, notesFor };
+module.exports = {
+  unreleasedBlock, gateVerdict, changelogVerdict, isEmpty, mode, roll, latestRelease, notesFor,
+};

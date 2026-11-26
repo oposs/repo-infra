@@ -98,6 +98,7 @@ jobs:
             const releaseLib = require(`${lib}/release.js`);
             const assetsLib = require(`${lib}/assets.js`);
             const changesLib = require(`${lib}/changes.js`);
+            const fragmentsLib = require(`${lib}/fragments.js`);
             const commitLib = require(`${lib}/commit.js`);
             const unparkLib = require(`${lib}/unpark.js`);
             const owner = context.repo.owner;
@@ -111,11 +112,16 @@ jobs:
             const base = process.env.BASE;
             const tag = `v${version}`;
             const branch = `release/${tag}`;
+            // The fragment directory (D40) or null, from main's CHANGES.md: the
+            // roll keeps the header, so main and the release branch agree.
+            const fragmentDir = fragmentsLib.noteDir(
+              fs.readFileSync(`${ws}/CHANGES.md`, 'utf8'),
+            );
 
             // 1. The declared list itself, again: this reads it from the
             //    dispatched main, whether or not anyone ran `check`.
             const declared = config.release_files || [];
-            const refused = releaseLib.refusedReleaseFiles(declared, config.version_files);
+            const refused = releaseLib.refusedReleaseFiles(declared, config.version_files, fragmentDir);
             if (refused.length > 0) {
               core.setFailed('release_files in .github/repo-infra.json: '
                 + refused.map((r) => `${r.path} ${r.reason}`).join('; '));
@@ -193,14 +199,22 @@ jobs:
             const { data: rolled } = await github.rest.repos.getContent({
               owner, repo, path: 'CHANGES.md', ref: head,
             });
+            const notes = changesLib.notesFor(
+              Buffer.from(rolled.content, 'base64').toString('utf8'), version,
+            );
+            // What the release did to the changelog, for the check and the body.
+            // In fragment mode it counts the entries: their top-level list items.
+            const collected = (() => {
+              if (fragmentDir === null) return null;
+              const count = notes.split(/\r?\n/).filter((l) => l.startsWith('- ')).length;
+              return `${count} ${count === 1 ? 'entry' : 'entries'}`;
+            })();
             const { data: draft } = await github.rest.repos.createRelease({
               owner, repo,
               tag_name: tag,
               target_commitish: head,
               name: releaseLib.releaseTitle(repo, tag),
-              body: changesLib.notesFor(
-                Buffer.from(rolled.content, 'base64').toString('utf8'), version,
-              ),
+              body: notes,
               draft: true,
               prerelease: false,
               make_latest: 'true',
@@ -230,14 +244,20 @@ jobs:
             await github.rest.checks.create({
               owner, repo, name: 'changelog-updated', head_sha: head,
               status: 'completed', conclusion: 'success',
-              output: { title: `${tag} rolls CHANGES.md`,
-                summary: 'Create release PR rolled [Unreleased] into this version.' },
+              output: collected === null
+                ? { title: `${tag} rolls CHANGES.md`,
+                  summary: 'Create release PR rolled [Unreleased] into this version.' }
+                : { title: `${tag} collects ${collected} from ${fragmentDir}/`,
+                  summary: `Create release PR collected ${collected} from ${fragmentDir}/ `
+                    + 'into this version.' },
             });
 
             const body = [
               'Prepared by the **Create release PR** workflow.',
               '',
-              `- rolls \`CHANGES.md\` \`[Unreleased]\` into \`## ${version} - ${date}\``,
+              collected === null
+                ? `- rolls \`CHANGES.md\` \`[Unreleased]\` into \`## ${version} - ${date}\``
+                : `- collects ${collected} from \`${fragmentDir}/\` into \`## ${version} - ${date}\``,
               `- sets ${config.version_files.map((f) => `\`${f.path}\``).join(', ')} to \`${version}\``,
               ...(files.length > 0
                 ? [`- writes ${files.map((f) => `\`${f.path}\``).join(', ')} from the build`]

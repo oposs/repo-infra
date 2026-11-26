@@ -106,6 +106,16 @@ test('recovery hints name ways out that prepare does not refuse', () => {
   assert.doesNotMatch(noRecord, /Dispatch/);
 });
 
+test('in fragment mode the no-record hint restores the fragments', () => {
+  const { message } = publishDecision({
+    tag: TAG, tagCommit: null, releases: [rel(true, false)], dir: 'CHANGES.d',
+  });
+  assert.match(message, /Push v1\.2\.0 at the built commit/);
+  assert.ok(message.endsWith('or abandon the release: merge a pull request that removes the '
+    + '`## 1.2.0` section from CHANGES.md and restores its fragments under `CHANGES.d/`.'), message);
+  assert.doesNotMatch(message, /Unreleased/);
+});
+
 test('recordHeadWarning: silent when the tag is at the built commit, else names both', () => {
   assert.equal(recordHeadWarning(TAG, HEAD, HEAD), null);
   const other = 'b'.repeat(40);

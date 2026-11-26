@@ -1,0 +1,238 @@
+[
+  {
+    "kind": "note",
+    "input": "# Changelog\n\nChangelog fragments: `CHANGES.d/`. More.\n\n## 1.0.0 - 2026-01-01\n",
+    "ok": true,
+    "value": "CHANGES.d"
+  },
+  {
+    "kind": "note",
+    "input": "# Changelog\n\nChangelog fragments: `CHANGES.d`. More.\n",
+    "ok": true,
+    "value": "CHANGES.d"
+  },
+  {
+    "kind": "note",
+    "input": "# Changelog\n\nChangelog fragments: `docs/changes/`.\n\n## 1.0.0 - 2026-01-01\n",
+    "ok": true,
+    "value": "docs/changes"
+  },
+  {
+    "kind": "note",
+    "input": "# Changelog\n\n## [Unreleased]\n\n### New\n",
+    "ok": true,
+    "value": null
+  },
+  {
+    "kind": "note",
+    "input": "# Changelog\n\n## 1.0.0 - 2026-01-01\n\nChangelog fragments: `CHANGES.d/`.\n",
+    "ok": true,
+    "value": null
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `../x/`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `a/../x/`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `.github/x`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `.github`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `/abs`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `CHANGES.md`.\n",
+    "ok": false
+  },
+  {
+    "kind": "name",
+    "input": "20261126-0921-a3f9-time-band.md",
+    "ok": true
+  },
+  {
+    "kind": "name",
+    "input": "20261126-0921-A3F9-time-band.md",
+    "ok": false
+  },
+  {
+    "kind": "name",
+    "input": "20261126-0921-time-band.md",
+    "ok": false
+  },
+  {
+    "kind": "name",
+    "input": "20261126-0921-a3f9-time-band.txt",
+    "ok": false
+  },
+  {
+    "kind": "name",
+    "input": "20261126-0921-a3f9-topic--x.md",
+    "ok": false
+  },
+  {
+    "kind": "body",
+    "input": "- one entry\n",
+    "ok": true,
+    "value": "- one entry"
+  },
+  {
+    "kind": "body",
+    "input": "- first\n\n- second\n",
+    "ok": true,
+    "value": "- first|- second"
+  },
+  {
+    "kind": "body",
+    "input": "- first\n  continued\n",
+    "ok": true,
+    "value": "- first\n  continued"
+  },
+  {
+    "kind": "body",
+    "input": "- first\n  - nested\n- second\n",
+    "ok": true,
+    "value": "- first\n  - nested|- second"
+  },
+  {
+    "kind": "body",
+    "input": "- first\r\n  continued\r\n- second\r\n",
+    "ok": true,
+    "value": "- first\n  continued|- second"
+  },
+  {
+    "kind": "body",
+    "input": "- no trailing newline",
+    "ok": true,
+    "value": "- no trailing newline"
+  },
+  {
+    "kind": "body",
+    "input": "",
+    "ok": false
+  },
+  {
+    "kind": "body",
+    "input": "\n\n",
+    "ok": false
+  },
+  {
+    "kind": "body",
+    "input": "# Heading\n- entry\n",
+    "ok": false
+  },
+  {
+    "kind": "body",
+    "input": "- entry\nplain prose\n",
+    "ok": false
+  },
+  {
+    "kind": "body",
+    "input": "plain prose\n",
+    "ok": false
+  },
+  {
+    "kind": "body",
+    "input": "* bullet\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "# Changelog\r\n\r\nChangelog fragments: `CHANGES.d/`.\r\n\r\n## 1.0.0 - 2026-01-01\r\n",
+    "ok": true,
+    "value": "CHANGES.d"
+  },
+  {
+    "kind": "note",
+    "input": "# Changelog\r\n\r\nChangelog fragments: `CHANGES.d`.\r\n",
+    "ok": true,
+    "value": "CHANGES.d"
+  },
+  {
+    "kind": "body",
+    "input": "- first\n    four space continuation\n",
+    "ok": true,
+    "value": "- first\n    four space continuation"
+  },
+  {
+    "kind": "body",
+    "input": "- first\n\tTab continuation\n",
+    "ok": false
+  },
+  {
+    "kind": "body",
+    "input": "- one\n\n\n\n",
+    "ok": true,
+    "value": "- one"
+  },
+  {
+    "kind": "body",
+    "input": "\n\n- one\n- two",
+    "ok": true,
+    "value": "- one|- two"
+  },
+  {
+    "kind": "body",
+    "input": "- one\r\n\r\n- two\r\n\r\n",
+    "ok": true,
+    "value": "- one|- two"
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `./CHANGES.d/`.\n",
+    "ok": true,
+    "value": "CHANGES.d"
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `./CHANGES.d`.\n",
+    "ok": true,
+    "value": "CHANGES.d"
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `CHANGES.d//`.\n",
+    "ok": true,
+    "value": "CHANGES.d"
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `docs//changes`.\n",
+    "ok": true,
+    "value": "docs/changes"
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `.`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `./`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `./.github/x`.\n",
+    "ok": false
+  },
+  {
+    "kind": "note",
+    "input": "Changelog fragments: `./CHANGES.md`.\n",
+    "ok": false
+  }
+]

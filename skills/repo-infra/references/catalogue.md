@@ -798,7 +798,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-changelog.yml@v2`.
 
 **Choose it when:** Always; changelog.yml calls it and changelog-updated reads its result.
 
-**The repository supplies:** CHANGES.md with an Unreleased section; the no-changelog label.
+**The repository supplies:** CHANGES.md with an Unreleased section, or with the 'Changelog fragments' note and fragment files under its directory; the no-changelog label.
 
 **Produces:** The output message; the job fails when the changelog is refused.
 
@@ -862,7 +862,7 @@ Called as `oposs/repo-infra/.github/workflows/ri-release-prepare.yml@v2`.
 
 **Choose it when:** Always; release-pr.yml calls it.
 
-**The repository supplies:** version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section.
+**The repository supplies:** version_files in .github/repo-infra.json; CHANGES.md with an Unreleased section, or with the Changelog fragments note and its fragments (D40).
 
 **Produces:** The outputs version, date, head (the release branch head) and base (the dispatched main commit).
 

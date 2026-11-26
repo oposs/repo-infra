@@ -41,7 +41,9 @@ repository's own, and a repository may add more between `prepare` and `finish`
   latest release in `CHANGES.md` has no tag), the removal of stale drafts and
   of the parked runs of closed release branches, the roll, the version bump
   and the commit of `release/vX.Y.Z`. It outputs `version`, `date`, `head` and
-  `base`, the dispatched `main` commit.
+  `base`, the dispatched `main` commit. In fragment mode (D40) the roll collects
+  the fragments under the directory the note in `CHANGES.md` names, and the
+  release commit deletes exactly the fragments it rolled.
 - `build`: calls the repository's `.github/workflows/release-build.yml` with
   `version` and `ref: head`.
 - `test`: calls the repository's `.github/workflows/ci.yml` with `ref: head`,
@@ -51,7 +53,10 @@ repository's own, and a repository may add more between `prepare` and `finish`
   `<repository name> <tag>` (`edaptor v1.8.0`), with
   every asset and `release-build.json` (`{version, base, head, assets}`), sets
   the commit status `release-built` on the head, creates the check run
-  `changelog-updated` (success) on the head and opens the pull request. Then
+  `changelog-updated` (success) on the head and opens the pull request. In
+  fragment mode the check title reads `vX.Y.Z collects N entries from <dir>/`
+  and the pull request body says "collects N entries from `<dir>/` into
+  `## X.Y.Z - date`" instead of "rolls `[Unreleased]`". Then
   it compares the head with `main` and creates the check run `ci-passed`:
   success when the branch is not behind `main`, failure with the stale message
   below when `main` moved after `base`. The pull request is opened before this
@@ -118,6 +123,8 @@ dispatched again. Three layers enforce this:
   request is found, or the trees differ, publish tags nothing and fails. A
   mismatch means the up-to-date rule was off at the merge:
   `main at <sha> does not match the release built from <head>; merge a pull request that moves the vX.Y.Z entries in CHANGES.md back under [Unreleased], then dispatch Create release PR again`.
+  In fragment mode (D40) the advice reads `merge a pull request that removes the
+  \`## X.Y.Z\` section from CHANGES.md and restores its fragments under \`<dir>/\``.
 
 ## The guard fails fast, and is not redundant with the required checks
 
@@ -201,7 +208,10 @@ The one failure a re-run cannot fix is the tree comparison. A publish that
 failed with `main at <sha> does not match the release built from <head>`
 tagged nothing, and every re-run fails the same way. Abandon the release with
 a pull request that moves its entries back under `[Unreleased]`, then dispatch
-again.
+again. In fragment mode the pull request removes the `## X.Y.Z` section and
+restores its fragments under the fragment directory; the changelog gate accepts
+it only for a version without a tag, and only when the fragments hold at least
+as many entries as the removed section.
 
 ## The `needs:` list of `finalize`
 
@@ -317,7 +327,8 @@ Then correct the configuration on `main` for the next release.
   reason than the tree comparison; for a release that is already out under
   another tag, pushing `vX.Y.Z` by hand (a tag ruleset like repo-infra's
   refuses only deletion, so the push goes through); or, to abandon it, a pull request that moves its entries back under
-  `[Unreleased]`.
+  `[Unreleased]` (in fragment mode, one that removes the `## X.Y.Z` section and
+  restores its fragments under `<dir>/`).
 
 **Update branch** on a release pull request moves the branch after the build.
 The new head carries no `release-built` status, so `ci-passed` and

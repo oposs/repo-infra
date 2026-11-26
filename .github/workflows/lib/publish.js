@@ -9,11 +9,14 @@
 // Once the tag exists, the tag is the record of what was built; the
 // release-build.json asset matters only before that (case 3).
 
-const { BUILD_RECORD } = require('./release.js');
+const { BUILD_RECORD, restoreFragments, releaseVersion } = require('./release.js');
 
 const fail = (message) => ({ action: 'fail', message });
 
-function publishDecision({ tag, tagCommit, releases }) {
+// dir is the fragment directory the note in CHANGES.md names, or null.
+function publishDecision({
+  tag, tagCommit, releases, dir = null,
+}) {
   const drafts = releases.filter((r) => r.draft);
   const published = releases.filter((r) => !r.draft);
   const record = (r) => r.assets.find((a) => a.name === BUILD_RECORD);
@@ -54,10 +57,12 @@ function publishDecision({ tag, tagCommit, releases }) {
   }
   const asset = record(drafts[0]);
   if (!asset) {
+    const abandon = dir === null
+      ? 'or abandon the release with a pull request that moves its entries back '
+        + 'under [Unreleased].'
+      : `or abandon the release: ${restoreFragments(releaseVersion(tag), dir)}.`;
     return fail(`${tag}: the draft release carries no ${BUILD_RECORD}, so the built `
-      + `commit is unknown. Push ${tag} at the built commit and re-run this workflow, `
-      + 'or abandon the release with a pull request that moves its entries back '
-      + 'under [Unreleased].');
+      + `commit is unknown. Push ${tag} at the built commit and re-run this workflow, ${abandon}`);
   }
   return { action: 'create', releaseId: drafts[0].id, recordAssetId: asset.id };
 }

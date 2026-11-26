@@ -27,8 +27,14 @@ def job():
 # lib/changes.js, or a base on workflow-lib v4) are gone with it: D33 loads
 # the library from repo-infra's commit, which no consumer pull request changes.
 def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), current_labels=None,
-         statuses=(), behind=0, head_changes=SAME, base_changes=SAME, outputs=False):
-    """The failures of ri-changelog's step; with `outputs`, also what it set."""
+         statuses=(), behind=0, head_changes=SAME, base_changes=SAME, merge_changes=None,
+         files=(), fragments=None, tags=(), tree=(), truncated=False, compare_status=None,
+         outputs=False):
+    """The failures of ri-changelog's step; with `outputs`, also what it set and
+    the API calls it made. The merge base is 'm'; `fragments` maps a path to its
+    text at head, `tags` names the tags that exist, `tree` lists the paths at head
+    (`truncated` as the API flags a cut listing), and `compare_status` makes the
+    compare fail with that status."""
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -37,7 +43,9 @@ def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), current_l
     # Several tests call gate() twice with one tmp_path: copy over, never fail on an existing tree.
     shutil.copytree(ROOT / ".github/workflows/lib", ws / ".repo-infra/.github/workflows/lib",
                     dirs_exist_ok=True)
-    contents = {"CHANGES.md@b": base_changes, "CHANGES.md@h": head_changes}
+    contents = {"CHANGES.md@b": base_changes, "CHANGES.md@h": head_changes,
+                "CHANGES.md@m": merge_changes}
+    contents.update({f"{p}@h": t for p, t in (fragments or {}).items()})
     contents = {k: v for k, v in contents.items() if v is not None}
     pr = {"number": 1, "labels": [{"name": n} for n in labels], "user": {"login": login},
           "head": {"ref": head_ref, "sha": "h",
@@ -49,21 +57,52 @@ def gate(tmp_path, *, head_ref, login=BOT, head_repo="o/r", labels=(), current_l
 const contents = %s;
 const current = %s;
 const statuses = %s;
-const failures = []; const outputs = {};
+const files = %s;
+const tags = %s;
+const tree = %s;
+const truncated = %s;
+const compareStatus = %s;
+const failures = []; const outputs = {}; const calls = [];
+const notFound = () => { const e = new Error('Not Found'); e.status = 404; return e; };
 const github = {
-  paginate: async (fn) => (fn === 'statuses' ? statuses : []),
+  // Pages as the API serves them, so a script that skips paginate sees only the first.
+  paginate: async (fn, params) => {
+    if (fn === 'statuses') return statuses;
+    const out = [];
+    for (let page = 1; ; page += 1) {
+      const { data } = await fn({ ...params, page });
+      out.push(...data);
+      if (data.length < (params.per_page || 30)) return out;
+    }
+  },
   rest: { pulls: {
     get: async ({ pull_number }) => {
       if (pull_number !== 1) throw new Error(`pull_number ${pull_number}`);
       return { data: { labels: current } }; },
+    listFiles: async ({ pull_number, per_page = 30, page = 1 }) => {
+      calls.push('listFiles');
+      if (pull_number !== 1) throw new Error(`pull_number ${pull_number}`);
+      const size = Math.min(per_page, 100);
+      return { data: files.slice((page - 1) * size, page * size) }; },
+  }, git: {
+    getRef: async ({ ref }) => {
+      calls.push(`getRef ${ref}`);
+      if (!ref.startsWith('tags/') || !tags.includes(ref.slice(5))) throw notFound();
+      return { data: { ref: `refs/${ref}` } }; },
+    getTree: async ({ tree_sha, recursive }) => {
+      calls.push('getTree');
+      if (tree_sha !== 'h' || !recursive) throw new Error(`tree ${tree_sha} ${recursive}`);
+      return { data: { tree: tree.map((path) => ({ path, type: 'blob' })), truncated } }; },
   }, repos: {
     listCommitStatusesForRef: 'statuses',
     compareCommitsWithBasehead: async ({ basehead }) => {
+      calls.push('compare');
+      if (compareStatus !== null) { const e = new Error('compare'); e.status = compareStatus; throw e; }
       if (basehead !== 'main...h') throw new Error(`basehead ${basehead}`);
-      return { data: { behind_by: %d } }; },
+      return { data: { behind_by: %d, merge_base_commit: { sha: 'm' } } }; },
     getContent: async ({ path, ref }) => {
       const text = contents[`${path}@${ref}`];
-      if (text === undefined) { const e = new Error('Not Found'); e.status = 404; throw e; }
+      if (text === undefined) throw notFound();
       return { data: { content: Buffer.from(text).toString('base64') } };
     },
   } },
@@ -73,8 +112,11 @@ const core = { setFailed: (m) => failures.push(m), notice: () => {},
 const context = { repo: { owner: 'o', repo: 'r' }, payload: { pull_request: %s } };
 (async () => {
 %s
-})().then(() => console.log(JSON.stringify({ failures, outputs })));
-""" % (json.dumps(contents), json.dumps(current), json.dumps(list(statuses)), behind, json.dumps(pr), script)
+})().then(() => console.log(JSON.stringify({ failures, outputs, calls })));
+""" % (json.dumps(contents), json.dumps(current), json.dumps(list(statuses)),
+       json.dumps(list(files)), json.dumps(list(tags)), json.dumps(list(tree)),
+       json.dumps(truncated), json.dumps(compare_status), behind,
+       json.dumps(pr), script)
     path = tmp_path / "gate.js"
     path.write_text(harness, encoding="utf-8")
     proc = subprocess.run([node, str(path)], capture_output=True, text=True, cwd=ws,
@@ -215,3 +257,120 @@ def test_a_label_added_after_the_event_counts(tmp_path):
 def test_a_label_removed_after_the_event_no_longer_counts(tmp_path):
     found = gate(tmp_path, head_ref="fix", labels=["no-changelog"], current_labels=[])
     assert len(found) == 1 and "adds nothing under '## [Unreleased]'" in found[0]
+
+
+# Changelog fragments (D40): the mode comes from the merge base 'm' and the head.
+FRAG = "# Changes\n\nChangelog fragments: `CHANGES.d`\n\n## 1.0.0 - 2026-01-01\n\n- a\n"
+FRAG_NEXT = ("# Changes\n\nChangelog fragments: `CHANGES.d`\n\n## 1.1.0 - 2026-02-01\n\n"
+             "### Fixed\n\n- y\n\n## 1.0.0 - 2026-01-01\n\n- a\n")
+FRAGMENT = "CHANGES.d/new/20261126-1200-ab12-gate.md"
+ADDED = [{"filename": FRAGMENT, "status": "added"}]
+
+
+def fragment_gate(tmp_path, **kwargs):
+    args = {"head_ref": "fix/x", "login": "oetiker", "base_changes": FRAG,
+            "merge_changes": FRAG, "head_changes": FRAG, "outputs": True, **kwargs}
+    return gate(tmp_path, **args)
+
+
+def test_a_fragment_pull_request_passes(tmp_path):
+    out = fragment_gate(tmp_path, files=ADDED, fragments={FRAGMENT: "- x\n"})
+    assert out["failures"] == []
+    assert "CHANGES.d/" in out["outputs"]["message"]
+    # The top release is still at head: no tag to read.
+    assert not any(c.startswith("getRef") for c in out["calls"])
+
+
+def test_a_fragment_pull_request_without_a_fragment_fails(tmp_path):
+    out = fragment_gate(tmp_path, files=[{"filename": "src/a.c", "status": "modified"}])
+    assert len(out["failures"]) == 1 and "adds no changelog fragment" in out["failures"][0]
+
+
+def test_a_fragment_pull_request_that_edits_the_header_fails(tmp_path):
+    head = FRAG.replace("# Changes\n", "# Changes\n\nSee below.\n")
+    out = fragment_gate(tmp_path, head_changes=head, files=ADDED, fragments={FRAGMENT: "- x\n"})
+    assert len(out["failures"]) == 1 and "changes the header" in out["failures"][0]
+
+
+def test_the_gate_reads_every_page_of_changed_files(tmp_path):
+    # Review Focus: more than 100 changed files; the fragment is on the second page.
+    files = [{"filename": f"src/f{i}.c", "status": "modified"} for i in range(149)] + ADDED
+    out = fragment_gate(tmp_path, files=files, fragments={FRAGMENT: "- x\n"})
+    assert out["failures"] == []
+    assert out["calls"].count("listFiles") == 2
+
+
+def test_a_broken_fragment_fails_by_name(tmp_path):
+    out = fragment_gate(tmp_path, files=ADDED, fragments={FRAGMENT: "## x\n"})
+    assert len(out["failures"]) == 1 and FRAGMENT in out["failures"][0]
+
+
+def test_a_pull_request_from_before_the_switch_is_judged_classic(tmp_path):
+    # main has switched since the branch was cut; the merge base and head have not.
+    out = gate(tmp_path, head_ref="fix/x", login="oetiker", base_changes=FRAG,
+               merge_changes=SAME, head_changes=MORE, outputs=True)
+    assert out["failures"] == [] and "listFiles" not in out["calls"]
+
+
+def test_classic_repositories_make_no_new_api_calls(tmp_path):
+    out = gate(tmp_path, head_ref="fix/x", login="oetiker", merge_changes=SAME,
+               head_changes=MORE, outputs=True)
+    assert out["failures"] == []
+    assert "compare" in out["calls"]
+    assert [c for c in out["calls"] if c != "compare"] == []
+
+
+def test_the_switch_to_fragments_passes_with_its_entries_moved(tmp_path):
+    head = "# Changes\n\nChangelog fragments: `CHANGES.d`\n\n## 1.0.0 - 2026-01-01\n"
+    out = fragment_gate(tmp_path, base_changes=MORE, merge_changes=MORE, head_changes=head,
+                        files=ADDED, fragments={FRAGMENT: "- x\n"})
+    assert out["failures"] == [] and "switches to fragments" in out["outputs"]["message"]
+
+
+def test_removing_an_untagged_release_section_passes(tmp_path):
+    fixed = "CHANGES.d/fixed/20261126-1200-ab12-gate.md"
+    out = fragment_gate(tmp_path, base_changes=FRAG_NEXT, merge_changes=FRAG_NEXT,
+                        files=[{"filename": fixed, "status": "added"}],
+                        fragments={fixed: "- y\n"}, tags=["v1.0.0"])
+    assert out["failures"] == []
+    assert "getRef tags/v1.1.0" in out["calls"]
+
+
+def test_removing_a_tagged_release_section_fails(tmp_path):
+    fixed = "CHANGES.d/fixed/20261126-1200-ab12-gate.md"
+    out = fragment_gate(tmp_path, base_changes=FRAG_NEXT, merge_changes=FRAG_NEXT,
+                        files=[{"filename": fixed, "status": "added"}],
+                        fragments={fixed: "- y\n"}, tags=["v1.0.0", "v1.1.0"])
+    assert len(out["failures"]) == 1 and "v1.1.0 is tagged" in out["failures"][0]
+
+
+def test_switching_back_fails_while_fragments_remain(tmp_path):
+    out = fragment_gate(tmp_path, head_changes=MORE, tree=["README.md", FRAGMENT])
+    assert len(out["failures"]) == 1 and "1 fragment file remains" in out["failures"][0]
+    assert fragment_gate(tmp_path, head_changes=MORE, tree=["README.md"])["failures"] == []
+
+
+def test_a_refused_note_fails_without_an_error(tmp_path):
+    head = FRAG.replace("`CHANGES.d`", "`../x`")
+    out = fragment_gate(tmp_path, head_changes=head)
+    assert len(out["failures"]) == 1 and "contains '..'" in out["failures"][0]
+
+
+def test_a_truncated_tree_fails_rather_than_undercounting(tmp_path):
+    out = fragment_gate(tmp_path, head_changes=MORE, tree=["README.md"], truncated=True)
+    assert out["failures"] == [
+        "The tree at head is too large to count the fragments left under CHANGES.d/; "
+        "the API truncated it."]
+
+
+def test_branches_without_common_history_fall_back_to_the_base_tip(tmp_path):
+    # The compare answers 404 when base and head share no commit.
+    assert gate(tmp_path, head_ref="fix/x", login="oetiker", head_changes=MORE,
+                compare_status=404) == []
+    failures = gate(tmp_path, head_ref="fix/x", login="oetiker", compare_status=404)
+    assert len(failures) == 1 and "adds nothing" in failures[0]
+
+
+def test_the_pass_message_of_one_fragment_is_singular(tmp_path):
+    out = fragment_gate(tmp_path, files=ADDED, fragments={FRAGMENT: "- x\n"})
+    assert out["outputs"]["message"] == "1 changelog fragment under CHANGES.d/ follows the rules."
