@@ -483,8 +483,8 @@ refused ("the switch to fragments is not finished").
   and the release commit deletes exactly the fragments it rolled. The section
   looks like one rolled from `[Unreleased]`, so the release notes do too. With
   no fragment, prepare stops with "no changelog fragments in <dir> - nothing to
-  release". A path under the fragment directory is refused as a release file, and so is a
-  symbolic link in a section directory.
+  release". A path under the fragment directory is refused as a release file,
+  and so is a symbolic link in a section directory.
 - **`check` and `apply`:** `check` reports the mode, and in fragment mode a
   missing directory, a remaining `[Unreleased]` and a file that breaks the
   rules. `apply --item changelog-fragments` moves each non-empty subsection of
